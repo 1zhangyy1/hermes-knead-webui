@@ -3,6 +3,7 @@
 import { spawnSync } from 'node:child_process'
 
 const checks = [
+  ['repository audit', 'node', ['scripts/audit-repo.mjs']],
   [
     'python api compile',
     'python3',
