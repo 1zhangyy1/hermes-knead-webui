@@ -1,0 +1,20 @@
+{
+  "id": "meta-chat",
+  "name": "通用 Agent",
+  "type": "system.meta-agent",
+  "description": "The primary Hermes-powered agent surface.",
+  "status": "ready",
+  "signal": "主入口",
+  "version": "0.1.0",
+  "entry": "spaces/meta-chat/src/index.tsx#MetaChat",
+  "agent": {
+    "defaultInstructions": "You are the mother agent console. Help the user inspect, steer, and evolve AI Spaces.",
+    "memoryScope": "space:meta-chat",
+    "skills": ["space-evolution", "runtime-inspection", "hermes-operations"]
+  },
+  "permissions": {
+    "files": "workspace",
+    "network": "limited",
+    "shell": "approval-required"
+  }
+}

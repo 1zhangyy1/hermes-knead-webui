@@ -1,0 +1,342 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="HermesDesktop.Views.IntegrationsPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    Background="Transparent"
+    mc:Ignorable="d"
+    NavigationCacheMode="Required">
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel Padding="32,24,32,40" Spacing="20">
+            <!-- Header -->
+            <Border Style="{StaticResource SurfaceCardStyle}">
+                <StackPanel Spacing="14">
+                    <TextBlock
+                        x:Uid="IntegrationsEyebrow"
+                        Style="{StaticResource PageEyebrowTextStyle}" />
+                    <TextBlock
+                        x:Uid="IntegrationsTitle"
+                        Style="{StaticResource PageTitleTextStyle}"
+                        MaxWidth="920" />
+                    <TextBlock
+                        x:Uid="IntegrationsSubtitle"
+                        Style="{StaticResource BodySecondaryTextStyle}"
+                        MaxWidth="920" />
+                </StackPanel>
+            </Border>
+
+            <!-- Gateway info notice -->
+            <Border Background="#1A1500" CornerRadius="8" Padding="16,12" BorderBrush="#3A3000" BorderThickness="1">
+                <StackPanel Spacing="6">
+                    <TextBlock Text="&#xE946; Native C# gateway for Telegram and Discord"
+                               FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                               FontSize="13" Foreground="{StaticResource AppAccentTextBrush}" />
+                    <TextBlock Text="Telegram and Discord run natively in the desktop app — no Python required. Slack, WhatsApp, Matrix, and webhooks use the same config.yaml entries as the Python gateway; install hermes-agent only when you want those platforms live."
+                               FontSize="12" Foreground="{StaticResource AppTextSecondaryBrush}" TextWrapping="Wrap" />
+                    <HyperlinkButton Content="Install hermes-agent for additional platforms (pip install hermes-agent)"
+                                     NavigateUri="https://github.com/NousResearch/hermes-agent"
+                                     FontSize="12" Padding="0" />
+                </StackPanel>
+            </Border>
+
+            <!-- Native Gateway Status -->
+            <Border Style="{StaticResource SurfaceCardStyle}">
+                <StackPanel Spacing="12">
+                    <TextBlock Text="Native Gateway (C#)" Style="{StaticResource SectionTitleTextStyle}" />
+                    <StackPanel Orientation="Horizontal" Spacing="12">
+                        <Ellipse x:Name="NativeGatewayIndicator" Width="12" Height="12"
+                                 VerticalAlignment="Center" />
+                        <TextBlock x:Name="NativeGatewayStatusText" VerticalAlignment="Center"
+                                   Style="{StaticResource MetricValueTextStyle}" />
+                    </StackPanel>
+                    <TextBlock x:Name="NativeGatewayStateText" FontSize="13"
+                               Foreground="{StaticResource AppTextSecondaryBrush}" />
+                    <!-- Per-adapter connection status -->
+                    <StackPanel x:Name="AdapterStatusPanel" Orientation="Horizontal" Spacing="16" />
+                    <StackPanel Orientation="Horizontal" Spacing="12">
+                        <Button x:Name="NativeGatewayToggleButton" Click="NativeGatewayToggle_Click"
+                                Style="{StaticResource PrimaryButtonStyle}" />
+                        <Button Content="Restart Gateway" Click="RestartNativeGateway_Click"
+                                Style="{StaticResource SecondaryButtonStyle}" />
+                        <Button x:Name="GatewayRefreshButton" Content="Refresh" Click="GatewayRefresh_Click"
+                                Style="{StaticResource SecondaryButtonStyle}" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <!-- Python Gateway Status (advanced platforms) -->
+            <Border Style="{StaticResource SurfaceCardStyle}">
+                <StackPanel Spacing="12">
+                    <TextBlock Text="Python Gateway (optional — Slack, WhatsApp, Matrix, webhooks)" Style="{StaticResource SectionTitleTextStyle}" />
+                    <StackPanel Orientation="Horizontal" Spacing="12">
+                        <Ellipse x:Name="GatewayIndicator" Width="12" Height="12"
+                                 VerticalAlignment="Center" />
+                        <TextBlock x:Name="GatewayStatusText" VerticalAlignment="Center"
+                                   Style="{StaticResource MetricValueTextStyle}" />
+                    </StackPanel>
+                    <TextBlock x:Name="GatewayStateText" FontSize="13"
+                               Foreground="{StaticResource AppTextSecondaryBrush}" />
+                    <StackPanel Orientation="Horizontal" Spacing="12">
+                        <Button x:Name="GatewayToggleButton" Click="GatewayToggle_Click"
+                                Style="{StaticResource SecondaryButtonStyle}" />
+                        <Button
+                            x:Uid="IntegrationsOpenLogsButton"
+                            AccessKey="G"
+                            AutomationProperties.AutomationId="IntegrationsOpenLogsButton"
+                            Style="{StaticResource SecondaryButtonStyle}"
+                            Click="OpenLogs_Click" />
+                        <Button
+                            x:Uid="IntegrationsOpenConfigButton"
+                            AccessKey="C"
+                            AutomationProperties.AutomationId="IntegrationsOpenConfigButton"
+                            Style="{StaticResource SecondaryButtonStyle}"
+                            Click="OpenConfig_Click" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <!-- Notice -->
+            <Border Style="{StaticResource SurfaceCardStyle}" Background="#2A2000" BorderBrush="#5A4A00">
+                <StackPanel Spacing="4">
+                    <TextBlock Text="Integration Status" FontSize="14" FontWeight="SemiBold"
+                               Foreground="{StaticResource AppAccentTextBrush}"/>
+                    <TextBlock Text="Telegram and Discord use native C# adapters — no Python CLI required. Other platforms write tokens here to config.yaml; run the optional Python gateway when you need those bots online. Nothing extra is required just to save integration settings."
+                               FontSize="12" TextWrapping="Wrap"
+                               Foreground="{StaticResource AppTextSecondaryBrush}"/>
+                </StackPanel>
+            </Border>
+
+            <!-- Row 1: Telegram + Discord -->
+            <Grid ColumnSpacing="20">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+
+                <!-- Telegram -->
+                <Border Grid.Column="0" Style="{StaticResource SurfaceCardStyle}">
+                    <StackPanel Spacing="12">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <TextBlock
+                                x:Uid="IntegrationsTelegramTitle"
+                                Style="{StaticResource SectionTitleTextStyle}" />
+                            <Border Background="#1A3A1A" CornerRadius="4" Padding="6,2" VerticalAlignment="Center">
+                                <TextBlock Text="Native C#" FontSize="9" Foreground="#6ABF6A"/>
+                            </Border>
+                        </StackPanel>
+                        <TextBlock x:Name="TelegramStatusText"
+                            Style="{StaticResource MetricValueTextStyle}" />
+                        <TextBlock x:Name="TelegramMaskedText" FontSize="13"
+                            Foreground="{StaticResource AppTextSecondaryBrush}" />
+                        <TextBlock Text="Get a token from @BotFather on Telegram. Env var: TELEGRAM_BOT_TOKEN"
+                                   FontSize="12" TextWrapping="Wrap"
+                                   Foreground="{StaticResource AppTextSecondaryBrush}" />
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="BOT TOKEN" Style="{StaticResource LabelTextStyle}"/>
+                            <PasswordBox x:Name="TelegramTokenBox"
+                                         PlaceholderText="Paste your Telegram bot token"
+                                         Style="{StaticResource AppPasswordBoxStyle}"/>
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" Spacing="12">
+                            <Button Content="Save" Click="SaveTelegram_Click"
+                                    Style="{StaticResource PrimaryButtonStyle}"/>
+                            <TextBlock x:Name="TelegramSaveStatus" VerticalAlignment="Center"
+                                       Foreground="{StaticResource AppTextSecondaryBrush}" FontSize="13"/>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
+                <!-- Discord -->
+                <Border Grid.Column="1" Style="{StaticResource SurfaceCardStyle}">
+                    <StackPanel Spacing="12">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <TextBlock
+                                x:Uid="IntegrationsDiscordTitle"
+                                Style="{StaticResource SectionTitleTextStyle}" />
+                            <Border Background="#1A3A1A" CornerRadius="4" Padding="6,2" VerticalAlignment="Center">
+                                <TextBlock Text="Native C#" FontSize="9" Foreground="#6ABF6A"/>
+                            </Border>
+                        </StackPanel>
+                        <TextBlock x:Name="DiscordStatusText"
+                            Style="{StaticResource MetricValueTextStyle}" />
+                        <TextBlock x:Name="DiscordMaskedText" FontSize="13"
+                            Foreground="{StaticResource AppTextSecondaryBrush}" />
+                        <TextBlock Text="Create a bot at discord.com/developers. Env var: DISCORD_BOT_TOKEN"
+                                   FontSize="12" TextWrapping="Wrap"
+                                   Foreground="{StaticResource AppTextSecondaryBrush}" />
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="BOT TOKEN" Style="{StaticResource LabelTextStyle}"/>
+                            <PasswordBox x:Name="DiscordTokenBox"
+                                         PlaceholderText="Paste your Discord bot token"
+                                         Style="{StaticResource AppPasswordBoxStyle}"/>
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" Spacing="12">
+                            <Button Content="Save" Click="SaveDiscord_Click"
+                                    Style="{StaticResource PrimaryButtonStyle}"/>
+                            <TextBlock x:Name="DiscordSaveStatus" VerticalAlignment="Center"
+                                       Foreground="{StaticResource AppTextSecondaryBrush}" FontSize="13"/>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+            </Grid>
+
+            <!-- Row 2: Slack + WhatsApp -->
+            <Grid ColumnSpacing="20">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+
+                <!-- Slack -->
+                <Border Grid.Column="0" Style="{StaticResource SurfaceCardStyle}">
+                    <StackPanel Spacing="12">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <TextBlock Text="Slack" Style="{StaticResource SectionTitleTextStyle}" />
+                            <Border Background="#3A2A00" CornerRadius="4" Padding="6,2" VerticalAlignment="Center">
+                                <TextBlock Text="Config Only" FontSize="9" Foreground="{StaticResource AppAccentTextBrush}"/>
+                            </Border>
+                        </StackPanel>
+                        <TextBlock x:Name="SlackStatusText"
+                            Style="{StaticResource MetricValueTextStyle}" />
+                        <TextBlock x:Name="SlackMaskedText" FontSize="13"
+                            Foreground="{StaticResource AppTextSecondaryBrush}" />
+                        <TextBlock Text="Create a Slack app at api.slack.com/apps. Needs both Bot Token (xoxb-) and App Token (xapp-)."
+                                   FontSize="12" TextWrapping="Wrap"
+                                   Foreground="{StaticResource AppTextSecondaryBrush}" />
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="BOT TOKEN (xoxb-)" Style="{StaticResource LabelTextStyle}"/>
+                            <PasswordBox x:Name="SlackBotTokenBox"
+                                         PlaceholderText="xoxb-..."
+                                         Style="{StaticResource AppPasswordBoxStyle}"/>
+                        </StackPanel>
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="APP TOKEN (xapp-)" Style="{StaticResource LabelTextStyle}"/>
+                            <PasswordBox x:Name="SlackAppTokenBox"
+                                         PlaceholderText="xapp-..."
+                                         Style="{StaticResource AppPasswordBoxStyle}"/>
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" Spacing="12">
+                            <Button Content="Save" Click="SaveSlack_Click"
+                                    Style="{StaticResource PrimaryButtonStyle}"/>
+                            <TextBlock x:Name="SlackSaveStatus" VerticalAlignment="Center"
+                                       Foreground="{StaticResource AppTextSecondaryBrush}" FontSize="13"/>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
+                <!-- WhatsApp -->
+                <Border Grid.Column="1" Style="{StaticResource SurfaceCardStyle}">
+                    <StackPanel Spacing="12">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <TextBlock Text="WhatsApp" Style="{StaticResource SectionTitleTextStyle}" />
+                            <Border Background="#3A2A00" CornerRadius="4" Padding="6,2" VerticalAlignment="Center">
+                                <TextBlock Text="Config Only" FontSize="9" Foreground="{StaticResource AppAccentTextBrush}"/>
+                            </Border>
+                        </StackPanel>
+                        <TextBlock x:Name="WhatsAppStatusText"
+                            Style="{StaticResource MetricValueTextStyle}" />
+                        <TextBlock x:Name="WhatsAppMaskedText" FontSize="13"
+                            Foreground="{StaticResource AppTextSecondaryBrush}" />
+                        <TextBlock Text="WhatsApp uses a bridge for auth. Enable it here or set WHATSAPP_ENABLED=true."
+                                   FontSize="12" TextWrapping="Wrap"
+                                   Foreground="{StaticResource AppTextSecondaryBrush}" />
+                        <StackPanel Orientation="Horizontal" Spacing="12">
+                            <ToggleSwitch x:Name="WhatsAppEnabledToggle" Header="Enabled"
+                                          Toggled="WhatsAppToggle_Toggled" />
+                            <TextBlock x:Name="WhatsAppSaveStatus" VerticalAlignment="Center"
+                                       Foreground="{StaticResource AppTextSecondaryBrush}" FontSize="13"/>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+            </Grid>
+
+            <!-- Row 3: Matrix + Webhook -->
+            <Grid ColumnSpacing="20">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+
+                <!-- Matrix -->
+                <Border Grid.Column="0" Style="{StaticResource SurfaceCardStyle}">
+                    <StackPanel Spacing="12">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <TextBlock Text="Matrix" Style="{StaticResource SectionTitleTextStyle}" />
+                            <Border Background="#3A2A00" CornerRadius="4" Padding="6,2" VerticalAlignment="Center">
+                                <TextBlock Text="Config Only" FontSize="9" Foreground="{StaticResource AppAccentTextBrush}"/>
+                            </Border>
+                        </StackPanel>
+                        <TextBlock x:Name="MatrixStatusText"
+                            Style="{StaticResource MetricValueTextStyle}" />
+                        <TextBlock x:Name="MatrixMaskedText" FontSize="13"
+                            Foreground="{StaticResource AppTextSecondaryBrush}" />
+                        <TextBlock Text="Provide a Matrix access token and homeserver URL. Env vars: MATRIX_ACCESS_TOKEN, MATRIX_HOMESERVER"
+                                   FontSize="12" TextWrapping="Wrap"
+                                   Foreground="{StaticResource AppTextSecondaryBrush}" />
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="ACCESS TOKEN" Style="{StaticResource LabelTextStyle}"/>
+                            <PasswordBox x:Name="MatrixTokenBox"
+                                         PlaceholderText="Matrix access token"
+                                         Style="{StaticResource AppPasswordBoxStyle}"/>
+                        </StackPanel>
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="HOMESERVER URL" Style="{StaticResource LabelTextStyle}"/>
+                            <TextBox x:Name="MatrixHomeserverBox"
+                                     PlaceholderText="https://matrix.example.org"
+                                     Style="{StaticResource AppTextBoxStyle}"/>
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" Spacing="12">
+                            <Button Content="Save" Click="SaveMatrix_Click"
+                                    Style="{StaticResource PrimaryButtonStyle}"/>
+                            <TextBlock x:Name="MatrixSaveStatus" VerticalAlignment="Center"
+                                       Foreground="{StaticResource AppTextSecondaryBrush}" FontSize="13"/>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
+                <!-- Webhook -->
+                <Border Grid.Column="1" Style="{StaticResource SurfaceCardStyle}">
+                    <StackPanel Spacing="12">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <TextBlock Text="Webhook" Style="{StaticResource SectionTitleTextStyle}" />
+                            <Border Background="#3A2A00" CornerRadius="4" Padding="6,2" VerticalAlignment="Center">
+                                <TextBlock Text="Config Only" FontSize="9" Foreground="{StaticResource AppAccentTextBrush}"/>
+                            </Border>
+                        </StackPanel>
+                        <TextBlock x:Name="WebhookStatusText"
+                            Style="{StaticResource MetricValueTextStyle}" />
+                        <TextBlock x:Name="WebhookMaskedText" FontSize="13"
+                            Foreground="{StaticResource AppTextSecondaryBrush}" />
+                        <TextBlock Text="Receive events from GitHub, GitLab, etc. Enable and optionally set a port and HMAC secret."
+                                   FontSize="12" TextWrapping="Wrap"
+                                   Foreground="{StaticResource AppTextSecondaryBrush}" />
+                        <StackPanel Orientation="Horizontal" Spacing="12">
+                            <ToggleSwitch x:Name="WebhookEnabledToggle" Header="Enabled"
+                                          Toggled="WebhookToggle_Toggled" />
+                        </StackPanel>
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="PORT (default 8644)" Style="{StaticResource LabelTextStyle}"/>
+                            <TextBox x:Name="WebhookPortBox"
+                                     PlaceholderText="8644"
+                                     Style="{StaticResource AppTextBoxStyle}"/>
+                        </StackPanel>
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="HMAC SECRET (optional)" Style="{StaticResource LabelTextStyle}"/>
+                            <PasswordBox x:Name="WebhookSecretBox"
+                                         PlaceholderText="Webhook secret"
+                                         Style="{StaticResource AppPasswordBoxStyle}"/>
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" Spacing="12">
+                            <Button Content="Save" Click="SaveWebhook_Click"
+                                    Style="{StaticResource PrimaryButtonStyle}"/>
+                            <TextBlock x:Name="WebhookSaveStatus" VerticalAlignment="Center"
+                                       Foreground="{StaticResource AppTextSecondaryBrush}" FontSize="13"/>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+            </Grid>
+        </StackPanel>
+    </ScrollViewer>
+</Page>

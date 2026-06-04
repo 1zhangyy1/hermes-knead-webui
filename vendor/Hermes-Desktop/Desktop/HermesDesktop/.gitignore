@@ -1,0 +1,9 @@
+bin/
+obj/
+AppPackages/
+artifacts/
+build-diag.log
+*.user
+*.suo
+*.pdb
+.vs/

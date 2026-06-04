@@ -1,0 +1,14 @@
+{
+  "name": "ai-space-platform",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "pnpm --filter @ai-space/host-shell dev",
+    "build": "pnpm -r build",
+    "check": "pnpm -r check",
+    "hermes-ui": "HERMES_HOME=$PWD/.hermes-home HERMES_AGENT_DIR=$PWD/vendor/hermes-agent $PWD/vendor/hermes-agent/.venv/bin/python vendor/hermes-ui/serve_lite.py --port 3333",
+    "hermes:smoke": "node scripts/hermes-smoke.mjs"
+  },
+  "packageManager": "pnpm@10.33.0"
+}

@@ -1,0 +1,195 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="1400" viewBox="0 0 1800 1400">
+  <defs>
+    <style>
+      .bg { fill: #f6f7f8; }
+      .frame { fill: #ffffff; stroke: #d9dde3; stroke-width: 2; }
+      .sidebar { fill: #f1f2f4; }
+      .panel { fill: #ffffff; stroke: #dfe3e8; stroke-width: 1.5; }
+      .soft { fill: #f7f8fa; stroke: #e3e6eb; stroke-width: 1.2; }
+      .dark { fill: #171717; }
+      .ink { fill: #171717; font-family: Inter, Arial, sans-serif; }
+      .muted { fill: #667085; font-family: Inter, Arial, sans-serif; }
+      .blue { fill: #2f6fed; }
+      .purple { fill: #7c5cff; }
+      .green { fill: #17a36b; }
+      .orange { fill: #f25a2c; }
+      .label { font-size: 28px; font-weight: 750; }
+      .title { font-size: 30px; font-weight: 750; }
+      .h2 { font-size: 20px; font-weight: 760; }
+      .body { font-size: 16px; font-weight: 520; }
+      .small { font-size: 13px; font-weight: 650; }
+      .tiny { font-size: 11px; font-weight: 700; }
+      .buttonText { fill: #ffffff; font-family: Inter, Arial, sans-serif; font-size: 14px; font-weight: 760; }
+      .buttonTextDark { fill: #171717; font-family: Inter, Arial, sans-serif; font-size: 14px; font-weight: 760; }
+    </style>
+  </defs>
+
+  <rect class="bg" width="1800" height="1400"/>
+
+  <text x="70" y="70" class="ink label">Next AI 原型板：先是好用 Agent，工作台是一级能力</text>
+  <text x="70" y="102" class="muted body">四张图分别表达：默认首页、任务中出现改造建议、工作台模式、工作台管理。</text>
+
+  <!-- Frame A -->
+  <g transform="translate(70,140)">
+    <text x="0" y="-18" class="ink h2">A. 默认首页：Agent + 工作台入口</text>
+    <rect class="frame" x="0" y="0" width="800" height="520" rx="18"/>
+    <rect class="sidebar" x="0" y="0" width="220" height="520" rx="18"/>
+    <rect class="sidebar" x="202" y="0" width="18" height="520"/>
+
+    <rect class="dark" x="24" y="24" width="34" height="34" rx="8"/>
+    <text x="70" y="47" class="ink h2">Next AI</text>
+    <text x="24" y="92" class="ink body">＋ 新任务</text>
+
+    <text x="24" y="138" class="muted small">工作台</text>
+    <rect class="soft" x="16" y="154" width="188" height="38" rx="8"/>
+    <circle class="purple" cx="32" cy="173" r="6"/>
+    <text x="48" y="179" class="ink small">PPT 工作台</text>
+    <text x="158" y="179" class="muted tiny">已启用</text>
+    <text x="24" y="220" class="ink small">周报工作台</text>
+    <text x="24" y="254" class="ink small">数据分析工作台</text>
+    <text x="24" y="288" class="blue small">＋ 生成新工作台</text>
+
+    <text x="24" y="344" class="muted small">任务</text>
+    <text x="24" y="376" class="ink small">帮我写周报</text>
+    <text x="24" y="410" class="ink small">做融资 PPT</text>
+    <text x="24" y="444" class="ink small">整理访谈</text>
+
+    <text x="24" y="492" class="muted small">Skills  Automation</text>
+
+    <text x="360" y="140" class="ink title">我能帮你做什么？</text>
+    <rect class="panel" x="290" y="185" width="430" height="120" rx="18"/>
+    <text x="318" y="225" class="muted body">输入任务、拖文件、@ 技能...</text>
+    <text x="318" y="278" class="muted small">＋ 文件</text>
+    <rect class="dark" x="640" y="258" width="54" height="32" rx="16"/>
+    <text x="656" y="279" class="buttonText">发送</text>
+
+    <text x="300" y="360" class="muted small">推荐工作台</text>
+    <rect class="soft" x="300" y="380" width="118" height="54" rx="12"/>
+    <text x="324" y="412" class="ink small">PPT</text>
+    <rect class="soft" x="435" y="380" width="118" height="54" rx="12"/>
+    <text x="459" y="412" class="ink small">周报</text>
+    <rect class="soft" x="570" y="380" width="118" height="54" rx="12"/>
+    <text x="594" y="412" class="ink small">研究</text>
+  </g>
+
+  <!-- Frame B -->
+  <g transform="translate(930,140)">
+    <text x="0" y="-18" class="ink h2">B. 任务进行中：对话里出现「改造建议」</text>
+    <rect class="frame" x="0" y="0" width="800" height="520" rx="18"/>
+    <rect class="sidebar" x="0" y="0" width="220" height="520" rx="18"/>
+    <rect class="sidebar" x="202" y="0" width="18" height="520"/>
+
+    <text x="24" y="48" class="ink h2">Next AI</text>
+    <text x="24" y="92" class="ink body">＋ 新任务</text>
+    <text x="24" y="138" class="muted small">工作台</text>
+    <text x="24" y="170" class="ink small">PPT 工作台</text>
+    <text x="24" y="204" class="ink small">周报工作台</text>
+    <text x="24" y="238" class="blue small">＋ 生成新工作台</text>
+    <text x="24" y="300" class="muted small">任务</text>
+    <rect class="soft" x="16" y="316" width="188" height="38" rx="8"/>
+    <text x="24" y="340" class="ink small">做融资 PPT</text>
+
+    <text x="260" y="54" class="ink h2">做融资 PPT</text>
+    <line x1="220" y1="72" x2="800" y2="72" stroke="#e5e7eb"/>
+    <rect class="soft" x="270" y="110" width="300" height="58" rx="14"/>
+    <text x="292" y="145" class="ink body">帮我做一个融资 PPT</text>
+
+    <text x="270" y="220" class="ink body">我先帮你整理结构、页面节奏和讲稿。</text>
+    <rect class="panel" x="270" y="254" width="430" height="58" rx="12"/>
+    <text x="292" y="288" class="muted small">工具：读取资料 → 生成大纲 → 输出初稿</text>
+
+    <rect class="dark" x="270" y="342" width="430" height="120" rx="16"/>
+    <text x="296" y="376" class="buttonText">建议改造当前任务</text>
+    <text x="296" y="406" fill="#d8d8d8" font-family="Inter, Arial, sans-serif" font-size="14">我发现你一直在做 PPT，要不要生成一个 PPT 工作台？</text>
+    <rect fill="#ffffff" x="296" y="424" width="74" height="28" rx="14"/>
+    <text x="319" y="443" class="buttonTextDark">预览</text>
+    <rect fill="#ffffff" x="382" y="424" width="74" height="28" rx="14"/>
+    <text x="405" y="443" class="buttonTextDark">应用</text>
+    <rect fill="#333333" x="468" y="424" width="92" height="28" rx="14"/>
+    <text x="486" y="443" class="buttonText">以后再说</text>
+  </g>
+
+  <!-- Frame C -->
+  <g transform="translate(70,760)">
+    <text x="0" y="-18" class="ink h2">C. 应用后：PPT 工作台成为当前任务界面</text>
+    <rect class="frame" x="0" y="0" width="800" height="520" rx="18"/>
+    <rect class="sidebar" x="0" y="0" width="200" height="520" rx="18"/>
+    <rect class="sidebar" x="182" y="0" width="18" height="520"/>
+    <text x="24" y="48" class="ink h2">Next AI</text>
+    <text x="24" y="96" class="muted small">工作台</text>
+    <rect class="soft" x="16" y="112" width="168" height="40" rx="8"/>
+    <text x="24" y="137" class="ink small">PPT 工作台</text>
+    <text x="24" y="178" class="ink small">周报工作台</text>
+    <text x="24" y="220" class="muted small">任务历史</text>
+    <text x="24" y="254" class="ink small">融资 PPT</text>
+    <text x="24" y="288" class="ink small">产品路线图</text>
+
+    <text x="232" y="52" class="ink h2">PPT 工作台</text>
+    <rect class="soft" x="650" y="28" width="72" height="28" rx="14"/>
+    <text x="670" y="47" class="green tiny">可回滚</text>
+
+    <rect class="panel" x="224" y="82" width="170" height="380" rx="14"/>
+    <text x="244" y="116" class="ink h2">大纲</text>
+    <text x="244" y="154" class="muted small">1. 痛点</text>
+    <text x="244" y="188" class="muted small">2. 方案</text>
+    <text x="244" y="222" class="muted small">3. 商业模式</text>
+    <text x="244" y="256" class="muted small">4. 路线图</text>
+
+    <rect class="panel" x="412" y="82" width="220" height="380" rx="14"/>
+    <text x="432" y="116" class="ink h2">幻灯片画布</text>
+    <rect fill="#20242a" x="435" y="150" width="174" height="108" rx="10"/>
+    <text x="456" y="202" fill="#ffffff" font-family="Inter, Arial, sans-serif" font-size="18" font-weight="760">融资故事</text>
+    <rect class="soft" x="435" y="282" width="174" height="44" rx="10"/>
+    <text x="456" y="310" class="muted small">品牌样式</text>
+
+    <rect class="panel" x="650" y="82" width="120" height="380" rx="14"/>
+    <text x="670" y="116" class="ink h2">Agent</text>
+    <text x="670" y="154" class="muted small">帮我改第 3 页</text>
+    <text x="670" y="200" class="muted small">建议补充</text>
+    <text x="670" y="222" class="muted small">增长数据图</text>
+  </g>
+
+  <!-- Frame D -->
+  <g transform="translate(930,760)">
+    <text x="0" y="-18" class="ink h2">D. 工作台管理：用户能看见、创建、回滚</text>
+    <rect class="frame" x="0" y="0" width="800" height="520" rx="18"/>
+    <rect class="sidebar" x="0" y="0" width="220" height="520" rx="18"/>
+    <rect class="sidebar" x="202" y="0" width="18" height="520"/>
+    <text x="24" y="48" class="ink h2">Next AI</text>
+    <text x="24" y="94" class="ink body">＋ 新任务</text>
+    <rect class="soft" x="16" y="126" width="188" height="38" rx="8"/>
+    <text x="24" y="150" class="ink small">工作台</text>
+    <text x="24" y="200" class="ink small">任务</text>
+    <text x="24" y="234" class="ink small">Skills</text>
+    <text x="24" y="268" class="ink small">Automation</text>
+
+    <text x="260" y="56" class="ink title">工作台</text>
+    <text x="260" y="88" class="muted body">这些是 Agent 为高频任务生成的专属界面。</text>
+
+    <rect class="panel" x="260" y="124" width="430" height="76" rx="14"/>
+    <circle class="purple" cx="292" cy="162" r="9"/>
+    <text x="318" y="154" class="ink h2">PPT 工作台</text>
+    <text x="318" y="180" class="muted small">已启用 · 8 次使用 · 可回滚</text>
+    <rect class="dark" x="596" y="146" width="70" height="32" rx="16"/>
+    <text x="617" y="167" class="buttonText">打开</text>
+
+    <rect class="panel" x="260" y="222" width="430" height="76" rx="14"/>
+    <circle class="orange" cx="292" cy="260" r="9"/>
+    <text x="318" y="252" class="ink h2">周报工作台</text>
+    <text x="318" y="278" class="muted small">建议中 · 基于 3 次周报任务</text>
+    <rect class="soft" x="590" y="244" width="76" height="32" rx="16"/>
+    <text x="611" y="265" class="buttonTextDark">预览</text>
+
+    <rect class="panel" x="260" y="320" width="430" height="76" rx="14"/>
+    <circle class="blue" cx="292" cy="358" r="9"/>
+    <text x="318" y="350" class="ink h2">数据分析工作台</text>
+    <text x="318" y="376" class="muted small">模板 · 等待第一次应用</text>
+    <rect class="soft" x="590" y="342" width="76" height="32" rx="16"/>
+    <text x="611" y="363" class="buttonTextDark">创建</text>
+
+    <rect class="dark" x="260" y="428" width="150" height="42" rx="21"/>
+    <text x="300" y="455" class="buttonText">生成新工作台</text>
+  </g>
+
+  <text x="70" y="1348" class="muted body">设计原则：用户第一眼知道它是 Agent；左侧明确有工作台；工作台是高频任务的专属界面；生成、预览、应用、回滚都要可见。</text>
+</svg>

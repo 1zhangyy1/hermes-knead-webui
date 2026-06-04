@@ -1,0 +1,346 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="HermesDesktop.Views.ChatPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:models="using:HermesDesktop.Models"
+    xmlns:panels="using:HermesDesktop.Views.Panels"
+    Background="Transparent"
+    Loaded="OnPageLoaded"
+    NavigationCacheMode="Required"
+    mc:Ignorable="d">
+    <!-- Enter sends, Shift+Enter for newline (handled in KeyDown) -->
+
+    <Grid x:Name="MainGrid" Padding="20,12,24,20" ColumnSpacing="14" RowSpacing="14">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*" MinWidth="300"/>
+            <ColumnDefinition Width="Auto"/>
+            <ColumnDefinition Width="340" MinWidth="200" MaxWidth="700"/>
+        </Grid.ColumnDefinitions>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!-- Header -->
+        <Grid Grid.Row="0" Grid.ColumnSpan="3" ColumnSpacing="16">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+
+            <StackPanel Spacing="4">
+                <TextBlock x:Uid="ChatPageAgentTitle" FontSize="22" FontWeight="SemiBold" />
+                <StackPanel Orientation="Horizontal" Spacing="12">
+                    <TextBlock x:Name="ConnectionStateText" Style="{StaticResource BodySecondaryTextStyle}" />
+                </StackPanel>
+            </StackPanel>
+
+            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                <Button x:Uid="ChatNewChatButton" Click="NewChat_Click" Style="{StaticResource SecondaryButtonStyle}" />
+            </StackPanel>
+        </Grid>
+
+        <!-- Main Chat Area -->
+        <Border Grid.Row="1" Style="{StaticResource SurfaceCardStyle}" Padding="0">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <InfoBar x:Name="ChatErrorBanner"
+                         x:Uid="ChatErrorBanner"
+                         Grid.Row="0"
+                         Margin="12,12,12,0"
+                         IsOpen="False"
+                         Severity="Error">
+                    <InfoBar.Content>
+                        <Grid ColumnSpacing="10">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock x:Name="ChatErrorText"
+                                       VerticalAlignment="Center"
+                                       TextWrapping="WrapWholeWords" />
+                            <Button x:Name="ChatErrorRetryButton"
+                                    x:Uid="ChatErrorRetryButton"
+                                    Grid.Column="1"
+                                    Click="RetryLastPrompt_Click"
+                                    MinWidth="0"
+                                    Padding="10,4" />
+                            <Button x:Name="ChatErrorSwitchModelButton"
+                                    x:Uid="ChatErrorSwitchModelButton"
+                                    Grid.Column="2"
+                                    Click="OpenModelSwitcher_Click"
+                                    MinWidth="0"
+                                    Padding="10,4" />
+                        </Grid>
+                    </InfoBar.Content>
+                </InfoBar>
+
+                <!-- Messages -->
+                <ListView x:Name="MessagesList" Grid.Row="1" Padding="18" Background="Transparent" BorderThickness="0"
+                    SelectionMode="None">
+                    <ListView.ItemTemplate>
+                        <DataTemplate x:DataType="models:ChatMessageItem">
+                            <Grid Margin="0,0,0,10">
+                                <Border MaxWidth="780" HorizontalAlignment="{x:Bind BubbleAlignment}"
+                                    Background="{x:Bind BubbleBackground}" BorderBrush="{x:Bind BubbleBorderBrush}"
+                                    BorderThickness="1" CornerRadius="12" Padding="16,12">
+                                    <StackPanel Spacing="8">
+                                        <TextBlock Foreground="{x:Bind LabelBrush}" Style="{StaticResource LabelTextStyle}" Text="{x:Bind AuthorLabel}" />
+
+                                        <!-- Thinking/reasoning content (collapsible) -->
+                                        <Expander Visibility="{x:Bind HasThinking, Mode=OneWay}" HorizontalAlignment="Stretch"
+                                                  HorizontalContentAlignment="Stretch" IsExpanded="False"
+                                                  Padding="0" MinHeight="0">
+                                            <Expander.Header>
+                                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                                    <TextBlock Text="&#x1F9E0;" FontSize="12"/>
+                                                    <TextBlock x:Uid="ChatReasoningHeaderLabel" FontSize="12" FontStyle="Italic"
+                                                               Foreground="{StaticResource AppTextSecondaryBrush}"/>
+                                                </StackPanel>
+                                            </Expander.Header>
+                                            <TextBlock Text="{x:Bind ThinkingContent, Mode=OneWay}" TextWrapping="WrapWholeWords"
+                                                       FontSize="12" Foreground="{StaticResource AppTextSecondaryBrush}"
+                                                       FontStyle="Italic" Padding="8,4"
+                                                       IsTextSelectionEnabled="True"/>
+                                        </Expander>
+
+                                        <TextBlock Text="{x:Bind Content, Mode=OneWay}" TextWrapping="WrapWholeWords"
+                                                   IsTextSelectionEnabled="True"/>
+                                    </StackPanel>
+                                </Border>
+                            </Grid>
+                        </DataTemplate>
+                    </ListView.ItemTemplate>
+                </ListView>
+
+                <!-- Thinking indicator — uses Opacity to avoid layout shift; ambient gradient hints at activity -->
+                <Border Grid.Row="2" x:Name="ThinkingIndicator" Opacity="0"
+                        Padding="18,8" Background="{StaticResource AppAmbientAccentBrush}" Height="36">
+                    <Grid>
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <ProgressRing x:Name="ThinkingRing" IsActive="False" Width="16" Height="16"
+                                          Foreground="{StaticResource AppAccentBrush}"/>
+                            <TextBlock x:Name="ThinkingText" x:Uid="ChatPageThinkingText"
+                                       FontSize="13" Foreground="{StaticResource AppTextSecondaryBrush}"
+                                       FontStyle="Italic"/>
+                        </StackPanel>
+                        <Button x:Name="StopButton" x:Uid="ChatStopButton" Click="StopGeneration_Click"
+                                HorizontalAlignment="Right" VerticalAlignment="Center"
+                                Style="{StaticResource SecondaryButtonStyle}"
+                                Padding="12,4" FontSize="12" CornerRadius="6"/>
+                    </Grid>
+                </Border>
+
+                <!-- Input Area — Claude Code style -->
+                <StackPanel Grid.Row="3" Padding="18,8,18,14" Spacing="6">
+
+                    <!-- Slash command palette: collapsed unless the input starts with "/" -->
+                    <Border x:Name="SlashPalette"
+                            Visibility="Collapsed"
+                            Background="{StaticResource AppInsetBrush}"
+                            BorderBrush="{StaticResource AppStrokeBrush}"
+                            BorderThickness="1" CornerRadius="12" Padding="8,6"
+                            MaxHeight="260">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+                            <TextBlock x:Name="SlashPaletteHeader" x:Uid="SlashPaletteTitle"
+                                       FontSize="11" FontWeight="SemiBold"
+                                       Foreground="{StaticResource AppTextSecondaryBrush}"
+                                       Margin="6,2,6,4" />
+                            <ListView x:Name="SlashPaletteList" Grid.Row="1"
+                                      SelectionMode="Single"
+                                      IsItemClickEnabled="True"
+                                      ItemClick="SlashPaletteList_ItemClick"
+                                      Background="Transparent" BorderThickness="0"
+                                      MaxHeight="200">
+                                <ListView.ItemContainerStyle>
+                                    <Style TargetType="ListViewItem">
+                                        <Setter Property="MinHeight" Value="36" />
+                                        <Setter Property="Padding" Value="8,4" />
+                                    </Style>
+                                </ListView.ItemContainerStyle>
+                                <ListView.ItemTemplate>
+                                    <DataTemplate>
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Text="{Binding Name}"
+                                                       FontFamily="Consolas, Cascadia Mono"
+                                                       FontSize="13"
+                                                       Foreground="{StaticResource AppAccentTextBrush}"
+                                                       VerticalAlignment="Center" />
+                                            <TextBlock Grid.Column="1" Text="{Binding Description}"
+                                                       FontSize="12"
+                                                       Foreground="{StaticResource AppTextSecondaryBrush}"
+                                                       Margin="12,0,12,0"
+                                                       VerticalAlignment="Center"
+                                                       TextTrimming="CharacterEllipsis" />
+                                            <Border Grid.Column="2"
+                                                    Background="{StaticResource AppStrokeBrush}"
+                                                    CornerRadius="4" Padding="6,2"
+                                                    VerticalAlignment="Center">
+                                                <TextBlock Text="{Binding Category}"
+                                                           FontSize="10"
+                                                           Foreground="{StaticResource AppTextSecondaryBrush}" />
+                                            </Border>
+                                        </Grid>
+                                    </DataTemplate>
+                                </ListView.ItemTemplate>
+                            </ListView>
+                            <TextBlock x:Name="SlashPaletteEmptyLabel" x:Uid="SlashPaletteEmpty"
+                                       Grid.Row="2" Margin="6,4,6,2"
+                                       FontSize="11" Visibility="Collapsed"
+                                       Foreground="{StaticResource AppTextSecondaryBrush}" />
+                        </Grid>
+                    </Border>
+
+                    <!-- Input container with rounded border -->
+                    <Border Background="{StaticResource AppInsetBrush}"
+                            BorderBrush="{StaticResource AppStrokeBrush}"
+                            BorderThickness="1" CornerRadius="12" Padding="12,8">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+
+                            <TextBox x:Name="PromptTextBox"
+                                     x:Uid="ChatPromptTextBox"
+                                     AcceptsReturn="True"
+                                     MaxHeight="200" MinHeight="36"
+                                     Background="Transparent"
+                                     BorderThickness="0"
+                                     Foreground="White"
+                                     TextWrapping="Wrap"
+                                     KeyDown="PromptTextBox_KeyDown"
+                                     TextChanged="PromptTextBox_TextChanged" />
+
+                            <Button x:Name="SendButton" x:Uid="ChatPageSendButton" Grid.Column="1"
+                                    Click="SendPrompt_Click"
+                                    VerticalAlignment="Bottom"
+                                    Background="Transparent" BorderThickness="0"
+                                    Padding="8" CornerRadius="8"
+                                    IsEnabled="False">
+                                <FontIcon Glyph="&#xE724;" FontSize="18"
+                                          Foreground="{StaticResource AppAccentBrush}" />
+                            </Button>
+                        </Grid>
+                    </Border>
+
+                    <!-- Token usage footer — hidden until first UsageStats arrives -->
+                    <Border x:Name="UsageFooter"
+                            Visibility="Collapsed"
+                            Background="Transparent"
+                            Padding="0,2,0,0">
+                        <TextBlock x:Name="UsageFooterText"
+                                   FontSize="10"
+                                   FontFamily="Consolas, Cascadia Mono"
+                                   Foreground="{StaticResource AppTextSecondaryBrush}"
+                                   Opacity="0.7"
+                                   HorizontalAlignment="Right" />
+                    </Border>
+
+                    <!-- Model switcher + Permission mode + disclaimer -->
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <!-- Model quick-switch -->
+                        <ComboBox x:Name="ModelSwitchCombo" FontSize="11" MinWidth="160" MaxWidth="240"
+                                  MinHeight="24" Padding="6,2" CornerRadius="4"
+                                  Background="{StaticResource AppInsetBrush}"
+                                  BorderBrush="{StaticResource AppStrokeBrush}"
+                                  VerticalAlignment="Center"
+                                  SelectionChanged="ModelSwitchCombo_SelectionChanged"/>
+                        <!-- Permission mode -->
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" Opacity="0.5" Margin="12,0,0,0">
+                            <TextBlock x:Name="PermissionModeLabel" x:Uid="ChatPermissionModeLabel"
+                                       FontSize="11" Foreground="{StaticResource AppTextSecondaryBrush}"
+                                       VerticalAlignment="Center" />
+                            <HyperlinkButton x:Name="PermissionModeToggle" x:Uid="ChatPermissionModeChange"
+                                             FontSize="11" Padding="0"
+                                             Click="PermissionModeToggle_Click" />
+                        </StackPanel>
+                        <TextBlock Grid.Column="2" x:Uid="ChatPageDisclaimer"
+                                   FontSize="10" Foreground="{StaticResource AppTextSecondaryBrush}"
+                                   Opacity="0.65" HorizontalAlignment="Right" VerticalAlignment="Center" />
+                    </Grid>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- Splitter (drag to resize chat ↔ right panel) -->
+        <Border Grid.Column="1" Grid.Row="1" Width="12" Background="Transparent" Margin="-3,0"
+                PointerPressed="Splitter_PointerPressed" PointerMoved="Splitter_PointerMoved"
+                PointerReleased="Splitter_PointerReleased" PointerEntered="Splitter_PointerEntered"
+                PointerExited="Splitter_PointerExited">
+            <Border x:Name="SplitterHandle" Width="4" Background="{StaticResource AppStrokeBrush}"
+                    HorizontalAlignment="Center" CornerRadius="2" Opacity="0.5"/>
+        </Border>
+
+        <!-- Right Panel - Tabbed Panels -->
+        <Border Grid.Column="2" Grid.Row="1" Style="{StaticResource SurfaceCardStyle}" Background="{StaticResource AppPaneBackgroundBrush}" Padding="0">
+            <Grid RowDefinitions="Auto,*,Auto">
+                <!-- Tab selector -->
+                <ScrollViewer Grid.Row="0" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled" Padding="8,8,8,0">
+                    <StackPanel Orientation="Horizontal" Spacing="2">
+                        <Button x:Name="TabSessions" x:Uid="ChatPageTabSessions" Click="PanelTab_Click" Tag="sessions"
+                                Background="Transparent" Foreground="{StaticResource AppAccentTextBrush}" FontSize="11" Padding="8,4" CornerRadius="6" MinWidth="0"/>
+                        <Button x:Name="TabFiles" x:Uid="ChatPageTabFiles" Click="PanelTab_Click" Tag="files"
+                                Background="Transparent" Foreground="{StaticResource AppTextSecondaryBrush}" FontSize="11" Padding="8,4" CornerRadius="6" MinWidth="0"/>
+                        <Button x:Name="TabTasks" x:Uid="ChatPageTabTasks" Click="PanelTab_Click" Tag="tasks"
+                                Background="Transparent" Foreground="{StaticResource AppTextSecondaryBrush}" FontSize="11" Padding="8,4" CornerRadius="6" MinWidth="0"/>
+                        <Button x:Name="TabReplay" x:Uid="ChatPageTabReplay" Click="PanelTab_Click" Tag="replay"
+                                Background="Transparent" Foreground="{StaticResource AppTextSecondaryBrush}" FontSize="11" Padding="8,4" CornerRadius="6" MinWidth="0"/>
+                    </StackPanel>
+                </ScrollViewer>
+
+                <!-- Panel content area -->
+                <Border Grid.Row="1" Padding="12,8">
+                    <Grid>
+                        <panels:SessionPanel x:Name="SessionPanelView" Visibility="Visible"/>
+                        <panels:FileBrowserPanel x:Name="FileBrowserPanelView" Visibility="Collapsed"/>
+                        <panels:TaskPanel x:Name="TaskPanelView" Visibility="Collapsed"/>
+                        <panels:ReplayPanel x:Name="ReplayPanelView" Visibility="Collapsed"/>
+                    </Grid>
+                </Border>
+
+                <!-- Session info footer -->
+                <Border Grid.Row="2" Padding="12,6" BorderBrush="{StaticResource AppStrokeBrush}" BorderThickness="0,1,0,0">
+                    <Grid ColumnSpacing="8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock x:Name="SessionIdLabel" Grid.Column="0" FontSize="11" VerticalAlignment="Center"
+                                   TextTrimming="CharacterEllipsis"
+                                   Foreground="{StaticResource AppTextSecondaryBrush}"/>
+                        <Button x:Name="CopySessionIdButton" x:Uid="ChatCopySessionIdButton" Grid.Column="1" Content="&#xE8C8;" FontFamily="Segoe MDL2 Assets"
+                                FontSize="12" MinWidth="32" Padding="6,4" CornerRadius="6"
+                                Background="Transparent" BorderBrush="{StaticResource AppSubtleStrokeBrush}"
+                                Click="CopySessionId_Click" IsEnabled="False"/>
+                    </Grid>
+                </Border>
+            </Grid>
+        </Border>
+    </Grid>
+</Page>
