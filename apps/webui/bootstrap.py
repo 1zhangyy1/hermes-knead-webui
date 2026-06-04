@@ -133,9 +133,12 @@ def _agent_dir_from_hermes_cli() -> Path | None:
 
 def discover_agent_dir() -> Path | None:
     home = Path(os.getenv("HERMES_HOME", str(Path.home() / ".hermes"))).expanduser()
+    next_ai_root = REPO_ROOT.parent.parent
     candidates = [
         os.getenv("HERMES_WEBUI_AGENT_DIR", ""),
+        str(next_ai_root / "runtimes" / "hermes-agent"),
         str(home / "hermes-agent"),
+        str(next_ai_root / "vendor" / "hermes-agent"),
         str(REPO_ROOT.parent / "hermes-agent"),
         str(Path.home() / ".hermes" / "hermes-agent"),
         str(Path.home() / "hermes-agent"),
