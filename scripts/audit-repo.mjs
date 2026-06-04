@@ -22,7 +22,10 @@ const requiredPaths = [
   'apps/webui/static/product-shell-runtime.js',
   'products/general/product.json',
   'products/ppt-designer/product.json',
+  'runtimes/hermes-agent/run_agent.py',
+  'runtimes/hermes-agent/UPSTREAM.md',
   'docs/architecture/PRODUCTION_REPOSITORY_PLAN.md',
+  'docs/architecture/HERMES_VENDORING.md',
   '.github/workflows/verify.yml',
 ]
 

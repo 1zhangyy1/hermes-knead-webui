@@ -19,13 +19,16 @@ This is the key product idea: Next AI is stronger than an assistant list because
 apps/webui/        Main production WebUI application
 products/          Built-in AI product workspaces and generated product UI
 packages/          Shared TypeScript packages
+runtimes/          First-class runtime dependencies, including Hermes Agent
 scripts/           Local development and verification scripts
 docs/              Product, architecture, and historical design notes
 experiments/       Old prototypes and non-production exploration
 vendor/            Local reference checkouts, ignored by Git
 ```
 
-Production code should live in `apps/`, `products/`, `packages/`, `scripts/`, and current docs. Reference projects can stay locally under `vendor/`, but they are not part of the production repository.
+Production code should live in `apps/`, `products/`, `packages/`, `runtimes/`, `scripts/`, and current docs. Reference projects can stay locally under `vendor/`, but they are not part of the production repository.
+
+`runtimes/hermes-agent` is the vendored official Hermes Agent runtime baseline. See [docs/architecture/HERMES_VENDORING.md](docs/architecture/HERMES_VENDORING.md) for the source, update, and patch policy.
 
 ## Run
 

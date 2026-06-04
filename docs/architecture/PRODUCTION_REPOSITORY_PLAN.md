@@ -9,6 +9,7 @@ The production repository should be understandable from the root:
 - `apps/webui` is the main product application.
 - `products` contains AI-product-owned workspaces.
 - `packages` contains shared libraries.
+- `runtimes` contains first-class runtime dependencies that the product is built on.
 - `experiments` contains old prototypes and non-production explorations.
 - `vendor` is local-only reference material and is ignored by Git.
 
@@ -63,6 +64,8 @@ nextaichat/
   packages/
     hermes-client/
     space-runtime/
+  runtimes/
+    hermes-agent/
   scripts/
     dev-webui.sh
     verify.mjs
@@ -106,6 +109,12 @@ Runtime state stays outside Git:
 - `.tmp-*`
 - `node_modules`
 - generated product versions
+
+### Hermes Runtime
+
+`runtimes/hermes-agent` is the first-class Hermes Agent runtime baseline. It is vendored from the official `NousResearch/hermes-agent` repository by `git subtree`, not copied by hand.
+
+The product should depend on Hermes through a narrow runtime boundary where possible. Runtime-level changes are allowed when the AI product platform needs product context, tool scoping, skill/tool ownership, or agent-loop behavior that cannot be expressed cleanly in WebUI code alone.
 
 ### References
 

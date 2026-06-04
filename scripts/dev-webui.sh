@@ -8,7 +8,9 @@ export HERMES_WEBUI_HOST="${HERMES_WEBUI_HOST:-127.0.0.1}"
 export HERMES_WEBUI_PORT="${HERMES_WEBUI_PORT:-8788}"
 export HERMES_HOME="${HERMES_HOME:-$ROOT/.hermes-home}"
 
-if [[ -z "${HERMES_WEBUI_AGENT_DIR:-}" && -f "$ROOT/vendor/hermes-agent/run_agent.py" ]]; then
+if [[ -z "${HERMES_WEBUI_AGENT_DIR:-}" && -f "$ROOT/runtimes/hermes-agent/run_agent.py" ]]; then
+  export HERMES_WEBUI_AGENT_DIR="$ROOT/runtimes/hermes-agent"
+elif [[ -z "${HERMES_WEBUI_AGENT_DIR:-}" && -f "$ROOT/vendor/hermes-agent/run_agent.py" ]]; then
   export HERMES_WEBUI_AGENT_DIR="$ROOT/vendor/hermes-agent"
 fi
 
