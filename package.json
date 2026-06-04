@@ -6,10 +6,10 @@
   "scripts": {
     "dev": "scripts/dev-webui.sh",
     "webui:dev": "scripts/dev-webui.sh",
+    "audit:repo": "node scripts/audit-repo.mjs",
     "verify": "node scripts/verify.mjs",
     "build": "pnpm -r build",
     "check": "pnpm -r check && pnpm verify",
-    "hermes-ui": "HERMES_HOME=$PWD/.hermes-home HERMES_AGENT_DIR=$PWD/vendor/hermes-agent $PWD/vendor/hermes-agent/.venv/bin/python vendor/hermes-ui/serve_lite.py --port 3333",
     "hermes:smoke": "node scripts/hermes-smoke.mjs"
   },
   "packageManager": "pnpm@10.33.0"

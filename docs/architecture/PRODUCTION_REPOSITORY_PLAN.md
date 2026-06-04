@@ -157,15 +157,18 @@ The UI should avoid exposing generated paths, manifests, code diffs, or version 
 
 ### Phase 4: Verification and CI
 
+Status: baseline in place.
+
 Minimum checks:
 
 - Python compile for product API files.
 - JavaScript syntax checks for product runtime files.
 - TypeScript checks for shared packages.
+- Repository audit for ignored/runtime/reference boundaries.
 - Product API smoke check for `general` and `ppt-designer`.
 - Browser check for first screen and one product task flow.
 
-Future CI should run these checks on push.
+Current CI runs `pnpm check` on push and pull requests. The product API and browser checks remain local/manual until the runtime dependencies are made CI-friendly.
 
 ## Done Criteria
 
