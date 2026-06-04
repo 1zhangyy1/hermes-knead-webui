@@ -104,7 +104,7 @@ def _agent_dir_from_hermes_cli() -> Path | None:
     the hard-coded candidate list in :func:`discover_agent_dir` cannot.
 
     Last-resort only: this is invoked after every explicit candidate
-    (`HERMES_WEBUI_AGENT_DIR`, `$HERMES_HOME/hermes-agent`, etc.) has missed.
+    (`HERMES_WEBUI_AGENT_DIR`, this project's vendored runtime, etc.) has missed.
     A stale clone in a known location still wins over the live `hermes` CLI
     — that's intentional, since the candidate list is treated as
     authoritative when present, and matches existing behavior.
@@ -138,7 +138,6 @@ def discover_agent_dir() -> Path | None:
         os.getenv("HERMES_WEBUI_AGENT_DIR", ""),
         str(next_ai_root / "runtimes" / "hermes-agent"),
         str(home / "hermes-agent"),
-        str(next_ai_root / "vendor" / "hermes-agent"),
         str(REPO_ROOT.parent / "hermes-agent"),
         str(Path.home() / ".hermes" / "hermes-agent"),
         str(Path.home() / "hermes-agent"),

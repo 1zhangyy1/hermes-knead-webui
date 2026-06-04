@@ -188,17 +188,17 @@ function syncWorkspacePanelUI(){
   if(toggleBtn){
     toggleBtn.classList.toggle('active',isOpen);
     toggleBtn.setAttribute('aria-pressed',isOpen?'true':'false');
-    _setButtonTooltip(toggleBtn, isOpen?'Hide workspace panel':'Show workspace panel');
+    _setButtonTooltip(toggleBtn, isOpen?'隐藏任务空间':'打开任务空间');
     toggleBtn.disabled=!canBrowse;
   }
   if(edgeToggleBtn){
     edgeToggleBtn.classList.toggle('active',isOpen);
     edgeToggleBtn.setAttribute('aria-expanded',isOpen?'true':'false');
-    _setButtonTooltip(edgeToggleBtn, isOpen?'Hide workspace panel':'Show workspace panel');
+    _setButtonTooltip(edgeToggleBtn, isOpen?'隐藏任务空间':'打开任务空间');
     edgeToggleBtn.disabled=!canBrowse;
   }
   if(collapseBtn){
-    _setButtonTooltip(collapseBtn, isCompact?'Close workspace panel':'Hide workspace panel');
+    _setButtonTooltip(collapseBtn, isCompact?'关闭任务空间':'隐藏任务空间');
   }
   const hasSession=!!S.session;
   ['btnUpDir','btnNewFile','btnNewFolder','btnRefreshPanel'].forEach(id=>{
@@ -208,7 +208,7 @@ function syncWorkspacePanelUI(){
   const clearBtn=$('btnClearPreview');
   if(clearBtn){
     clearBtn.disabled=!isOpen;
-    _setButtonTooltip(clearBtn, hasPreview?'Close preview':'Close');
+    _setButtonTooltip(clearBtn, hasPreview?'关闭预览':'关闭');
     if(!isCompact) clearBtn.style.display='';
   }
 }
@@ -229,9 +229,8 @@ function closeMobileSidebar(){
 }
 
 // ── Desktop sidebar collapse toggle ────────────────────────────────────────
-// Two discoverability paths into the same state:
-//   (1) Click the already-active rail icon → collapse / expand the sidebar.
-//   (2) Cmd/Ctrl+B keyboard shortcut (VS Code convention).
+// The MVP shell keeps the primary navigation simple, but the collapse
+// state still matters for keyboard users and for future sidebar controls.
 // Mobile is unaffected: the sidebar is an overlay there, and every collapse
 // code path is gated on `_isDesktopWidth()` (min-width:641px).
 // State is persisted via localStorage and survives reloads + bfcache.
@@ -246,10 +245,10 @@ function _isSidebarCollapsed(){
 }
 
 function _syncSidebarAria(){
-  // Mirror the open/collapsed state on the active rail button via aria-expanded
-  // so screen readers announce the toggle. Open=true, collapsed=false.
-  const active=document.querySelector('.rail .rail-btn.nav-tab.active[data-panel]');
-  if(active)active.setAttribute('aria-expanded',!_isSidebarCollapsed());
+  // Mirror open/collapsed state on the optional sidebar control.
+  // Open=true, collapsed=false.
+  const control=document.getElementById('productCollapseBtn');
+  if(control)control.setAttribute('aria-expanded',!_isSidebarCollapsed());
 }
 
 function toggleSidebar(forceState){
@@ -1397,7 +1396,7 @@ function applyBotName(){
   const topbarTitle=$('topbarTitle');
   if(topbarTitle && (!S.session)) topbarTitle.textContent=name;
   const msg=$('msg');
-  if(msg) msg.placeholder='向助手描述你要完成的任务…';
+  if(msg) msg.placeholder='向当前 AI 产品描述你要完成的任务…';
 }
 
 (async()=>{
@@ -1644,8 +1643,8 @@ function applyBotName(){
 // prior search string would silently hide all sessions via the filter in
 // renderSessionListFromCache().  Clear the field and re-run the full layout
 // sync whenever the page is restored from cache (`event.persisted === true`).
-// Fix #1045: also re-run topbar/workspace/panel state so the rail and layout
-// chrome aren't left in the stale bfcache snapshot.
+// Fix #1045: also re-run topbar/workspace/panel state so layout chrome isn't
+// left in the stale bfcache snapshot.
 window.addEventListener('pageshow', async (event) => {
   if (!event.persisted) return;  // fresh loads are handled by the IIFE above
   const _srch = document.getElementById('sessionSearch');

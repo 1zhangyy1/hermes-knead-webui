@@ -10,8 +10,6 @@ export HERMES_HOME="${HERMES_HOME:-$ROOT/.hermes-home}"
 
 if [[ -z "${HERMES_WEBUI_AGENT_DIR:-}" && -f "$ROOT/runtimes/hermes-agent/run_agent.py" ]]; then
   export HERMES_WEBUI_AGENT_DIR="$ROOT/runtimes/hermes-agent"
-elif [[ -z "${HERMES_WEBUI_AGENT_DIR:-}" && -f "$ROOT/vendor/hermes-agent/run_agent.py" ]]; then
-  export HERMES_WEBUI_AGENT_DIR="$ROOT/vendor/hermes-agent"
 fi
 
 cd "$ROOT/apps/webui"

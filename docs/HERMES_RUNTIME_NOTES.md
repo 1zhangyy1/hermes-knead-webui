@@ -2,6 +2,12 @@
 
 日期：2026-05-18
 
+更新：2026-06-05
+
+当前生产仓库已把官方 Hermes Agent 作为一等 runtime 放在
+`runtimes/hermes-agent`。`vendor/` 只保留本地参考 checkout，不再作为生产
+启动路径。
+
 ## 1. 目标
 
 Phase 0 的目标是验证：
@@ -22,13 +28,13 @@ HERMES_HOME=/Users/nuomiji/Documents/zyyai/max/nextaichat/.hermes-home
 Hermes Agent 源码和 venv 位于：
 
 ```text
-/Users/nuomiji/Documents/zyyai/max/nextaichat/vendor/hermes-agent
+/Users/nuomiji/Documents/zyyai/max/nextaichat/runtimes/hermes-agent
 ```
 
 安装依赖：
 
 ```sh
-cd /Users/nuomiji/Documents/zyyai/max/nextaichat/vendor/hermes-agent
+cd /Users/nuomiji/Documents/zyyai/max/nextaichat/runtimes/hermes-agent
 uv venv .venv --python 3.11
 uv pip install -e ".[web,messaging]"
 ```
@@ -36,7 +42,7 @@ uv pip install -e ".[web,messaging]"
 启动 gateway：
 
 ```sh
-cd /Users/nuomiji/Documents/zyyai/max/nextaichat/vendor/hermes-agent
+cd /Users/nuomiji/Documents/zyyai/max/nextaichat/runtimes/hermes-agent
 HERMES_HOME=/Users/nuomiji/Documents/zyyai/max/nextaichat/.hermes-home \
 API_SERVER_ENABLED=true \
 API_SERVER_HOST=127.0.0.1 \
@@ -47,7 +53,7 @@ API_SERVER_PORT=8642 \
 启动 dashboard：
 
 ```sh
-cd /Users/nuomiji/Documents/zyyai/max/nextaichat/vendor/hermes-agent
+cd /Users/nuomiji/Documents/zyyai/max/nextaichat/runtimes/hermes-agent
 HERMES_HOME=/Users/nuomiji/Documents/zyyai/max/nextaichat/.hermes-home \
 ./.venv/bin/hermes dashboard --no-open
 ```
@@ -156,20 +162,22 @@ All 5 checks passed.
 10. Host Shell 已收敛为 Codex-like 三栏：左侧 Space 导航，中间 Hermes Agent，右侧 Space Growth Lens。
 11. `PPT Studio` 已加入安全版 Evolution MVP：Hermes 可参与生成提案，用户可预览、应用、回滚 Space 运行态变体。
 
-Hermes UI 运行方式：
+当前 WebUI 运行方式：
 
 ```sh
 cd /Users/nuomiji/Documents/zyyai/max/nextaichat
-pnpm hermes-ui
+pnpm dev
 ```
 
 当前地址：
 
 ```text
-http://127.0.0.1:3333/hermes-ui.html
+http://127.0.0.1:8788
 ```
 
-注意：Hermes UI `serve_lite.py` 已改为尊重 `HERMES_HOME` 和 `HERMES_AGENT_DIR`。项目脚本 `pnpm hermes-ui` 会让 Hermes UI 使用 `.hermes-home` 的模型配置和 `vendor/hermes-agent` 的代码，因此 `:3333` 内嵌聊天与当前项目 runtime 对齐。
+注意：项目脚本 `pnpm dev` 会让 WebUI 使用 `.hermes-home` 的本地状态和
+`runtimes/hermes-agent` 的官方 runtime 代码，因此本地聊天、工具、技能和
+agent loop 都归到当前仓库的生产 runtime 边界。
 
 建议下一步：
 

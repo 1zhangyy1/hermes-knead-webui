@@ -63,12 +63,12 @@ function _shouldInitializeProductUiForMessage(object) {
 
 function _assistantProductInitTaskTitle(object = _assistantObject()) {
   const title = object && object.title ? String(object.title).trim() : '这个 AI 产品';
-  return `生成${title}界面`.slice(0, 64);
+  return `生成${title}任务界面`.slice(0, 64);
 }
 
 function _assistantProductInitUserMessage(object = _assistantObject()) {
   const title = object && object.title ? String(object.title).trim() : '这个 AI 产品';
-  return `开始生成「${title}」的第一版产品界面，先做一个简单可用的版本。`;
+  return `开始生成「${title}」的第一版任务界面，先做一个简单可用的版本。`;
 }
 
 function _currentSessionMatchesProduct(object) {
@@ -165,7 +165,7 @@ async function _startProductInitializationTask(assistant, sourcePrompt) {
     await _setProductUiStatus(assistant, 'failed', {persist: true});
     openAssistantHome(assistant.kind);
     await refreshCurrentProductPreview({silent:true, reason:'product-init-error'});
-    if (typeof showToast === 'function') showToast(`首次生成产品界面失败：${err && err.message || err}`, 3600, 'error');
+    if (typeof showToast === 'function') showToast(`首次生成任务界面失败：${err && err.message || err}`, 3600, 'error');
     return false;
   }
 }
@@ -259,32 +259,32 @@ function _syncProductPreviewState(statusData = {}, object = _assistantObject()) 
   state.hidden = false;
   if (uiStatus === 'generating') {
     state.classList.add('is-generating');
-    if (kicker) kicker.textContent = '产品界面';
-    if (title) title.textContent = '正在生成第一版产品界面';
+    if (kicker) kicker.textContent = '任务界面';
+    if (title) title.textContent = '正在生成第一版任务界面';
     if (desc) desc.textContent = 'Agent 正在写这个产品的 index.html、style.css 和 app.js；完成后右侧会自动刷新。';
     if (action) action.hidden = true;
     return false;
   }
   if (uiStatus === 'failed') {
     state.classList.add('is-failed');
-    if (kicker) kicker.textContent = '产品界面';
-    if (title) title.textContent = '产品界面生成失败';
+    if (kicker) kicker.textContent = '任务界面';
+    if (title) title.textContent = '任务界面生成失败';
     if (desc) desc.textContent = failureMessage
-      ? `${failureMessage} 可以直接重试，或继续说明你想让这个界面怎么工作。`
-      : '可以继续对话让它重试，或直接说明你想让这个界面长什么样。';
+      ? `${failureMessage} 可以直接重试，或继续说明你想让这个任务界面怎么工作。`
+      : '可以继续对话让它重试，或直接说明你想让这个任务界面长什么样。';
     if (action) {
       action.hidden = false;
-      action.textContent = '重新生成界面';
+      action.textContent = '重新生成任务界面';
     }
     return false;
   }
   state.classList.add('is-empty');
-  if (kicker) kicker.textContent = '产品界面';
-  if (title) title.textContent = '这个 AI 产品还没有界面';
-  if (desc) desc.textContent = '继续对话，让它生成第一版产品界面。对话仍然是主入口。';
+  if (kicker) kicker.textContent = '任务界面';
+  if (title) title.textContent = '这个 AI 产品还没有任务界面';
+  if (desc) desc.textContent = '继续对话，让它生成第一版任务界面。对话仍然是主入口。';
   if (action) {
     action.hidden = false;
-    action.textContent = '生成产品界面';
+    action.textContent = '生成任务界面';
   }
   return false;
 }
@@ -297,8 +297,8 @@ async function requestCurrentProductUiGeneration() {
     return false;
   }
   const prompt = object.sourcePrompt
-    ? `请重新生成「${object.title || '这个 AI 产品'}」的产品界面。原始需求：${object.sourcePrompt}`
-    : `请为「${object.title || '这个 AI 产品'}」生成第一版产品界面。界面要服务它的真实任务，不要写成介绍页。`;
+    ? `请重新生成「${object.title || '这个 AI 产品'}」的任务界面。原始需求：${object.sourcePrompt}`
+    : `请为「${object.title || '这个 AI 产品'}」生成第一版任务界面。任务界面要服务它的真实任务，不要写成介绍页。`;
   try {
     const generationScope = _productUiGenerationScopeForObject(object);
     await _setProductUiStatus(object, 'generating', {persist: true});
@@ -336,7 +336,7 @@ async function requestCurrentProductUiGeneration() {
   } catch (err) {
     await _setProductUiStatus(object, 'failed', {persist: true});
     await refreshCurrentProductPreview({silent:true, reason:'manual-product-generation-error'});
-    if (typeof showToast === 'function') showToast(`生成产品界面失败：${err && err.message || err}`, 3600, 'error');
+    if (typeof showToast === 'function') showToast(`生成任务界面失败：${err && err.message || err}`, 3600, 'error');
     return false;
   }
 }

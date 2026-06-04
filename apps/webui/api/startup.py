@@ -57,7 +57,12 @@ def fix_credential_permissions() -> None:
 
 def _agent_dir() -> Path | None:
     hermes_home = Path(os.environ.get('HERMES_HOME', str(Path.home() / '.hermes')))
-    for raw in [os.environ.get('HERMES_WEBUI_AGENT_DIR', '').strip(), str(hermes_home / 'hermes-agent')]:
+    project_root = Path(__file__).resolve().parents[3]
+    for raw in [
+        os.environ.get('HERMES_WEBUI_AGENT_DIR', '').strip(),
+        str(project_root / 'runtimes' / 'hermes-agent'),
+        str(hermes_home / 'hermes-agent'),
+    ]:
         if not raw:
             continue
         p = Path(raw).expanduser()

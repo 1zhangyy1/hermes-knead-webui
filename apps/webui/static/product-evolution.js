@@ -4,7 +4,7 @@
 
 async function rollbackCurrentProductUiVersion() {
   if (!_activeProductPreview || !_activeProductPreview.product_preview) {
-    if (typeof showToast === 'function') showToast('当前没有可恢复的 AI 产品界面');
+    if (typeof showToast === 'function') showToast('当前没有可恢复的任务界面');
     return;
   }
   const productId = String(_activeProductPreview.product_id || '').trim();
@@ -23,9 +23,9 @@ async function rollbackCurrentProductUiVersion() {
     if (typeof refreshCurrentProductPreview === 'function') {
       await refreshCurrentProductPreview({ silent: true, reason: 'product-rollback' });
     }
-    if (typeof showToast === 'function') showToast('已恢复上一版产品界面');
+    if (typeof showToast === 'function') showToast('已恢复上一版任务界面');
   } catch (e) {
-    if (typeof showToast === 'function') showToast('恢复上一版产品界面失败：' + (e.message || e));
+    if (typeof showToast === 'function') showToast('恢复上一版任务界面失败：' + (e.message || e));
   }
 }
 
