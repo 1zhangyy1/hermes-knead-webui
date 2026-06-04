@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "HermesDesktop (Unpackaged)": {
+      "commandName": "Project"
+    },
+    "HermesDesktop (Package)": {
+      "commandName": "MsixPackage"
+    }
+  }
+}

@@ -1,0 +1,32 @@
+.DS_Store
+.env
+.env.local
+.hermes-home/
+.tmp-*
+tmp/
+node_modules/
+dist/
+build/
+.turbo/
+.next/
+.vite/
+*.log
+*.pid
+*.tsbuildinfo
+
+# Local research/runtime installs
+vendor/**/.venv/
+vendor/**/node_modules/
+vendor/**/dist/
+vendor/**/build/
+vendor/**/.next/
+vendor/**/.vite/
+
+# Vendored repositories are exported as source snapshots for the private repo.
+# Keep their nested git metadata out of any parent repository.
+vendor/**/.git/
+vendor/**/.gitignore~
+
+# Generated local build outputs
+apps/**/dist/
+spaces/generated/

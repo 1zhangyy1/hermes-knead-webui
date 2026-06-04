@@ -1,0 +1,118 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="1100" viewBox="0 0 1800 1100">
+  <defs>
+    <style>
+      .bg { fill: #f5f6f8; }
+      .app { fill: #ffffff; stroke: #d8dce2; stroke-width: 2; }
+      .side { fill: #f1f2f4; }
+      .line { stroke: #e4e7ec; stroke-width: 1.5; }
+      .card { fill: #ffffff; stroke: #dfe3e8; stroke-width: 1.5; }
+      .soft { fill: #f7f8fa; stroke: #e3e6eb; stroke-width: 1.2; }
+      .active { fill: #e7e9ee; }
+      .dark { fill: #161616; }
+      .ink { fill: #171717; font-family: Inter, Arial, sans-serif; }
+      .muted { fill: #667085; font-family: Inter, Arial, sans-serif; }
+      .blue { fill: #2f6fed; }
+      .purple { fill: #7c5cff; }
+      .orange { fill: #f25a2c; }
+      .green { fill: #17a36b; }
+      .title { font-size: 34px; font-weight: 760; }
+      .h2 { font-size: 23px; font-weight: 760; }
+      .body { font-size: 17px; font-weight: 520; }
+      .small { font-size: 14px; font-weight: 650; }
+      .tiny { font-size: 12px; font-weight: 700; }
+      .btn { fill: #ffffff; font-family: Inter, Arial, sans-serif; font-size: 14px; font-weight: 760; }
+      .btnDark { fill: #171717; font-family: Inter, Arial, sans-serif; font-size: 14px; font-weight: 760; }
+    </style>
+  </defs>
+  <rect class="bg" width="1800" height="1100"/>
+  <text x="70" y="78" class="ink title">推荐版原型：Agent 主界面 + 一级工作台</text>
+  <text x="70" y="112" class="muted body">把工作台作为核心能力露出来，但默认主区仍然是 Agent 任务流。我们的 feature 以「改造建议卡」进入对话。</text>
+
+  <g transform="translate(70,155)">
+    <rect class="app" width="1660" height="880" rx="22"/>
+
+    <!-- Sidebar -->
+    <rect class="side" width="300" height="880" rx="22"/>
+    <rect class="side" x="280" width="20" height="880"/>
+    <rect class="dark" x="24" y="24" width="36" height="36" rx="9"/>
+    <text x="74" y="50" class="ink h2">Next AI</text>
+
+    <rect class="active" x="14" y="92" width="270" height="42" rx="10"/>
+    <text x="28" y="119" class="ink body">＋ 新任务</text>
+    <text x="28" y="168" class="ink body">搜索</text>
+    <text x="28" y="214" class="ink body">插件</text>
+    <text x="28" y="260" class="ink body">自动化</text>
+
+    <text x="28" y="326" class="muted small">工作台</text>
+    <rect class="card" x="18" y="342" width="260" height="46" rx="10"/>
+    <circle class="purple" cx="40" cy="365" r="7"/>
+    <text x="58" y="371" class="ink small">PPT 工作台</text>
+    <rect fill="#e9ecf2" x="204" y="352" width="58" height="24" rx="12"/>
+    <text x="218" y="369" class="muted tiny">已启用</text>
+    <text x="28" y="426" class="ink small">周报工作台</text>
+    <rect fill="#fff0e8" x="204" y="408" width="58" height="24" rx="12"/>
+    <text x="218" y="425" class="orange tiny">建议中</text>
+    <text x="28" y="470" class="ink small">研究工作台</text>
+    <text x="28" y="514" class="blue small">＋ 生成新工作台</text>
+
+    <text x="28" y="588" class="muted small">任务</text>
+    <text x="28" y="626" class="ink small">做融资 PPT</text>
+    <text x="28" y="670" class="ink small">整理用户访谈</text>
+    <text x="28" y="714" class="ink small">写产品周报</text>
+
+    <text x="28" y="824" class="muted small">Hermes online · Claude Sonnet 4.6</text>
+
+    <!-- Main chat -->
+    <line class="line" x1="300" y1="76" x2="1660" y2="76"/>
+    <text x="336" y="50" class="ink h2">新任务</text>
+    <rect class="soft" x="1486" y="22" width="64" height="34" rx="17"/>
+    <text x="1506" y="44" class="muted small">5.5</text>
+    <rect class="dark" x="1566" y="22" width="70" height="34" rx="17"/>
+    <text x="1588" y="44" class="btn">运行</text>
+
+    <text x="615" y="168" class="ink title">我能帮你做什么？</text>
+    <rect class="card" x="500" y="215" width="600" height="140" rx="22"/>
+    <text x="532" y="260" class="muted body">输入任务、拖文件、@ 技能、选择工作台...</text>
+    <text x="532" y="326" class="muted small">＋ 文件</text>
+    <rect class="soft" x="882" y="304" width="92" height="34" rx="17"/>
+    <text x="902" y="326" class="btnDark">Auto</text>
+    <rect class="dark" x="990" y="304" width="78" height="34" rx="17"/>
+    <text x="1014" y="326" class="btn">发送</text>
+
+    <rect class="card" x="500" y="405" width="600" height="132" rx="18"/>
+    <text x="532" y="444" class="ink h2">建议改造当前任务</text>
+    <text x="532" y="476" class="muted body">我发现你连续在做 PPT：大纲、页面结构、讲稿、品牌样式。</text>
+    <text x="532" y="506" class="muted body">要不要生成一个 PPT 工作台，让结果更稳定？</text>
+    <rect class="dark" x="822" y="486" width="74" height="34" rx="17"/>
+    <text x="846" y="508" class="btn">预览</text>
+    <rect class="dark" x="910" y="486" width="74" height="34" rx="17"/>
+    <text x="934" y="508" class="btn">应用</text>
+    <rect class="soft" x="998" y="486" width="74" height="34" rx="17"/>
+    <text x="1016" y="508" class="btnDark">忽略</text>
+
+    <text x="500" y="612" class="muted small">常用入口</text>
+    <rect class="soft" x="500" y="635" width="180" height="92" rx="16"/>
+    <text x="526" y="674" class="ink body">PPT 工作台</text>
+    <text x="526" y="704" class="muted small">做大纲 / 画布 / 导出</text>
+    <rect class="soft" x="710" y="635" width="180" height="92" rx="16"/>
+    <text x="736" y="674" class="ink body">周报工作台</text>
+    <text x="736" y="704" class="muted small">收集 / 总结 / 发送</text>
+    <rect class="soft" x="920" y="635" width="180" height="92" rx="16"/>
+    <text x="946" y="674" class="ink body">研究工作台</text>
+    <text x="946" y="704" class="muted small">资料 / 卡片 / 综述</text>
+
+    <!-- Right context -->
+    <rect class="soft" x="1180" y="115" width="390" height="640" rx="18"/>
+    <text x="1212" y="158" class="ink h2">当前上下文</text>
+    <text x="1212" y="200" class="muted body">任务：融资 PPT</text>
+    <text x="1212" y="236" class="muted body">文件：商业计划书.pdf</text>
+    <text x="1212" y="272" class="muted body">技能：presentation-planning</text>
+    <line class="line" x1="1212" y1="306" x2="1538" y2="306"/>
+    <text x="1212" y="350" class="ink h2">工作台状态</text>
+    <rect fill="#eaf7f0" x="1212" y="370" width="92" height="30" rx="15"/>
+    <text x="1234" y="391" class="green small">可应用</text>
+    <text x="1212" y="430" class="muted body">预览会生成临时界面。</text>
+    <text x="1212" y="466" class="muted body">应用前会保存快照。</text>
+    <text x="1212" y="502" class="muted body">不满意可回滚。</text>
+  </g>
+</svg>

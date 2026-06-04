@@ -1,0 +1,678 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>融资 PPT 工作台</title>
+  <style>
+    :root {
+      --primary: #1a1a2e;
+      --accent: #e94560;
+      --highlight: #0f3460;
+      --gold: #f5a623;
+      --light: #f0f4f8;
+      --white: #ffffff;
+      --text-dark: #1a1a2e;
+      --text-muted: #6b7a8d;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'PingFang SC', 'Helvetica Neue', Arial, sans-serif;
+      background: #0d0d1a;
+      color: var(--white);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    /* ── Top Bar ── */
+    .topbar {
+      width: 100%;
+      background: rgba(255,255,255,0.04);
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+      padding: 14px 32px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      backdrop-filter: blur(10px);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    .topbar .logo {
+      font-size: 18px;
+      font-weight: 700;
+      letter-spacing: 1px;
+      color: var(--white);
+    }
+    .topbar .logo span { color: var(--accent); }
+    .topbar .controls { display: flex; gap: 10px; }
+    .btn {
+      padding: 7px 18px;
+      border-radius: 6px;
+      border: none;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 600;
+      transition: all 0.2s;
+    }
+    .btn-ghost {
+      background: rgba(255,255,255,0.06);
+      color: rgba(255,255,255,0.8);
+      border: 1px solid rgba(255,255,255,0.12);
+    }
+    .btn-ghost:hover { background: rgba(255,255,255,0.12); }
+    .btn-primary {
+      background: var(--accent);
+      color: white;
+    }
+    .btn-primary:hover { opacity: 0.88; transform: translateY(-1px); }
+
+    /* ── Slide Navigator ── */
+    .navigator {
+      display: flex;
+      gap: 10px;
+      padding: 20px 0 8px;
+    }
+    .nav-dot {
+      width: 10px; height: 10px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.2);
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .nav-dot.active { background: var(--accent); transform: scale(1.3); }
+
+    /* ── Slide Container ── */
+    .slides-wrapper {
+      width: 100%;
+      max-width: 1100px;
+      padding: 20px 24px 60px;
+    }
+
+    .slide {
+      display: none;
+      animation: fadein 0.4s ease;
+    }
+    .slide.active { display: block; }
+
+    @keyframes fadein {
+      from { opacity: 0; transform: translateY(16px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    /* ── Slide Card ── */
+    .slide-card {
+      background: linear-gradient(135deg, #1a1a3e 0%, #0f1e3a 100%);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 20px;
+      overflow: hidden;
+      position: relative;
+      min-height: 540px;
+    }
+
+    /* Decorative blobs */
+    .blob {
+      position: absolute;
+      border-radius: 50%;
+      filter: blur(80px);
+      opacity: 0.15;
+      pointer-events: none;
+    }
+    .blob-1 { width: 400px; height: 400px; background: var(--accent); top: -120px; right: -80px; }
+    .blob-2 { width: 300px; height: 300px; background: #0090ff; bottom: -60px; left: -60px; }
+
+    .slide-inner {
+      position: relative;
+      z-index: 2;
+      padding: 56px 64px;
+    }
+
+    /* Slide number badge */
+    .slide-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: rgba(233,69,96,0.15);
+      border: 1px solid rgba(233,69,96,0.3);
+      color: var(--accent);
+      font-size: 12px;
+      font-weight: 700;
+      padding: 5px 14px;
+      border-radius: 100px;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      margin-bottom: 20px;
+    }
+
+    .slide-title {
+      font-size: 38px;
+      font-weight: 800;
+      line-height: 1.2;
+      margin-bottom: 12px;
+      background: linear-gradient(90deg, #fff 0%, rgba(255,255,255,0.75) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .slide-subtitle {
+      font-size: 17px;
+      color: rgba(255,255,255,0.5);
+      margin-bottom: 40px;
+      font-style: italic;
+    }
+
+    /* ── Grid Layout ── */
+    .grid-3 {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+      margin-bottom: 28px;
+    }
+    .grid-2 {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 16px;
+      margin-bottom: 28px;
+    }
+
+    .card {
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 14px;
+      padding: 22px 20px;
+      transition: all 0.25s;
+    }
+    .card:hover {
+      background: rgba(255,255,255,0.09);
+      border-color: rgba(233,69,96,0.4);
+      transform: translateY(-3px);
+    }
+
+    .card-icon { font-size: 28px; margin-bottom: 12px; }
+    .card-title {
+      font-size: 15px;
+      font-weight: 700;
+      margin-bottom: 7px;
+      color: var(--white);
+    }
+    .card-desc {
+      font-size: 13px;
+      color: rgba(255,255,255,0.5);
+      line-height: 1.6;
+    }
+
+    /* Stat block */
+    .stats-row {
+      display: flex;
+      gap: 20px;
+      margin-bottom: 28px;
+    }
+    .stat-box {
+      flex: 1;
+      background: rgba(255,255,255,0.05);
+      border-radius: 14px;
+      padding: 20px;
+      text-align: center;
+      border: 1px solid rgba(255,255,255,0.08);
+    }
+    .stat-value {
+      font-size: 34px;
+      font-weight: 900;
+      color: var(--accent);
+      display: block;
+    }
+    .stat-label {
+      font-size: 12px;
+      color: rgba(255,255,255,0.45);
+      margin-top: 4px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    /* Tag chips */
+    .chip {
+      display: inline-block;
+      background: rgba(255,255,255,0.07);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 100px;
+      padding: 5px 14px;
+      font-size: 12px;
+      color: rgba(255,255,255,0.65);
+      margin: 4px 4px 4px 0;
+    }
+    .chip.hot { background: rgba(233,69,96,0.15); border-color: rgba(233,69,96,0.35); color: var(--accent); }
+    .chip.blue { background: rgba(0,144,255,0.12); border-color: rgba(0,144,255,0.3); color: #5bb8ff; }
+
+    /* Progress bars */
+    .progress-row { margin-bottom: 14px; }
+    .progress-label {
+      display: flex;
+      justify-content: space-between;
+      font-size: 13px;
+      margin-bottom: 6px;
+      color: rgba(255,255,255,0.7);
+    }
+    .progress-track {
+      height: 6px;
+      background: rgba(255,255,255,0.08);
+      border-radius: 100px;
+      overflow: hidden;
+    }
+    .progress-fill {
+      height: 100%;
+      border-radius: 100px;
+      background: linear-gradient(90deg, var(--accent), #ff8c69);
+      transition: width 1s ease;
+    }
+
+    /* Team card */
+    .team-card {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 14px;
+      padding: 18px 20px;
+    }
+    .avatar {
+      width: 52px; height: 52px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 22px;
+      flex-shrink: 0;
+    }
+    .team-name { font-size: 15px; font-weight: 700; }
+    .team-role { font-size: 12px; color: rgba(255,255,255,0.45); margin-top: 2px; }
+    .team-tag { font-size: 11px; color: var(--accent); font-weight: 600; margin-top: 5px; }
+
+    /* Milestone */
+    .milestone {
+      display: flex;
+      gap: 14px;
+      margin-bottom: 14px;
+      align-items: flex-start;
+    }
+    .milestone-dot {
+      width: 32px; height: 32px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 13px;
+      font-weight: 800;
+      flex-shrink: 0;
+      margin-top: 2px;
+    }
+    .milestone-content { flex: 1; }
+    .milestone-time { font-size: 11px; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase; color: var(--gold); margin-bottom: 3px; }
+    .milestone-text { font-size: 13px; color: rgba(255,255,255,0.65); }
+
+    /* ── Notes Panel ── */
+    .notes-panel {
+      background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(255,255,255,0.07);
+      border-radius: 14px;
+      padding: 20px 24px;
+      margin-top: 16px;
+    }
+    .notes-label {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: rgba(255,255,255,0.3);
+      margin-bottom: 10px;
+    }
+    .notes-text {
+      font-size: 13px;
+      color: rgba(255,255,255,0.5);
+      line-height: 1.8;
+    }
+
+    /* ── Pagination ── */
+    .pagination {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 16px;
+      margin-top: 28px;
+    }
+    .page-btn {
+      width: 44px; height: 44px;
+      border-radius: 50%;
+      border: 1px solid rgba(255,255,255,0.15);
+      background: rgba(255,255,255,0.05);
+      color: white;
+      font-size: 18px;
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      transition: all 0.2s;
+    }
+    .page-btn:hover:not(:disabled) { background: var(--accent); border-color: var(--accent); }
+    .page-btn:disabled { opacity: 0.25; cursor: not-allowed; }
+    .page-info { font-size: 14px; color: rgba(255,255,255,0.4); min-width: 60px; text-align: center; }
+
+    /* Editable fields */
+    [contenteditable] {
+      outline: none;
+      border-bottom: 1px dashed rgba(255,255,255,0.15);
+      transition: border-color 0.2s;
+    }
+    [contenteditable]:focus {
+      border-bottom-color: var(--accent);
+    }
+
+    /* Footer */
+    .footer-note {
+      text-align: center;
+      color: rgba(255,255,255,0.18);
+      font-size: 12px;
+      margin-top: 20px;
+      padding-bottom: 32px;
+    }
+  </style>
+</head>
+<body>
+
+<!-- Top Bar -->
+<div class="topbar">
+  <div class="logo">融资 <span>DECK</span> · 工作台</div>
+  <div class="controls">
+    <button class="btn btn-ghost" onclick="toggleNotes()">📝 备注</button>
+    <button class="btn btn-primary" onclick="window.print()">📤 导出</button>
+  </div>
+</div>
+
+<!-- Navigator -->
+<div class="navigator" id="navigator">
+  <div class="nav-dot active" onclick="goTo(0)"></div>
+  <div class="nav-dot" onclick="goTo(1)"></div>
+  <div class="nav-dot" onclick="goTo(2)"></div>
+</div>
+
+<div class="slides-wrapper">
+
+  <!-- ══════════════════════════════════════════════ -->
+  <!-- SLIDE 1: 问题与机会 -->
+  <!-- ══════════════════════════════════════════════ -->
+  <div class="slide active" id="slide-0">
+    <div class="slide-card">
+      <div class="blob blob-1"></div>
+      <div class="blob blob-2"></div>
+      <div class="slide-inner">
+
+        <div class="slide-badge">01 · Problem &amp; Opportunity</div>
+        <div class="slide-title" contenteditable="true">一个被忽视的百亿市场</div>
+        <div class="slide-subtitle" contenteditable="true">现有方案全部失效，而我们抓住了时机</div>
+
+        <div class="stats-row">
+          <div class="stat-box">
+            <span class="stat-value">¥800亿</span>
+            <div class="stat-label">TAM 总市场</div>
+          </div>
+          <div class="stat-box">
+            <span class="stat-value">32%</span>
+            <div class="stat-label">年复合增长</div>
+          </div>
+          <div class="stat-box">
+            <span class="stat-value">2026</span>
+            <div class="stat-label">窗口期</div>
+          </div>
+        </div>
+
+        <div class="grid-3">
+          <div class="card">
+            <div class="card-icon">😩</div>
+            <div class="card-title" contenteditable="true">核心痛点 A</div>
+            <div class="card-desc" contenteditable="true">用户每天浪费 2+ 小时在低效的手动操作上，没有任何工具能够解决。</div>
+          </div>
+          <div class="card">
+            <div class="card-icon">💸</div>
+            <div class="card-title" contenteditable="true">核心痛点 B</div>
+            <div class="card-desc" contenteditable="true">现有 SaaS 解决方案平均成本高达 ¥50,000/年，中小企业完全负担不起。</div>
+          </div>
+          <div class="card">
+            <div class="card-icon">🧩</div>
+            <div class="card-title" contenteditable="true">核心痛点 C</div>
+            <div class="card-desc" contenteditable="true">数据孤岛严重，跨系统集成困难，团队协作效率极低。</div>
+          </div>
+        </div>
+
+        <div>
+          <span class="chip hot">政策利好</span>
+          <span class="chip blue">AI 驱动</span>
+          <span class="chip">B2B SaaS</span>
+          <span class="chip">国产替代</span>
+          <span class="chip blue">出海机会</span>
+        </div>
+
+      </div>
+    </div>
+
+    <div class="notes-panel" id="notes-0">
+      <div class="notes-label">🎤 演讲者备注</div>
+      <div class="notes-text" contenteditable="true">
+        开场强调市场真实性 — 用具体数字和用户故事打开。避免过于学术化的市场分析，投资人希望听到"你是怎么发现这个机会的"真实故事。这一页控制在 2 分钟内。
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════ -->
+  <!-- SLIDE 2: 解决方案 -->
+  <!-- ══════════════════════════════════════════════ -->
+  <div class="slide" id="slide-1">
+    <div class="slide-card">
+      <div class="blob blob-1" style="background:#0090ff;"></div>
+      <div class="blob blob-2" style="background:#9b59b6;"></div>
+      <div class="slide-inner">
+
+        <div class="slide-badge">02 · Solution &amp; Traction</div>
+        <div class="slide-title" contenteditable="true">我们怎么做到别人做不到的</div>
+        <div class="slide-subtitle" contenteditable="true">核心技术壁垒 + 已验证的产品市场契合</div>
+
+        <div class="grid-2" style="margin-bottom:24px;">
+          <div class="card">
+            <div class="card-icon">⚡</div>
+            <div class="card-title" contenteditable="true">核心产品功能</div>
+            <div class="card-desc" contenteditable="true">AI 驱动的自动化引擎，将原本需要数小时的操作压缩到 30 秒内完成，准确率 99.2%。</div>
+          </div>
+          <div class="card">
+            <div class="card-icon">🔒</div>
+            <div class="card-title" contenteditable="true">核心壁垒</div>
+            <div class="card-desc" contenteditable="true">自研专利模型 + 18 个月积累的行业私有数据集，竞对从零开始至少需要 2 年追赶。</div>
+          </div>
+          <div class="card">
+            <div class="card-icon">💰</div>
+            <div class="card-title" contenteditable="true">商业模式</div>
+            <div class="card-desc" contenteditable="true">SaaS 订阅 + 平台抽佣双轮驱动。净收入留存率（NRR）127%，客户越用越多。</div>
+          </div>
+          <div class="card">
+            <div class="card-icon">📈</div>
+            <div class="card-title" contenteditable="true">早期验证</div>
+            <div class="card-desc" contenteditable="true">已服务 50+ 企业客户，MoM 增长 28%，12 个月 ARR 突破 ¥300 万。</div>
+          </div>
+        </div>
+
+        <div style="background:rgba(255,255,255,0.04);border-radius:12px;padding:16px 20px;">
+          <div style="font-size:13px;color:rgba(255,255,255,0.4);margin-bottom:12px;text-transform:uppercase;letter-spacing:0.5px;">关键指标增长</div>
+          <div class="progress-row">
+            <div class="progress-label"><span>用户增长</span><span style="color:var(--accent)">+280%</span></div>
+            <div class="progress-track"><div class="progress-fill" style="width:85%"></div></div>
+          </div>
+          <div class="progress-row">
+            <div class="progress-label"><span>ARR 增长</span><span style="color:var(--accent)">+210%</span></div>
+            <div class="progress-track"><div class="progress-fill" style="width:68%"></div></div>
+          </div>
+          <div class="progress-row" style="margin-bottom:0">
+            <div class="progress-label"><span>NPS 分数</span><span style="color:var(--accent)">72</span></div>
+            <div class="progress-track"><div class="progress-fill" style="width:72%"></div></div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <div class="notes-panel" id="notes-1">
+      <div class="notes-label">🎤 演讲者备注</div>
+      <div class="notes-text" contenteditable="true">
+        这一页是整个 Deck 的核心。重点演示产品 Demo（如果有的话），让数字说话。投资人会记住两件事：你的差异化壁垒是什么，以及增长数据是否真实可信。如果 ARR 很早期，要主动解释增长斜率而不是绝对数字。
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════ -->
+  <!-- SLIDE 3: 团队与融资计划 -->
+  <!-- ══════════════════════════════════════════════ -->
+  <div class="slide" id="slide-2">
+    <div class="slide-card">
+      <div class="blob blob-1" style="background: var(--gold);"></div>
+      <div class="blob blob-2" style="background:#e94560;"></div>
+      <div class="slide-inner">
+
+        <div class="slide-badge">03 · Team &amp; Ask</div>
+        <div class="slide-title" contenteditable="true">为什么是我们，钱怎么用</div>
+        <div class="slide-subtitle" contenteditable="true">最强团队 × 清晰路线图 × 合理融资计划</div>
+
+        <div class="grid-2" style="margin-bottom:24px;">
+          <div style="display:flex;flex-direction:column;gap:12px;">
+            <div class="team-card">
+              <div class="avatar" style="background:rgba(233,69,96,0.2)">👨‍💼</div>
+              <div>
+                <div class="team-name" contenteditable="true">张   伟 · CEO</div>
+                <div class="team-role" contenteditable="true">前 BAT 总监 · 10 年行业经验</div>
+                <div class="team-tag" contenteditable="true">连续创业者 · 上市项目经历</div>
+              </div>
+            </div>
+            <div class="team-card">
+              <div class="avatar" style="background:rgba(0,144,255,0.2)">👩‍💻</div>
+              <div>
+                <div class="team-name" contenteditable="true">李   娜 · CTO</div>
+                <div class="team-role" contenteditable="true">清华博士 · AI 方向 · 5 项专利</div>
+                <div class="team-tag" contenteditable="true">前谷歌工程师</div>
+              </div>
+            </div>
+            <div class="team-card">
+              <div class="avatar" style="background:rgba(245,166,35,0.2)">📊</div>
+              <div>
+                <div class="team-name" contenteditable="true">王   磊 · COO</div>
+                <div class="team-role" contenteditable="true">前头部 VC 投资人 · 资本运作经验</div>
+                <div class="team-tag" contenteditable="true">主导 3 个 IPO 项目</div>
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <div style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.08);border-radius:14px;padding:22px;margin-bottom:14px;">
+              <div style="font-size:13px;color:rgba(255,255,255,0.35);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:14px;">本轮融资</div>
+              <div style="font-size:32px;font-weight:900;color:var(--gold)">¥ 3,000 万</div>
+              <div style="font-size:12px;color:rgba(255,255,255,0.4);margin-top:4px;">Pre-A 轮 · 投后估值 ¥1.8 亿</div>
+              <div style="margin-top:16px;">
+                <div class="progress-row">
+                  <div class="progress-label"><span>产品研发</span><span style="color:var(--gold)">40%</span></div>
+                  <div class="progress-track"><div class="progress-fill" style="width:40%;background:linear-gradient(90deg,var(--gold),#ffcc02)"></div></div>
+                </div>
+                <div class="progress-row">
+                  <div class="progress-label"><span>市场与销售</span><span style="color:var(--gold)">35%</span></div>
+                  <div class="progress-track"><div class="progress-fill" style="width:35%;background:linear-gradient(90deg,var(--gold),#ffcc02)"></div></div>
+                </div>
+                <div class="progress-row" style="margin-bottom:0">
+                  <div class="progress-label"><span>团队扩张</span><span style="color:var(--gold)">25%</span></div>
+                  <div class="progress-track"><div class="progress-fill" style="width:25%;background:linear-gradient(90deg,var(--gold),#ffcc02)"></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div style="background:rgba(255,255,255,0.04);border-radius:12px;padding:16px 20px;">
+          <div style="font-size:13px;color:rgba(255,255,255,0.35);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:14px;">18 个月里程碑</div>
+          <div class="milestone">
+            <div class="milestone-dot" style="background:rgba(233,69,96,0.2);color:var(--accent)">Q3</div>
+            <div class="milestone-content">
+              <div class="milestone-time">2026 Q3</div>
+              <div class="milestone-text" contenteditable="true">完成核心产品 V2.0，上线 100 家付费客户，ARR 达 ¥800 万</div>
+            </div>
+          </div>
+          <div class="milestone">
+            <div class="milestone-dot" style="background:rgba(245,166,35,0.2);color:var(--gold)">Q4</div>
+            <div class="milestone-content">
+              <div class="milestone-time">2026 Q4</div>
+              <div class="milestone-text" contenteditable="true">市场规模化扩张，建立销售团队，MoM 增速维持 25%+</div>
+            </div>
+          </div>
+          <div class="milestone" style="margin-bottom:0">
+            <div class="milestone-dot" style="background:rgba(0,144,255,0.2);color:#5bb8ff">Q2</div>
+            <div class="milestone-content">
+              <div class="milestone-time">2027 Q2</div>
+              <div class="milestone-text" contenteditable="true">ARR 突破 ¥3,000 万，启动 A 轮融资，准备出海</div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <div class="notes-panel" id="notes-2">
+      <div class="notes-label">🎤 演讲者备注</div>
+      <div class="notes-text" contenteditable="true">
+        收尾一页最重要的是给投资人"行动信号"。除了数字，要说清楚为什么现在是投的最佳时机，以及你们下轮融资的护城河在哪里。如有已有意向投资方，可以在此提及以制造紧迫感。
+      </div>
+    </div>
+  </div>
+
+  <!-- Pagination -->
+  <div class="pagination">
+    <button class="page-btn" id="prev-btn" onclick="changePage(-1)" disabled>‹</button>
+    <div class="page-info" id="page-info">1 / 3</div>
+    <button class="page-btn" id="next-btn" onclick="changePage(1)">›</button>
+  </div>
+
+  <div class="footer-note">💡 所有文字均可直接点击编辑 · 点击"导出"可打印或另存为 PDF</div>
+
+</div>
+
+<script>
+  let current = 0;
+  const total = 3;
+  let notesVisible = true;
+
+  function goTo(idx) {
+    document.querySelectorAll('.slide').forEach((s, i) => {
+      s.classList.toggle('active', i === idx);
+    });
+    document.querySelectorAll('.nav-dot').forEach((d, i) => {
+      d.classList.toggle('active', i === idx);
+    });
+    current = idx;
+    document.getElementById('page-info').textContent = `${idx + 1} / ${total}`;
+    document.getElementById('prev-btn').disabled = idx === 0;
+    document.getElementById('next-btn').disabled = idx === total - 1;
+  }
+
+  function changePage(delta) {
+    const next = current + delta;
+    if (next >= 0 && next < total) goTo(next);
+  }
+
+  function toggleNotes() {
+    notesVisible = !notesVisible;
+    document.querySelectorAll('.notes-panel').forEach(n => {
+      n.style.display = notesVisible ? 'block' : 'none';
+    });
+  }
+
+  // Keyboard nav
+  document.addEventListener('keydown', e => {
+    if (e.key === 'ArrowRight' || e.key === 'ArrowDown') changePage(1);
+    if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') changePage(-1);
+  });
+</script>
+
+</body>
+</html>

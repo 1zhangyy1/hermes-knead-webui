@@ -1,0 +1,11 @@
+{
+  "id": "ppt-designer",
+  "kind": "ppt",
+  "title": "PPT 设计师",
+  "desc": "把想法、资料和要求变成清晰好看的演示文稿。Chat 始终在场，产品界面会按 PPT 任务逐步长出大纲、页面和讲稿区。",
+  "source_prompt": "内置 AI 产品：PPT 设计师。它应该能通过聊天生成、调整和沉淀自己的 PPT 任务界面。",
+  "product_type": "ppt",
+  "preview_entry": "index.html",
+  "ui_status": "ready",
+  "updated_at": "2026-06-03T11:03:28Z"
+}

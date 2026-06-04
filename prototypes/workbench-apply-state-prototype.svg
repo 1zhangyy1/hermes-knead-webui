@@ -1,0 +1,146 @@
+<svg width="1800" height="1180" viewBox="0 0 1800 1180" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1800" height="1180" fill="#F7F7F5"/>
+  <text x="72" y="72" fill="#18181B" font-family="Inter, -apple-system, BlinkMacSystemFont, 'PingFang SC', sans-serif" font-size="34" font-weight="650">“应用工作台”之后到底长什么样？</text>
+  <text x="72" y="112" fill="#71717A" font-family="Inter, -apple-system, BlinkMacSystemFont, 'PingFang SC', sans-serif" font-size="18">应用不是跳到一个独立 SaaS 页面，而是把一次任务里长出来的界面、流程、Prompt 保存成可复用的工作台。</text>
+
+  <!-- Flow labels -->
+  <g transform="translate(72 160)">
+    <rect x="0" y="0" width="386" height="880" rx="18" fill="#FFFFFF" stroke="#E4E4E7"/>
+    <text x="26" y="44" fill="#18181B" font-family="Inter, -apple-system, BlinkMacSystemFont, 'PingFang SC', sans-serif" font-size="20" font-weight="650">A. 临时状态</text>
+    <text x="26" y="76" fill="#71717A" font-family="Inter, -apple-system, BlinkMacSystemFont, 'PingFang SC', sans-serif" font-size="14">普通对话里做了一次 PPT，界面临时长出来。</text>
+
+    <rect x="28" y="118" width="330" height="640" rx="12" fill="#FFFFFF" stroke="#E4E4E7"/>
+    <rect x="28" y="118" width="82" height="640" fill="#FAFAFA"/>
+    <text x="46" y="154" fill="#18181B" font-family="Inter, -apple-system, BlinkMacSystemFont, 'PingFang SC', sans-serif" font-size="13" font-weight="650">Next</text>
+    <rect x="44" y="182" width="50" height="28" rx="6" fill="#18181B"/>
+    <text x="56" y="201" fill="#FFFFFF" font-family="Inter, -apple-system, BlinkMacSystemFont, 'PingFang SC', sans-serif" font-size="11">新对话</text>
+    <text x="46" y="254" fill="#71717A" font-family="Inter, -apple-system, BlinkMacSystemFont, 'PingFang SC', sans-serif" font-size="11">会话</text>
+    <text x="46" y="288" fill="#18181B" font-family="Inter, -apple-system, BlinkMacSystemFont, 'PingFang SC', sans-serif" font-size="11">融资 PPT</text>
+    <text x="46" y="354" fill="#71717A" font-family="Inter, -apple-system, BlinkMacSystemFont, 'PingFang SC', sans-serif" font-size="11">工作台</text>
+    <text x="46" y="386" fill="#A1A1AA" font-family="Inter, -apple-system, BlinkMacSystemFont, 'PingFang SC', sans-serif" font-size="10">暂无</text>
+
+    <rect x="110" y="118" width="154" height="640" fill="#FFFFFF"/>
+    <text x="132" y="154" fill="#71717A" font-family="Inter, -apple-system, BlinkMacSystemFont, 'PingFang SC', sans-serif" font-size="11">普通对话工作台</text>
+    <rect x="136" y="204" width="92" height="42" rx="9" fill="#F4F4F5"/>
+    <text x="150" y="230" fill="#18181B" font-family="Inter, -apple-system, BlinkMacSystemFont, 'PingFang SC', sans-serif" font-size="11">做融资 PPT</text>
+    <text x="132" y="318" fill="#18181B" font-family="Inter, -apple-system, BlinkMacSystemFont, 'PingFang SC', sans-serif" font-size="12" font-weight="650">Agent</text>
+    <text x="132" y="346" fill="#52525B" font-family="Inter, -apple-system, BlinkMacSystemFont, 'PingFang SC', sans-serif" font-size="11">我生成了大纲、</text>
+    <text x="132" y="368" fill="#52525B" font-family="Inter, -apple-system, BlinkMacSystemFont, 'PingFang SC', sans-serif" font-size="11">页面和讲稿。</text>
+    <rect x="128" y="602" width="112" height="56" rx="10" fill="#FFFFFF" stroke="#D4D4D8"/>
+    <text x="144" y="636" fill="#A1A1AA" font-family="Inter, -apple-system, BlinkMacSystemFont, 'PingFang SC', sans-serif" font-size="10">继续聊天</text>
+
+    <rect x="264" y="118" width="94" height="640" fill="#FBFBFA" stroke="#E4E4E7"/>
+    <text x="282" y="154" fill="#18181B" font-family="Inter, -apple-system, BlinkMacSystemFont, 'PingFang SC', sans-serif" font-size="12" font-weight="650">临时面板</text>
+    <rect x="282" y="200" width="58" height="70" rx="6" fill="#FFFFFF" stroke="#E4E4E7"/>
+    <text x="296" y="228" fill="#52525B" font-family="Inter, -apple-system, BlinkMacSystemFont, 'PingFang SC', sans-serif" font-size="10">大纲</text>
+    <rect x="282" y="290" width="58" height="92" rx="6" fill="#FFFFFF" stroke="#E4E4E7"/>
+    <text x="296" y="318" fill="#52525B" font-family="Inter, -apple-system, BlinkMacSystemFont, 'PingFang SC', sans-serif" font-size="10">页面</text>
+    <rect x="282" y="402" width="58" height="70" rx="6" fill="#FFFFFF" stroke="#E4E4E7"/>
+    <text x="296" y="430" fill="#52525B" font-family="Inter, -apple-system, BlinkMacSystemFont, 'PingFang SC', sans-serif" font-size="10">讲稿</text>
+
+    <rect x="28" y="790" width="330" height="54" rx="10" fill="#FAFAFA" stroke="#E4E4E7"/>
+    <text x="48" y="823" fill="#52525B" font-family="Inter, -apple-system, BlinkMacSystemFont, 'PingFang SC', sans-serif" font-size="13">此时还没有“PPT 工作台”，只有一次任务状态。</text>
+  </g>
+
+  <!-- Arrow 1 -->
+  <path d="M470 600H566" stroke="#A1A1AA" stroke-width="2"/>
+  <path d="M566 600L552 590V610L566 600Z" fill="#A1A1AA"/>
+  <text x="492" y="574" fill="#52525B" font-family="Inter, -apple-system, BlinkMacSystemFont, 'PingFang SC', sans-serif" font-size="14">保存 / 预览</text>
+
+  <!-- Preview -->
+  <g transform="translate(590 160)">
+    <rect x="0" y="0" width="386" height="880" rx="18" fill="#FFFFFF" stroke="#E4E4E7"/>
+    <text x="26" y="44" fill="#18181B" font-family="Inter, -apple-system, BlinkMacSystemFont, 'PingFang SC', sans-serif" font-size="20" font-weight="650">B. 预览状态</text>
+    <text x="26" y="76" fill="#71717A" font-family="Inter, -apple-system, BlinkMacSystemFont, 'PingFang SC', sans-serif" font-size="14">AI 提出：把这套任务沉淀成 PPT 工作台。</text>
+
+    <rect x="32" y="118" width="322" height="160" rx="12" fill="#FFFFFF" stroke="#D4D4D8"/>
+    <text x="56" y="154" fill="#18181B" font-family="Inter, -apple-system, BlinkMacSystemFont, 'PingFang SC', sans-serif" font-size="15" font-weight="650">工作台预览卡</text>
+    <text x="56" y="188" fill="#52525B" font-family="Inter, -apple-system, BlinkMacSystemFont, 'PingFang SC', sans-serif" font-size="13">名称：PPT 工作台</text>
+    <text x="56" y="216" fill="#52525B" font-family="Inter, -apple-system, BlinkMacSystemFont, 'PingFang SC', sans-serif" font-size="13">会保存：Prompt / 大纲 / 页面 / 讲稿 / 流程</text>
+    <rect x="56" y="238" width="58" height="26" rx="6" fill="#18181B"/>
+    <text x="74" y="256" fill="#FFFFFF" font-family="Inter, -apple-system, BlinkMacSystemFont, 'PingFang SC', sans-serif" font-size="11">应用</text>
+    <rect x="124" y="238" width="58" height="26" rx="6" fill="#FFFFFF" stroke="#D4D4D8"/>
+    <text x="142" y="256" fill="#52525B" font-family="Inter, -apple-system, BlinkMacSystemFont, 'PingFang SC', sans-serif" font-size="11">取消</text>
+
+    <rect x="32" y="322" width="322" height="346" rx="12" fill="#FBFBFA" stroke="#E4E4E7"/>
+    <text x="56" y="358" fill="#18181B" font-family="Inter, -apple-system, BlinkMacSystemFont, 'PingFang SC', sans-serif" font-size="14" font-weight="650">预览应用后会发生什么</text>
+    <line x1="56" y1="390" x2="328" y2="390" stroke="#E4E4E7"/>
+    <circle cx="66" cy="426" r="4" fill="#18181B"/>
+    <text x="84" y="432" fill="#52525B" font-family="Inter, -apple-system, BlinkMacSystemFont, 'PingFang SC', sans-serif" font-size="13">左侧工作台列表出现“PPT 工作台”</text>
+    <circle cx="66" cy="468" r="4" fill="#18181B"/>
+    <text x="84" y="474" fill="#52525B" font-family="Inter, -apple-system, BlinkMacSystemFont, 'PingFang SC', sans-serif" font-size="13">打开后仍然是 Chat，不是离开聊天</text>
+    <circle cx="66" cy="510" r="4" fill="#18181B"/>
+    <text x="84" y="516" fill="#52525B" font-family="Inter, -apple-system, BlinkMacSystemFont, 'PingFang SC', sans-serif" font-size="13">PPT 面板默认常驻，不再是临时面板</text>
+    <circle cx="66" cy="552" r="4" fill="#18181B"/>
+    <text x="84" y="558" fill="#52525B" font-family="Inter, -apple-system, BlinkMacSystemFont, 'PingFang SC', sans-serif" font-size="13">Agent 默认先按 PPT 流程工作</text>
+    <circle cx="66" cy="594" r="4" fill="#18181B"/>
+    <text x="84" y="600" fill="#52525B" font-family="Inter, -apple-system, BlinkMacSystemFont, 'PingFang SC', sans-serif" font-size="13">生成 v1，可继续进化或回滚</text>
+
+    <rect x="32" y="708" width="322" height="136" rx="10" fill="#FAFAFA" stroke="#E4E4E7"/>
+    <text x="56" y="740" fill="#18181B" font-family="Inter, -apple-system, BlinkMacSystemFont, 'PingFang SC', sans-serif" font-size="13" font-weight="650">本质</text>
+    <text x="56" y="770" fill="#52525B" font-family="Inter, -apple-system, BlinkMacSystemFont, 'PingFang SC', sans-serif" font-size="13">临时任务状态</text>
+    <text x="56" y="798" fill="#52525B" font-family="Inter, -apple-system, BlinkMacSystemFont, 'PingFang SC', sans-serif" font-size="13">变成可复用工作台配置 v1</text>
+  </g>
+
+  <!-- Arrow 2 -->
+  <path d="M988 600H1084" stroke="#A1A1AA" stroke-width="2"/>
+  <path d="M1084 600L1070 590V610L1084 600Z" fill="#A1A1AA"/>
+  <text x="1018" y="574" fill="#52525B" font-family="Inter, -apple-system, BlinkMacSystemFont, 'PingFang SC', sans-serif" font-size="14">应用</text>
+
+  <!-- Applied -->
+  <g transform="translate(1108 160)">
+    <rect x="0" y="0" width="620" height="880" rx="18" fill="#FFFFFF" stroke="#E4E4E7"/>
+    <text x="26" y="44" fill="#18181B" font-family="Inter, -apple-system, BlinkMacSystemFont, 'PingFang SC', sans-serif" font-size="20" font-weight="650">C. 应用后：PPT 工作台 v1</text>
+    <text x="26" y="76" fill="#71717A" font-family="Inter, -apple-system, BlinkMacSystemFont, 'PingFang SC', sans-serif" font-size="14">下次进入时，Agent 和界面都默认面向 PPT 任务。</text>
+
+    <rect x="30" y="118" width="560" height="640" rx="12" fill="#FFFFFF" stroke="#E4E4E7"/>
+    <rect x="30" y="118" width="118" height="640" fill="#FAFAFA"/>
+    <text x="52" y="154" fill="#18181B" font-family="Inter, -apple-system, BlinkMacSystemFont, 'PingFang SC', sans-serif" font-size="14" font-weight="650">Next AI</text>
+    <text x="52" y="202" fill="#52525B" font-family="Inter, -apple-system, BlinkMacSystemFont, 'PingFang SC', sans-serif" font-size="12">新对话</text>
+    <text x="52" y="258" fill="#52525B" font-family="Inter, -apple-system, BlinkMacSystemFont, 'PingFang SC', sans-serif" font-size="12">会话</text>
+    <text x="52" y="354" fill="#52525B" font-family="Inter, -apple-system, BlinkMacSystemFont, 'PingFang SC', sans-serif" font-size="12">工作台</text>
+    <rect x="46" y="378" width="84" height="30" rx="7" fill="#18181B"/>
+    <text x="58" y="398" fill="#FFFFFF" font-family="Inter, -apple-system, BlinkMacSystemFont, 'PingFang SC', sans-serif" font-size="11">PPT 工作台</text>
+
+    <rect x="148" y="118" width="272" height="640" fill="#FFFFFF"/>
+    <text x="178" y="154" fill="#18181B" font-family="Inter, -apple-system, BlinkMacSystemFont, 'PingFang SC', sans-serif" font-size="14" font-weight="650">PPT 工作台</text>
+    <text x="178" y="180" fill="#71717A" font-family="Inter, -apple-system, BlinkMacSystemFont, 'PingFang SC', sans-serif" font-size="11">v1 · 默认 PPT 流程已启用</text>
+
+    <rect x="178" y="220" width="194" height="96" rx="10" fill="#FAFAFA" stroke="#E4E4E7"/>
+    <text x="198" y="252" fill="#18181B" font-family="Inter, -apple-system, BlinkMacSystemFont, 'PingFang SC', sans-serif" font-size="13" font-weight="650">Agent 开场不一样</text>
+    <text x="198" y="280" fill="#52525B" font-family="Inter, -apple-system, BlinkMacSystemFont, 'PingFang SC', sans-serif" font-size="12">我会先问主题、受众、页数、</text>
+    <text x="198" y="302" fill="#52525B" font-family="Inter, -apple-system, BlinkMacSystemFont, 'PingFang SC', sans-serif" font-size="12">演讲时长和材料。</text>
+
+    <rect x="178" y="364" width="194" height="112" rx="10" fill="#FFFFFF" stroke="#E4E4E7"/>
+    <text x="198" y="396" fill="#18181B" font-family="Inter, -apple-system, BlinkMacSystemFont, 'PingFang SC', sans-serif" font-size="13" font-weight="650">Chat 仍然是核心</text>
+    <text x="198" y="424" fill="#52525B" font-family="Inter, -apple-system, BlinkMacSystemFont, 'PingFang SC', sans-serif" font-size="12">用户还是直接说：</text>
+    <text x="198" y="450" fill="#52525B" font-family="Inter, -apple-system, BlinkMacSystemFont, 'PingFang SC', sans-serif" font-size="12">“第 3 页更有冲击力”</text>
+
+    <rect x="178" y="604" width="194" height="66" rx="10" fill="#FFFFFF" stroke="#D4D4D8"/>
+    <text x="198" y="644" fill="#A1A1AA" font-family="Inter, -apple-system, BlinkMacSystemFont, 'PingFang SC', sans-serif" font-size="12">继续让 Agent 做 PPT</text>
+
+    <rect x="420" y="118" width="170" height="640" fill="#FBFBFA" stroke="#E4E4E7"/>
+    <text x="446" y="154" fill="#18181B" font-family="Inter, -apple-system, BlinkMacSystemFont, 'PingFang SC', sans-serif" font-size="13" font-weight="650">PPT 面板常驻</text>
+    <rect x="444" y="196" width="122" height="88" rx="8" fill="#FFFFFF" stroke="#E4E4E7"/>
+    <text x="466" y="226" fill="#52525B" font-family="Inter, -apple-system, BlinkMacSystemFont, 'PingFang SC', sans-serif" font-size="12" font-weight="600">输入项</text>
+    <text x="466" y="252" fill="#71717A" font-family="Inter, -apple-system, BlinkMacSystemFont, 'PingFang SC', sans-serif" font-size="11">主题 / 受众 / 页数</text>
+    <rect x="444" y="306" width="122" height="96" rx="8" fill="#FFFFFF" stroke="#E4E4E7"/>
+    <text x="466" y="336" fill="#52525B" font-family="Inter, -apple-system, BlinkMacSystemFont, 'PingFang SC', sans-serif" font-size="12" font-weight="600">大纲</text>
+    <line x1="466" y1="358" x2="538" y2="358" stroke="#D4D4D8"/>
+    <line x1="466" y1="378" x2="526" y2="378" stroke="#D4D4D8"/>
+    <rect x="444" y="424" width="122" height="116" rx="8" fill="#FFFFFF" stroke="#E4E4E7"/>
+    <text x="466" y="454" fill="#52525B" font-family="Inter, -apple-system, BlinkMacSystemFont, 'PingFang SC', sans-serif" font-size="12" font-weight="600">页面</text>
+    <rect x="466" y="474" width="72" height="20" rx="4" fill="#F4F4F5"/>
+    <rect x="466" y="504" width="72" height="20" rx="4" fill="#F4F4F5"/>
+    <rect x="444" y="562" width="122" height="84" rx="8" fill="#FFFFFF" stroke="#E4E4E7"/>
+    <text x="466" y="592" fill="#52525B" font-family="Inter, -apple-system, BlinkMacSystemFont, 'PingFang SC', sans-serif" font-size="12" font-weight="600">讲稿</text>
+
+    <rect x="30" y="790" width="560" height="54" rx="10" fill="#FAFAFA" stroke="#E4E4E7"/>
+    <text x="54" y="823" fill="#52525B" font-family="Inter, -apple-system, BlinkMacSystemFont, 'PingFang SC', sans-serif" font-size="13">应用后：左侧多了入口；中央仍是 Chat；右侧任务面板从“临时”变成“默认常驻”。</text>
+  </g>
+
+  <g transform="translate(72 1100)">
+    <text x="0" y="0" fill="#18181B" font-family="Inter, -apple-system, BlinkMacSystemFont, 'PingFang SC', sans-serif" font-size="18" font-weight="650">一句话：</text>
+    <text x="82" y="0" fill="#52525B" font-family="Inter, -apple-system, BlinkMacSystemFont, 'PingFang SC', sans-serif" font-size="18">应用 = 把这次任务里的临时界面和 Agent 工作方式保存成一个可复用版本；下次打开它，Chat 还在，但默认更懂这个任务。</text>
+  </g>
+</svg>

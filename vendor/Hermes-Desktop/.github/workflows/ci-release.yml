@@ -1,0 +1,221 @@
+# Portable-zip release pipeline
+# ─────────────────────────────
+# Triggers on version tags (v*).  Builds the portable zip on a Windows runner,
+# then creates (or updates) a GitHub Release with the zip attached.
+#
+# HOW TO CUT A RELEASE
+# ────────────────────
+#   1.  Merge your changes to main.
+#   2.  Tag the merge commit and push the tag:
+#         git tag -a v2.4.0 -m "v2.4.0 — short description"
+#         git push origin v2.4.0
+#   3.  This workflow runs automatically.  When it finishes (~5 min):
+#       • A GitHub Release named "v2.4.0" exists with auto-generated notes.
+#       • HermesDesktop-portable-x64.zip is attached as a release asset.
+#       • The README "Download" link (pointing at /releases/latest) resolves
+#         to the new release.
+#   4.  (Optional) Edit the release on GitHub to polish the description.
+#
+# WHAT IF THE BUILD FAILS?
+#   • The release is NOT created — nothing is published to users.
+#   • Fix the issue on main, delete the broken tag, re-tag, and push:
+#       git tag -d v2.4.0
+#       git push origin :refs/tags/v2.4.0
+#       git tag -a v2.4.0 -m "v2.4.0 — short description"
+#       git push origin v2.4.0
+#
+# MANUAL RELEASE (without this workflow)
+#   On your Windows machine:
+#     powershell -ExecutionPolicy Bypass -File .\scripts\publish-portable.ps1 -Zip
+#   Then upload Desktop\HermesDesktop\bin\HermesDesktop-portable-x64.zip
+#   to the GitHub Release page manually.
+
+name: Release — Portable Zip
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to create (e.g. v2.5.5). Must match HermesDesktop.csproj <Version>.'
+        required: true
+        type: string
+
+permissions:
+  contents: write          # needed to create releases, upload assets, and push the tag on workflow_dispatch
+
+jobs:
+  build-and-release:
+    runs-on: windows-latest
+    steps:
+      - name: Resolve release tag
+        id: resolve_tag
+        shell: pwsh
+        run: |
+          if ($env:GITHUB_EVENT_NAME -eq "workflow_dispatch") {
+            $tag = "${{ inputs.tag }}".Trim()
+          } else {
+            $tag = "${{ github.ref_name }}".Trim()
+          }
+          if (-not $tag.StartsWith("v")) {
+            throw "Refusing to release: tag '$tag' must start with 'v' (e.g. v2.5.5)."
+          }
+          "tag=$tag" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          Write-Host "Releasing as tag: $tag"
+
+      - name: Checkout main (workflow_dispatch)
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Checkout tagged commit (push)
+        if: github.event_name == 'push'
+        uses: actions/checkout@v4
+
+      - name: Create and push tag (workflow_dispatch)
+        if: github.event_name == 'workflow_dispatch'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $tag = "${{ steps.resolve_tag.outputs.tag }}"
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # Fail loudly if the tag already exists — we don't want to retag silently.
+          if (git rev-parse --verify --quiet "refs/tags/$tag") {
+            throw "Tag $tag already exists. Bump the version or delete the existing tag first."
+          }
+          git tag -a $tag -m "$tag — released via workflow_dispatch"
+          git push origin $tag
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Prepare isolated smoke environment
+        shell: pwsh
+        run: |
+          $smokeHome = Join-Path $env:RUNNER_TEMP "hermes-smoke-home"
+          if (Test-Path $smokeHome) {
+            Remove-Item -Path $smokeHome -Recurse -Force
+          }
+          New-Item -ItemType Directory -Path $smokeHome | Out-Null
+
+          $startupLog = Join-Path $smokeHome "hermes-cs\logs\desktop-startup.log"
+          $probeReport = Join-Path $env:RUNNER_TEMP "hermes-release-smoke-probe-report.txt"
+
+          "HERMES_HOME=$smokeHome" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "HERMES_SMOKE_STARTUP_LOG=$startupLog" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "HERMES_SMOKE_PROBE_REPORT=$probeReport" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Build + publish portable zip
+        shell: pwsh
+        run: |
+          .\scripts\publish-portable.ps1 -Zip
+
+      - name: Build smoke probe helper
+        shell: pwsh
+        run: dotnet build .\tools\Hermes.SmokeProbe\Hermes.SmokeProbe.csproj -c Release
+
+      - name: Launch and probe Hermes portable startup
+        shell: pwsh
+        run: |
+          $portableExe = Join-Path $PWD "Desktop\HermesDesktop\bin\publish-portable\HermesDesktop.exe"
+          if (-not (Test-Path $portableExe)) {
+            throw "Portable executable missing at $portableExe"
+          }
+
+          dotnet run --project .\tools\Hermes.SmokeProbe\Hermes.SmokeProbe.csproj -c Release -- `
+            --exe "$portableExe" `
+            --startup-log "$env:HERMES_SMOKE_STARTUP_LOG" `
+            --report-path "$env:HERMES_SMOKE_PROBE_REPORT" `
+            --startup-timeout-seconds 90 `
+            --settle-seconds 8 `
+            --fatal-pattern "Fatal startup error" `
+            --fatal-pattern "constructor failed" `
+            --fatal-pattern "Cannot create instance of type ReplayPanel" `
+            --fatal-pattern "XamlParseException"
+
+      - name: Upload release smoke diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-portable-smoke-${{ github.run_id }}
+          if-no-files-found: warn
+          path: |
+            ${{ env.HERMES_SMOKE_PROBE_REPORT }}
+            ${{ env.HERMES_SMOKE_STARTUP_LOG }}
+            Desktop/HermesDesktop/bin/HermesDesktop-portable-x64.zip
+
+      - name: Create GitHub Release with zip attached
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.resolve_tag.outputs.tag }}
+          name: ${{ steps.resolve_tag.outputs.tag }}
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          files: |
+            Desktop/HermesDesktop/bin/HermesDesktop-portable-x64.zip
+            Desktop/HermesDesktop/bin/HermesDesktop-portable-x64.zip.sha256
+
+  # ────────────────────────────────────────────────────────────────────────
+  # Winget manifest generation
+  # ────────────────────────────────────────────────────────────────────────
+  # Produces the three-YAML manifest trio under dist/winget/manifests/v/... and
+  # uploads it as a build artifact. Operators download the artifact and open the
+  # PR against microsoft/winget-pkgs manually — see docs/winget-submission.md.
+  # The manifests are NOT attached to the GitHub Release itself; they are an
+  # operator artifact, not a user download.
+  generate_winget:
+    needs: build-and-release
+    runs-on: windows-latest
+    steps:
+      - name: Checkout tagged commit
+        uses: actions/checkout@v4
+
+      - name: Resolve version from tag
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $version = $tag.TrimStart('v', 'V')
+          "HERMES_RELEASE_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "HERMES_RELEASE_TAG=$tag" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Download published portable zip from this release
+        shell: pwsh
+        run: |
+          $zipUrl = "https://github.com/${{ github.repository }}/releases/download/${{ env.HERMES_RELEASE_TAG }}/HermesDesktop-portable-x64.zip"
+          $shaUrl = "$zipUrl.sha256"
+          $zipPath = Join-Path $env:RUNNER_TEMP "HermesDesktop-portable-x64.zip"
+          $shaPath = "$zipPath.sha256"
+          Invoke-WebRequest -Uri $zipUrl -OutFile $zipPath
+          Invoke-WebRequest -Uri $shaUrl -OutFile $shaPath
+          "HERMES_RELEASE_ZIP=$zipPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Generate Winget manifests
+        shell: pwsh
+        run: |
+          $zip = $env:HERMES_RELEASE_ZIP
+          $version = $env:HERMES_RELEASE_VERSION
+          $tag = $env:HERMES_RELEASE_TAG
+          $installerUrl  = "https://github.com/${{ github.repository }}/releases/download/$tag/HermesDesktop-portable-x64.zip"
+          $releaseNotes  = "https://github.com/${{ github.repository }}/releases/tag/$tag"
+
+          .\scripts\Generate-WingetManifests.ps1 `
+            -Version $version `
+            -InstallerUrl $installerUrl `
+            -InstallerPath $zip `
+            -ReleaseNotesUrl $releaseNotes
+
+      - name: Upload Winget manifest artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: winget-manifests-${{ env.HERMES_RELEASE_VERSION }}
+          if-no-files-found: error
+          path: dist/winget/**/*.yaml
