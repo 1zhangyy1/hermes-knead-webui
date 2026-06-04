@@ -1,99 +1,75 @@
 # Next AI Chat
 
-Next AI Chat is an AI product workspace built on top of Hermes WebUI. The product idea is simple: users do not manage workspaces first. They choose an AI product, start from chat, and the product can grow a task-specific workspace only when the task needs more structure.
+Next AI Chat is an AI product library. Users choose or create an AI product, start from chat, and let that product grow the task interface only when the work needs more structure.
 
-## Product Logic
+The current MVP centers on two built-in AI products:
 
-An AI product is the primary object in the UI. It owns:
+- `通用 AI`: a `chat_only` product. Its own product UI is the base chat surface.
+- `PPT 设计师`: a workspace product. It can grow a PPT task surface with outline, pages, notes, style, and generation state.
 
-- a role, such as general assistant or PPT designer
-- its own product identity, prompt, avatar, skills, and tools
-- a dedicated product workspace directory
-- task history and product-specific sessions
-- an optional task interface that can evolve over time
+## Product Boundary
 
-The default AI product is `通用 AI`. Its interface is the chat interface itself. It is not missing a workspace UI; it is a `chat_only` product whose UI is ready as soon as chat is ready.
+An AI product owns its role, prompt, avatar, skills, tools, task history, and product workspace. When a user asks a product to change itself, the change belongs to that product, not the global shell.
 
-Structured products, such as `PPT 设计师`, use the same chat core plus an additional workspace surface. For PPT work, the product can expose outline, page, notes, and style areas beside the conversation.
+This is the key product idea: Next AI is stronger than an assistant list because every AI object can become a small AI product with its own evolving interface.
 
-## Core Principle
+## Repository Shape
 
-Every selected AI object should be product-backed. When the user asks the current product to change itself, such as changing its avatar, adding a skill, or adjusting its task flow, the change belongs to that product's own workspace and manifest. It must not mutate the global shell by accident.
+```text
+apps/webui/        Main production WebUI application
+products/          Built-in AI product workspaces and generated product UI
+packages/          Shared TypeScript packages
+scripts/           Local development and verification scripts
+docs/              Product, architecture, and historical design notes
+experiments/       Old prototypes and non-production exploration
+vendor/            Local reference checkouts, ignored by Git
+```
 
-## MVP Flow
-
-1. Select an AI product from the left product list.
-2. Start a new task from the center chat surface.
-3. Keep chat as the command surface.
-4. If the task benefits from structure, the AI product opens or updates its own workspace UI.
-5. If the user asks to improve the product, the AI can update the product configuration or generate a preview of a better task interface.
-
-## Current Built-in Products
-
-- `通用 AI`
-  - `product_id`: `general`
-  - `ui_mode`: `chat_only`
-  - `ui_status`: `ready`
-  - workspace: `spaces/products/general`
-- `PPT 设计师`
-  - `product_id`: `ppt-designer`
-  - `ui_mode`: `workspace`
-  - workspace: `spaces/products/ppt-designer`
-
-## Important Paths
-
-- `PRODUCT.md`: product definition and design principles
-- `PRODUCT_UIUX.md`: current UI/UX model
-- `vendor/hermes-webui/api/products.py`: AI product registry, product manifests, preview status, version helpers
-- `vendor/hermes-webui/api/product_context.py`: request-to-product intent and workspace routing
-- `vendor/hermes-webui/api/routes.py`: session creation and product binding
-- `vendor/hermes-webui/static/product-store.js`: frontend product hydration
-- `vendor/hermes-webui/static/product-runtime.js`: product context injection for sessions and messages
-- `vendor/hermes-webui/static/product-shell-runtime.js`: AI product library and selected-product home UI
-- `spaces/products/*`: product-owned workspaces and generated product UI files
+Production code should live in `apps/`, `products/`, `packages/`, `scripts/`, and current docs. Reference projects can stay locally under `vendor/`, but they are not part of the production repository.
 
 ## Run
 
-The active WebUI target is:
-
 ```bash
-cd vendor/hermes-webui
-HERMES_WEBUI_HOST=127.0.0.1 HERMES_WEBUI_PORT=8788 /Users/nuomiji/.hermes/hermes-agent/venv/bin/python server.py
-```
-
-Then open:
-
-```text
-http://localhost:8788
-```
-
-For the Vite host shell prototype:
-
-```bash
-pnpm install
 pnpm dev
 ```
 
-## Verification
+The dev script starts `apps/webui` on `http://localhost:8788` by default.
 
-Useful smoke checks:
+Useful environment overrides:
 
 ```bash
-python3 -m py_compile vendor/hermes-webui/api/products.py vendor/hermes-webui/api/product_context.py vendor/hermes-webui/api/routes.py vendor/hermes-webui/api/updates.py
-node --check vendor/hermes-webui/static/product-runtime.js
-node --check vendor/hermes-webui/static/product-store.js
-node --check vendor/hermes-webui/static/product-shell-runtime.js
-node --check vendor/hermes-webui/static/workspace.js
-curl --noproxy '*' -s http://127.0.0.1:8788/api/products
+HERMES_WEBUI_PORT=8789 pnpm dev
+NEXT_AI_PROJECT_ROOT=/path/to/nextaichat pnpm dev
+NEXT_AI_PRODUCTS_DIR=/path/to/products pnpm dev
 ```
 
-Expected product semantics:
+## Verify
 
-- `general` should be `chat_only` and `ready`
-- normal general chat should route to `product_usage`
-- requests like changing avatar, identity, tools, or skills should route to `product_builder`
-- `ppt-designer` should remain a `workspace` product
+```bash
+pnpm check
+```
 
-## Reference Vendors
+This runs TypeScript checks for shared packages and syntax checks for the WebUI product runtime files.
 
-The `vendor/` directory contains local source snapshots and reference projects used during product research and implementation. When exporting to a parent git repository, exclude nested `.git` folders so the private repo stores source files rather than broken submodule references.
+For just the WebUI/product checks:
+
+```bash
+pnpm verify
+```
+
+## Current Product Docs
+
+- [PRODUCT.md](PRODUCT.md): product definition and design principles
+- [PRODUCT_UIUX.md](PRODUCT_UIUX.md): current UI/UX model
+- [docs/architecture/PRODUCTION_REPOSITORY_PLAN.md](docs/architecture/PRODUCTION_REPOSITORY_PLAN.md): production repository plan
+- [docs/references/REFERENCE_PROJECTS.md](docs/references/REFERENCE_PROJECTS.md): reference projects and what we learned from them
+
+## MVP Acceptance
+
+The MVP is healthy when:
+
+1. A user can select an AI product and start from chat.
+2. `通用 AI` behaves as a complete chat product, not an empty workspace.
+3. `PPT 设计师` can open a PPT task surface when structure becomes useful.
+4. A product can update its own identity, skills, tools, and product workspace without mutating the global shell.
+5. Product interface evolution is previewable, applicable, and recoverable.

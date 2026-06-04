@@ -1,12 +1,14 @@
 {
-  "name": "ai-space-platform",
+  "name": "nextaichat",
   "version": "0.1.0",
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "pnpm --filter @ai-space/host-shell dev",
+    "dev": "scripts/dev-webui.sh",
+    "webui:dev": "scripts/dev-webui.sh",
+    "verify": "node scripts/verify.mjs",
     "build": "pnpm -r build",
-    "check": "pnpm -r check",
+    "check": "pnpm -r check && pnpm verify",
     "hermes-ui": "HERMES_HOME=$PWD/.hermes-home HERMES_AGENT_DIR=$PWD/vendor/hermes-agent $PWD/vendor/hermes-agent/.venv/bin/python vendor/hermes-ui/serve_lite.py --port 3333",
     "hermes:smoke": "node scripts/hermes-smoke.mjs"
   },

@@ -10,23 +10,30 @@ build/
 .turbo/
 .next/
 .vite/
+.pytest_cache/
+.mypy_cache/
+__pycache__/
+*.py[cod]
 *.log
 *.pid
 *.tsbuildinfo
 
-# Local research/runtime installs
-vendor/**/.venv/
-vendor/**/node_modules/
-vendor/**/dist/
-vendor/**/build/
-vendor/**/.next/
-vendor/**/.vite/
+# Local reference checkouts. Production source lives in apps/, packages/,
+# products/, docs/, and scripts/.
+vendor/
 
-# Vendored repositories are exported as source snapshots for the private repo.
-# Keep their nested git metadata out of any parent repository.
-vendor/**/.git/
-vendor/**/.gitignore~
+# Local dependency/runtime output inside production app and experiments.
+apps/**/.venv/
+apps/**/node_modules/
+apps/**/.pytest_cache/
+apps/**/__pycache__/
+experiments/**/node_modules/
+experiments/**/dist/
+experiments/**/.vite/
+experiments/**/.next/
+experiments/**/build/
 
-# Generated local build outputs
+# Generated local build/runtime outputs
 apps/**/dist/
-spaces/generated/
+products/**/versions/
+experiments/generated/
