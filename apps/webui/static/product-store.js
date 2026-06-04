@@ -1,18 +1,18 @@
 const NEXT_AI_PRODUCT_SKILL_OPTIONS = [
-  { id: 'presentations', label: 'PPT / Slides', desc: '生成和修改演示文稿' },
-  { id: 'office', label: 'Office', desc: '处理 PPTX、文档和导出' },
+  { id: 'presentations', label: '演示文稿', desc: '生成和修改 PPT' },
+  { id: 'office', label: '文档处理', desc: '处理 PPTX、文档和导出' },
   { id: 'imagegen', label: '图片生成', desc: '生成或编辑图片' },
   { id: 'browser', label: '网页研究', desc: '浏览网页和收集资料' },
   { id: 'spreadsheets', label: '表格数据', desc: '分析表格和数据' }
 ];
 const NEXT_AI_PRODUCT_TOOL_OPTIONS = [
-  { id: 'skills', label: 'Skills', desc: '使用已安装技能' },
-  { id: 'file', label: 'File', desc: '读取和修改产品文件' },
-  { id: 'terminal', label: 'Terminal', desc: '执行本地命令' },
-  { id: 'code_execution', label: 'Code', desc: '运行代码和脚本' },
-  { id: 'browser', label: 'Browser', desc: '浏览网页' },
-  { id: 'web', label: 'Web', desc: '网页搜索' },
-  { id: 'image_gen', label: 'Image', desc: '生成或编辑图片' }
+  { id: 'skills', label: '技能', desc: '使用已安装的专业能力' },
+  { id: 'file', label: '文件', desc: '读取和修改产品文件' },
+  { id: 'terminal', label: '命令', desc: '执行本地命令' },
+  { id: 'code_execution', label: '代码', desc: '运行代码和脚本' },
+  { id: 'browser', label: '浏览', desc: '打开网页并收集资料' },
+  { id: 'web', label: '搜索', desc: '搜索公开网页' },
+  { id: 'image_gen', label: '生图', desc: '生成或编辑图片' }
 ];
 const NEXT_AI_PRODUCT_TOOLSET_ALIASES = {
   officecli: ['skills', 'file', 'terminal', 'code_execution'],
@@ -96,7 +96,7 @@ function _productToCustomAssistant(product) {
     kind: product.kind || `custom-${product.id}`,
     title,
     avatar: product.avatar || '',
-    desc: product.desc || '按照你描述的职责处理任务，需要时生成自己的产品界面。',
+    desc: product.desc || '按照你描述的职责处理任务，需要时生成自己的任务界面。',
     placeholder: product.placeholder || starterKit.placeholder,
     suggestions: Array.isArray(product.suggestions) && product.suggestions.length ? product.suggestions : starterKit.suggestions,
     sourcePrompt,
@@ -361,13 +361,13 @@ function openCurrentProductCapabilities() {
   const desc = $('productCapabilitiesDesc');
   const extraSkills = $('productCapabilitiesExtraSkills');
   const extraTools = $('productCapabilitiesExtraTools');
-  if (title) title.textContent = `${object.title || 'AI 产品'} · 产品能力`;
-  if (desc) desc.textContent = '这些能力会写入当前 AI 产品，并在下一次对话时作为运行工具交给 Agent。';
+  if (title) title.textContent = object.title || 'AI 产品';
+  if (desc) desc.textContent = '给当前产品补充长期偏好和可用工具。保存后，之后的任务会按这些能力处理。';
   _renderProductCapabilityOptions('productCapabilitiesSkills', NEXT_AI_PRODUCT_SKILL_OPTIONS, skills, 'skills');
   _renderProductCapabilityOptions('productCapabilitiesTools', NEXT_AI_PRODUCT_TOOL_OPTIONS, tools, 'tools');
   if (extraSkills) extraSkills.value = _unknownCapabilityItems(skills, NEXT_AI_PRODUCT_SKILL_OPTIONS).join(', ');
   if (extraTools) extraTools.value = _unknownCapabilityItems(tools, NEXT_AI_PRODUCT_TOOL_OPTIONS).join(', ');
-  _setProductCapabilitiesStatus('保存后，当前产品的 manifest 和 Agent prompt 会同步更新。');
+  _setProductCapabilitiesStatus('保存后，当前产品会在后续任务里使用这些设置。');
   const overlay = $('productCapabilitiesOverlay');
   if (overlay) {
     overlay.hidden = false;
@@ -399,7 +399,7 @@ async function saveCurrentProductCapabilities() {
   const skills = _collectProductCapabilitySelection('skills', 'productCapabilitiesExtraSkills');
   const tools = _assistantNormalizeToolsets(_collectProductCapabilitySelection('tools', 'productCapabilitiesExtraTools'));
   if (saveBtn) saveBtn.disabled = true;
-  _setProductCapabilitiesStatus('正在保存产品能力...');
+  _setProductCapabilitiesStatus('正在保存能力与工具...');
   try {
     const data = await api('/api/products/update', {
       method: 'POST',
@@ -421,8 +421,8 @@ async function saveCurrentProductCapabilities() {
       object.skills = skills;
       object.tools = tools;
     }
-    _setProductCapabilitiesStatus('已保存。下一次对话会使用新的运行工具。', 'success');
-    if (typeof showToast === 'function') showToast('产品能力已保存');
+    _setProductCapabilitiesStatus('已保存。之后的任务会使用新的能力与工具。', 'success');
+    if (typeof showToast === 'function') showToast('能力与工具已保存');
     setTimeout(closeCurrentProductCapabilities, 360);
   } catch (err) {
     _setProductCapabilitiesStatus(`保存失败：${err && err.message || err}`, 'error');

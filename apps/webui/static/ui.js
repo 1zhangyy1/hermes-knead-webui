@@ -1087,7 +1087,7 @@ function syncModelChip(){
   if(!S._bootReady){
     label.textContent='';
     if(mobileLabel) mobileLabel.textContent='';
-    chip.title='Conversation model';
+    chip.title='模型';
     return;
   }
   const opt=_selectedModelOption();
@@ -1096,7 +1096,7 @@ function syncModelChip(){
   const displayText=_formatGatewayModelLabel(sel.value||'',text,gatewayRouting)||text;
   label.textContent=displayText;
   if(mobileLabel) mobileLabel.textContent=displayText;
-  chip.title=gatewayRouting?`${sel.value||'Conversation model'} ${_gatewayRoutingLabel(gatewayRouting)}`:(sel.value||'Conversation model');
+  chip.title=gatewayRouting?`${sel.value||'模型'} ${_gatewayRoutingLabel(gatewayRouting)}`:(sel.value||'模型');
   chip.classList.toggle('active',!!(dd&&dd.classList.contains('open')));
   if(mobileAction) mobileAction.classList.toggle('active',!!(dd&&dd.classList.contains('open')));
 }
@@ -1406,9 +1406,9 @@ function _normalizeReasoningEffort(eff){
 }
 
 function _formatReasoningEffortLabel(effort){
-  if(effort==='none') return 'None';
-  if(!effort) return 'Default';
-  return effort;
+  const labels={none:'关闭',minimal:'极简',low:'低',medium:'中',high:'高',xhigh:'极高'};
+  if(!effort) return '默认';
+  return labels[effort]||effort;
 }
 
 function _applyReasoningChip(eff){
@@ -1428,7 +1428,7 @@ function _applyReasoningChip(eff){
   if(chip){
     const inactive=!effort||effort==='none';
     chip.classList.toggle('inactive',inactive);
-    chip.title='Reasoning effort: '+text;
+    chip.title='思考强度：'+text;
   }
   if(mobileAction) mobileAction.classList.toggle('inactive',!effort||effort==='none');
   _highlightReasoningOption(effort);
@@ -1509,9 +1509,9 @@ document.addEventListener('click',function(e){
       api('/api/reasoning',{method:'POST',body:JSON.stringify({effort:effort})})
         .then(function(st){
           _applyReasoningChip((st&&st.reasoning_effort)||effort);
-          showToast('🧠 Reasoning effort set to '+((st&&st.reasoning_effort)||effort));
+          showToast('思考强度已设为 '+_formatReasoningEffortLabel((st&&st.reasoning_effort)||effort));
         })
-        .catch(function(){showToast('🧠 Failed to set effort');});
+        .catch(function(){showToast('设置思考强度失败');});
       closeReasoningDropdown();
     }
   }
@@ -1925,7 +1925,7 @@ function _updateActiveActivityElapsedTimer(){
     group.removeAttribute('data-active-turn-elapsed');
   }
   if(durationEl){
-    durationEl.textContent=label?`Working ${label}`:'';
+    durationEl.textContent=label?_activityWorkingLabel(label):'';
     durationEl.style.display=label?'':'none';
   }
 }
@@ -1950,7 +1950,7 @@ function _clearActivityElapsedTimer(){
   _activityElapsedTimerGroup=null;
 }
 
-const _MOBILE_CONFIG_BASE_LABEL='Workspace, model, reasoning, and context settings';
+const _MOBILE_CONFIG_BASE_LABEL='任务设置';
 
 function _setCtxCompressButton(btn,text){
   if(!btn)return;
@@ -2084,7 +2084,7 @@ function _syncCtxIndicator(usage){
   const cacheTotalTok=cacheReadTok+cacheWriteTok;
   const cacheHitPct=cacheTotalTok?Math.round((cacheReadTok/cacheTotalTok)*100):null;
   const cacheText=cacheTotalTok?`cache: ${cacheHitPct}% hit (${_fmtTokens(cacheReadTok)} read / ${_fmtTokens(cacheWriteTok)} write)`:'';
-  let label=hasPromptTok?`Context window ${pct}% used`:`${_fmtTokens(totalTok)} tokens used`;
+  let label=hasPromptTok?`上下文已用 ${pct}%`:`已用 ${_fmtTokens(totalTok)} tokens`;
   if(!hasExplicitCtx&&hasPromptTok) label+=' (est. 128K)';
   if(cost) label+=` \u00b7 $${cost<0.01?cost.toFixed(4):cost.toFixed(2)}`;
   if(cacheText) label+=` \u00b7 ${cacheText}`;
@@ -3032,12 +3032,12 @@ function updateSendBtn(){
   if(action==='disabled'){
     const _dmsg=$('msg');
     const _dcompr=typeof isCompressionUiRunning==='function'&&isCompressionUiRunning();
-    if(_dmsg&&_dmsg.disabled) _btnTitle=_tt('composer_disabled_clarify','Respond to the clarification request');
-    else if(_dcompr) _btnTitle=_tt('composer_disabled_compression','Waiting for compression to finish');
-    else _btnTitle=_tt('composer_disabled_empty','Type a message to send');
+    if(_dmsg&&_dmsg.disabled) _btnTitle=_tt('composer_disabled_clarify','先回复确认问题');
+    else if(_dcompr) _btnTitle=_tt('composer_disabled_compression','正在整理上下文');
+    else _btnTitle=_tt('composer_disabled_empty','输入消息后发送');
   }else{
-    const _tmap={send:'Send message',queue:'Queue message',interrupt:'Interrupt and send',steer:'Steer current response',stop:'Stop generation'};
-    _btnTitle=_tt('composer_'+action,_tmap[action]||'Send message');
+    const _tmap={send:'发送消息',queue:'排队发送',interrupt:'打断并发送',steer:'补充当前回复',stop:'停止生成'};
+    _btnTitle=_tt('composer_'+action,_tmap[action]||'发送消息');
   }
   btn.title=_btnTitle;
   btn.setAttribute('aria-label',_btnTitle);
@@ -3857,7 +3857,7 @@ function clearInflight() {
   localStorage.removeItem(INFLIGHT_KEY);
 }
 function showReconnectBanner(msg) {
-  $('reconnectMsg').textContent = msg || 'A response may have been in progress when you last left.';
+  $('reconnectMsg').textContent = msg || '你离开时可能还有回复在生成。';
   $('reconnectBanner').classList.add('visible');
 }
 function dismissReconnect() {
@@ -3957,7 +3957,7 @@ document.addEventListener('visibilitychange',_syncSystemHealthMonitorVisibility)
 if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',startSystemHealthMonitor);
 else startSystemHealthMonitor();
 
-// ── Hermes agent/gateway heartbeat alert (#716) ──
+// ── Agent/gateway heartbeat alert (#716) ──
 const AGENT_HEALTH_INTERVAL_MS=30000;
 const AGENT_HEALTH_DISMISSED_KEY='agent-health-dismissed';
 let _agentHealthTimer=null;
@@ -3982,9 +3982,9 @@ function _showAgentHealthAlert(payload){
   const title=$('agentHealthTitle');
   const details=$('agentHealthDetails');
   if(!banner) return;
-  if(title) title.textContent='Hermes agent is not responding';
-  const state=payload&&payload.details&&payload.details.gateway_state?` State: ${payload.details.gateway_state}.`:'';
-  if(details) details.textContent=`Gateway heartbeat failed.${state} Messages may not be delivered until it comes back.`;
+  if(title) title.textContent='Agent 暂时没有响应';
+  const state=payload&&payload.details&&payload.details.gateway_state?` 当前状态：${payload.details.gateway_state}。`:'';
+  if(details) details.textContent=`消息可能暂时无法送达，恢复后可以继续。${state}`;
   banner.hidden=false;
   banner.classList.add('visible');
 }
@@ -4048,8 +4048,8 @@ async function refreshSession() {
     S.activeStreamId=data.session.active_stream_id||null;
 
     syncTopbar(); renderMessages();
-    showToast('Conversation refreshed');
-  } catch(e) { setStatus('Refresh failed: ' + e.message); }
+    showToast('任务已刷新');
+  } catch(e) { setStatus('刷新失败：' + e.message); }
 }
 // ── Update banner ──
 function _formatUpdateTargetStatus(label,info){
@@ -4082,7 +4082,7 @@ function _updateCompareUrl(info){
 }
 function _updateWhatsNewTargets(data){
   const targets=[
-    {key:'webui',label:'WebUI',info:data&&data.webui},
+    {key:'webui',label:'前端',info:data&&data.webui},
     {key:'agent',label:'Agent',info:data&&data.agent},
   ];
   return targets.map((target)=>({
@@ -4146,8 +4146,8 @@ function _updateSummarySignature(info){
 }
 function _updateSummaryButtonLabel(target,data){
   const labels=target.key==='webui'
-    ? {generate:'Generate WebUI update summary',view:'View generated WebUI update summary',regenerate:'Re-generate WebUI update summary'}
-    : {generate:'Generate Agent update summary',view:'View generated Agent update summary',regenerate:'Re-generate Agent update summary'};
+    ? {generate:'生成前端更新摘要',view:'查看前端更新摘要',regenerate:'重新生成前端更新摘要'}
+    : {generate:'生成 Agent 更新摘要',view:'查看 Agent 更新摘要',regenerate:'重新生成 Agent 更新摘要'};
   const cache=_loadStoredUpdateSummaries()[target.key];
   const signature=_updateSummarySignature(data&&data[target.key]);
   if(cache&&cache.signature===signature&&cache.payload) return labels.view;
@@ -4181,7 +4181,7 @@ function _renderUpdateSummaryPanel(payload,data,targetKey){
       const title=document.createElement('div');
       title.style.fontWeight='650';
       title.style.marginBottom='3px';
-      title.textContent=section.title||'Summary';
+      title.textContent=section.title||'摘要';
       block.appendChild(title);
       const ul=document.createElement('ul');
       ul.style.margin='0';
@@ -4193,7 +4193,7 @@ function _renderUpdateSummaryPanel(payload,data,targetKey){
       });
       if(!ul.children.length){
         const li=document.createElement('li');
-        li.textContent='No summary details available.';
+        li.textContent='暂无摘要细节。';
         ul.appendChild(li);
       }
       block.appendChild(ul);
@@ -4201,14 +4201,14 @@ function _renderUpdateSummaryPanel(payload,data,targetKey){
     });
     text.appendChild(wrap);
   }else{
-    text.textContent=(payload&&payload.summary)||payload||'No summary available.';
+    text.textContent=(payload&&payload.summary)||payload||'暂无摘要。';
   }
   const targets=_updateWhatsNewTargets(data||window._updateData||{}).filter((target)=>!targetKey||target.key===targetKey);
   if(links){
     links.replaceChildren();
     if(targets.length){
       links.style.display='block';
-      _appendUpdateDiffLinks(links,targets,'Regular diff comparison: ');
+      _appendUpdateDiffLinks(links,targets,'原始对比：');
     }else{
       links.style.display='none';
     }
@@ -4234,8 +4234,8 @@ async function showWhatsNewSummary(target){
     console.warn('[updates] summary failed',e);
     _renderUpdateSummaryPanel({
       summary_sections:[
-        {title:"What you'll notice",items:['Could not generate the summary right now.']},
-        {title:'Worth knowing',items:['Try again later, or use the comparison links below for the raw update details.']},
+        {title:'这次更新',items:['暂时无法生成摘要。']},
+        {title:'可以先看',items:['稍后重试，或用下面的对比链接查看原始更新。']},
       ],
     },data,target);
   }
@@ -4281,15 +4281,15 @@ function _renderUpdateWhatsNewLinks(data){
     link.rel='noopener';
     link.style.color='var(--accent)';
     link.style.textDecoration='underline';
-    link.textContent="What's new in "+target.label+'?';
+    link.textContent=`查看 ${target.label} 更新`;
     container.appendChild(link);
     return;
   }
-  _appendUpdateDiffLinks(container,targets,"What's new: ");
+  _appendUpdateDiffLinks(container,targets,'更新内容：');
 }
 function _showUpdateBanner(data){
   const parts=[];
-  const webuiPart=_formatUpdateTargetStatus('WebUI',data.webui);
+  const webuiPart=_formatUpdateTargetStatus('前端',data.webui);
   const agentPart=_formatUpdateTargetStatus('Agent',data.agent);
   if(webuiPart) parts.push(webuiPart);
   if(agentPart) parts.push(agentPart);
@@ -4301,7 +4301,7 @@ function _showUpdateBanner(data){
     return;
   }
   const msg=$('updateMsg');
-  if(msg) msg.textContent='\u2B06 '+parts.join(', ')+' available';
+  if(msg) msg.textContent='\u2B06 '+parts.join(', ')+' 有可用更新';
   const banner=$('updateBanner');
   if(banner) banner.classList.add('visible');
   const summaryMode=window._whatsNewSummaryEnabled===true?'summary':'diff';
@@ -4318,10 +4318,10 @@ function _isUpdateApplyNetworkError(error){
 }
 function _formatUpdateApplyExceptionMessage(error){
   if(_isUpdateApplyNetworkError(error)){
-    return 'Update failed: could not reach the WebUI server. It may have restarted or the connection was interrupted. Please wait a few seconds, reload the page, then check the server if it still does not come back.';
+    return '更新失败：暂时连接不上服务。它可能正在重启，稍等几秒后刷新页面；如果还没有恢复，再检查服务状态。';
   }
   const message=(error&&error.message)||String(error||'unknown error');
-  return 'Update failed: '+message;
+  return '更新失败：'+message;
 }
 async function applyUpdates(){
   if(window._updateApplyInFlight) return;
@@ -4330,12 +4330,12 @@ async function applyUpdates(){
   const resetApplyButton=(delayMs)=>{
     const reset=()=>{
       window._updateApplyInFlight=false;
-      if(btn){btn.disabled=false;btn.textContent='Update Now';}
+      if(btn){btn.disabled=false;btn.textContent='立即更新';}
     };
     if(delayMs>0) setTimeout(reset,delayMs);
     else reset();
   };
-  if(btn){btn.disabled=true;btn.textContent='Updating\u2026';}
+  if(btn){btn.disabled=true;btn.textContent='更新中\u2026';}
   const errEl=$('updateError');
   if(errEl){errEl.style.display='none';errEl.textContent='';}
   // Hide any leftover force-update button from a prior conflict so a fresh
@@ -4375,7 +4375,7 @@ function _showUpdateError(target,res){
   } else {
     showToast(msg);
   }
-  // Show "Force update" button when the error is recoverable by a hard reset
+  // Show a force-update button when the error is recoverable by a hard reset.
   if(forceBtn&&(res.conflict||res.diverged)){
     forceBtn.dataset.target=target;
     forceBtn.style.display='inline-block';
@@ -4385,9 +4385,9 @@ async function forceUpdate(btn){
   const target=btn&&btn.dataset.target;
   if(!target) return;
   const confirmed=await showConfirmDialog({
-    title:'Force update '+target+'?',
+    title:'强制更新 '+target+'？',
     message:'This will discard all local changes in the '+target+' repo and reset to the latest remote version. This cannot be undone.',
-    confirmLabel:'Force update',
+    confirmLabel:'强制更新',
     danger:true,
     focusCancel:true,
   });
@@ -4398,17 +4398,17 @@ async function forceUpdate(btn){
   try{
     const res=await api('/api/updates/force',{method:'POST',body:JSON.stringify({target})});
     if(!res.ok){
-      if(errEl){errEl.textContent='Force update failed: '+(res.message||'unknown error');errEl.style.display='block';}
-      btn.disabled=false;btn.textContent='Force update';
+      if(errEl){errEl.textContent='强制更新失败：'+(res.message||'unknown error');errEl.style.display='block';}
+      btn.disabled=false;btn.textContent='强制更新';
       return;
     }
-    showToast('Force update applied — restarting…');
+    showToast('强制更新已应用，正在重启…');
     sessionStorage.removeItem('hermes-update-checked');
     sessionStorage.removeItem('hermes-update-dismissed');
     _waitForServerThenReload();
   }catch(e){
-    if(errEl){errEl.textContent='Force update failed: '+e.message;errEl.style.display='block';}
-    btn.disabled=false;btn.textContent='Force update';
+    if(errEl){errEl.textContent='强制更新失败：'+e.message;errEl.style.display='block';}
+    btn.disabled=false;btn.textContent='强制更新';
   }
 }
 
@@ -4798,7 +4798,7 @@ function ensureActivityGroup(inner, opts){
       group.setAttribute('data-live-tool-call-group','1');
       group.setAttribute('data-live-activity-current','1');
     }
-    group.innerHTML=`<button type="button" class="tool-call-group-summary" aria-expanded="${collapsed?'false':'true'}" onclick="_toggleActivityGroup(this)"><span class="tool-call-group-chevron">${li('chevron-right',12)}</span><span class="tool-call-group-label">Activity</span><span class="tool-call-group-duration"></span></button><div class="tool-call-group-body"></div>`;
+    group.innerHTML=`<button type="button" class="tool-call-group-summary" aria-expanded="${collapsed?'false':'true'}" onclick="_toggleActivityGroup(this)"><span class="tool-call-group-chevron">${li('chevron-right',12)}</span><span class="tool-call-group-label">${esc(_activityBaseLabel())}</span><span class="tool-call-group-duration"></span></button><div class="tool-call-group-body"></div>`;
     const anchor=opts.anchor||null;
     if(anchor&&anchor.parentElement===inner) anchor.insertAdjacentElement('afterend', group);
     else inner.appendChild(group);
@@ -6012,7 +6012,7 @@ function renderMessages(options){
       if(durationText){
         const duration=document.createElement('span');
         duration.className='msg-duration-inline';
-        duration.textContent=`Done in ${durationText}`;
+        duration.textContent=_activityDoneLabel(durationText);
         fragments.push(duration);
       }
       if(window._showTokenUsage&&hasTurnUsage){
@@ -6058,6 +6058,28 @@ function renderMessages(options){
 
 function _toolDisplayName(tc){
   const name=(tc&&tc.name)||'tool';
+  if(_isNextAiProductView()){
+    const labels={
+      terminal:'命令',
+      read_file:'读取文件',
+      write_file:'写入文件',
+      search_files:'搜索文件',
+      web_search:'网页搜索',
+      web_extract:'读取网页',
+      execute_code:'运行代码',
+      patch:'修改文件',
+      memory:'记忆',
+      skill_manage:'技能',
+      todo:'计划',
+      cronjob:'自动任务',
+      delegate_task:'分配任务',
+      send_message:'发送消息',
+      browser_navigate:'浏览网页',
+      vision_analyze:'识别图片',
+      subagent_progress:'协作进度',
+    };
+    return labels[name]||name.replace(/_/g,' ');
+  }
   if(name==='subagent_progress') return 'Subagent';
   if(name==='delegate_task') return 'Delegate task';
   return name;
@@ -6088,7 +6110,8 @@ function toolIcon(name){
 function buildToolCard(tc){
   const row=document.createElement('div');
   row.className='tool-card-row';
-  const icon=toolIcon(tc.name);
+  const toolName=(tc&&tc.name)||'tool';
+  const icon=toolIcon(toolName);
   const hasDetail=tc.snippet||(tc.args&&Object.keys(tc.args).length>0);
   let displaySnippet='';
   if(tc.snippet){
@@ -6101,18 +6124,19 @@ function buildToolCard(tc){
     }
   }
   const hasMore=tc.snippet&&tc.snippet.length>displaySnippet.length;
-  const moreLabel=tc.is_diff?'Show diff':'Show more';
-  const lessLabel=tc.is_diff?'Hide diff':'Show less';
+  const productCopy=_isNextAiProductView();
+  const moreLabel=productCopy?(tc.is_diff?'查看差异':'展开详情'):(tc.is_diff?'Show diff':'Show more');
+  const lessLabel=productCopy?(tc.is_diff?'收起差异':'收起详情'):(tc.is_diff?'Hide diff':'Show less');
   const runIndicator=tc.done===false?'<span class="tool-card-running-dot"></span>':'';
-  const isSubagent=tc.name==='subagent_progress';
-  const isDelegation=tc.name==='delegate_task';
+  const isSubagent=toolName==='subagent_progress';
+  const isDelegation=toolName==='delegate_task';
   const cardClass='tool-card'+(tc.done===false?' tool-card-running':'')+(isSubagent?' tool-card-subagent':'');
   // Clean up legacy subagent prefixes since the Lucide icon already shows it
   let displayName=_toolDisplayName(tc);
   let previewText=tc.preview||displaySnippet||'';
   if(isSubagent) previewText=previewText.replace(/^(?:\u{1F500}|↳)\s*/u,'');
   row.innerHTML=`
-    <div class="${cardClass}">
+    <div class="${cardClass}" data-tool-name="${esc(toolName)}">
       <div class="tool-card-header" onclick="this.closest('.tool-card').classList.toggle('open')">
         ${runIndicator}
         <span class="tool-card-icon">${icon}</span>
@@ -6133,6 +6157,25 @@ function buildToolCard(tc){
   return row;
 }
 
+function _activityBaseLabel(){
+  return _isNextAiProductView()?'处理过程':'Activity';
+}
+
+function _activityCountLabel(toolCount){
+  if(!toolCount) return _activityBaseLabel();
+  return _isNextAiProductView()?`${_activityBaseLabel()} · ${toolCount} 步`:`Activity: ${toolCount} tool${toolCount===1?'':'s'}`;
+}
+
+function _activityDoneLabel(durationText){
+  if(!durationText) return '';
+  return _isNextAiProductView()?`已完成 ${durationText}`:`Done in ${durationText}`;
+}
+
+function _activityWorkingLabel(activeText){
+  if(!activeText) return '';
+  return _isNextAiProductView()?`处理中 ${activeText}`:`Working ${activeText}`;
+}
+
 function _syncToolCallGroupSummary(group){
   if(!group) return;
   const cards=Array.from(group.querySelectorAll('.tool-card-row .tool-card'));
@@ -6140,8 +6183,7 @@ function _syncToolCallGroupSummary(group){
   const label=group.querySelector('.tool-call-group-label');
   const durationEl=group.querySelector('.tool-call-group-duration');
   if(label){
-    if(toolCount) label.textContent=`Activity: ${toolCount} tool${toolCount===1?'':'s'}`;
-    else label.textContent='Activity';
+    label.textContent=_activityCountLabel(toolCount);
     label.setAttribute('data-sweep-label', label.textContent);
   }
   if(durationEl){
@@ -6154,7 +6196,7 @@ function _syncToolCallGroupSummary(group){
       durationEl.style.display=durationEl.textContent?'':'none';
     }else{
       const durationText=_formatTurnDuration(group.dataset.turnDuration);
-      durationEl.textContent=durationText?`Done in ${durationText}`:'';
+      durationEl.textContent=_activityDoneLabel(durationText);
       durationEl.style.display=durationText?'':'none';
     }
   }
@@ -6162,6 +6204,16 @@ function _syncToolCallGroupSummary(group){
 
 function _activityProgressLabelForToolName(name){
   const key=String(name||'').toLowerCase().replace(/[^a-z0-9]+/g,'_');
+  if(_isNextAiProductView()){
+    if(!key) return '处理中';
+    if(key.includes('search')||key.includes('grep')) return '正在搜索';
+    if(key.includes('read')||key.includes('view')||key.includes('open')) return '正在读取';
+    if(key.includes('write')||key.includes('patch')||key.includes('edit')) return '正在更新';
+    if(key.includes('terminal')||key.includes('shell')||key.includes('command')||key.includes('process')||key.includes('execute')) return '正在执行';
+    if(key.includes('web')||key.includes('fetch')||key.includes('curl')||key.includes('browser')) return '正在查看网页';
+    if(key.includes('todo')||key.includes('plan')) return '正在整理';
+    return '处理中';
+  }
   if(!key) return 'Working';
   if(key.includes('search')||key.includes('grep')) return 'Searching workspace';
   if(key.includes('read')||key.includes('view')||key.includes('open')) return 'Reading files';
@@ -6174,9 +6226,9 @@ function _activityProgressLabelForToolName(name){
 
 function _activityLiveProgressLabel(group){
   if(!group||group.getAttribute('data-live-tool-call-group')!=='1') return '';
-  const running=group.querySelector('.tool-card.tool-card-running .tool-card-name');
-  const latest=running || Array.from(group.querySelectorAll('.tool-card-name')).pop();
-  return _activityProgressLabelForToolName(latest?latest.textContent:'');
+  const running=group.querySelector('.tool-card.tool-card-running');
+  const latest=running || Array.from(group.querySelectorAll('.tool-card')).pop();
+  return _activityProgressLabelForToolName(latest?(latest.dataset.toolName||latest.querySelector('.tool-card-name')?.textContent):'');
 }
 
 // ── Live tool card helpers (called during SSE streaming) ──

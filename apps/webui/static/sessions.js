@@ -533,14 +533,14 @@ async function loadSession(sid){
   if (currentSid && currentSid !== sid) {
     _saveComposerDraftNow(currentSid, ($('msg') || {}).value || '', S.pendingFiles ? [...S.pendingFiles] : []);
   }
-  if (currentSid !== sid) {
+    if (currentSid !== sid) {
     S.messages = [];
     S.toolCalls = [];
     _messagesTruncated = false;
     _oldestIdx = 0;
     _loadingOlder = false;
     const _msgInner = $('msgInner');
-    if (_msgInner) _msgInner.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--text-muted);font-size:14px;padding:40px;text-align:center;">Loading conversation...</div>';
+    if (_msgInner) _msgInner.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--text-muted);font-size:14px;padding:40px;text-align:center;">正在打开任务...</div>';
   }
   // Phase 1: Load metadata only (~1KB) for fast session switching.
   // Guard against network/server failures to prevent a permanently stuck loading state.
@@ -560,8 +560,8 @@ async function loadSession(sid){
         }
         return;
       } else {
-        _msgInner.innerHTML='<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--text-muted);font-size:14px;padding:40px;text-align:center;">Failed to load session. Try switching sessions or refreshing.</div>';
-        if(typeof showToast==='function') showToast('Failed to load session',3000,'error');
+        _msgInner.innerHTML='<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--text-muted);font-size:14px;padding:40px;text-align:center;">任务加载失败。可以切换任务或刷新后重试。</div>';
+        if(typeof showToast==='function') showToast('任务加载失败',3000,'error');
       }
     }
     if (_loadingSessionId === sid) _loadingSessionId = null;
@@ -683,9 +683,9 @@ async function loadSession(sid){
       // persist forever with no recovery path.
       const _msgInner = $('msgInner');
       if (_msgInner) {
-        _msgInner.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--text-muted);font-size:14px;padding:40px;text-align:center;">Failed to load messages. Try switching sessions or refreshing.</div>';
+        _msgInner.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--text-muted);font-size:14px;padding:40px;text-align:center;">消息加载失败。可以切换任务或刷新后重试。</div>';
       }
-      if (typeof showToast === 'function') showToast('Failed to load conversation messages', 3000, 'error');
+      if (typeof showToast === 'function') showToast('消息加载失败', 3000, 'error');
       if (_loadingSessionId === sid) _loadingSessionId = null;
       return;
     }
@@ -1005,9 +1005,9 @@ function _showHandoffHint(sid, rounds) {
 
   const channel = _getChannelLabel(S.session);
   const hintText = channel
-    ? `${channel} handoff`
-    : `Conversation handoff`;
-  const hintMeta = `${rounds} new conversation rounds`;
+    ? `${channel} 交接`
+    : `任务交接`;
+  const hintMeta = `${rounds} 轮新消息`;
 
   const bar = document.createElement('div');
   bar.className = 'handoff-hint-bar';
@@ -1588,7 +1588,7 @@ function _renderBatchActionBar(){
       }));
       const retainedCount=_worktreeResponseCount(results);
       showToast(retainedCount?t('session_archived_worktree'):t('session_archived'));exitSessionSelectMode();await renderSessionList();
-    }catch(e){showToast('Archive failed: '+(e.message||e));}
+    }catch(e){showToast('归档失败：'+(e.message||e));}
   };bar.appendChild(archiveBtn);
   // Move
   const moveBtn=document.createElement('button');moveBtn.className='batch-action-btn';
@@ -1621,7 +1621,7 @@ function _renderBatchActionBar(){
         else{$('msgInner').innerHTML='';$('emptyState').style.display='';}
       }
       showToast((retainedCount?t('session_deleted_worktree'):t('session_delete'))+' ('+ids.length+')');exitSessionSelectMode();await renderSessionList();
-    }catch(e){showToast('Delete failed: '+(e.message||e));}
+    }catch(e){showToast('删除失败：'+(e.message||e));}
   };bar.appendChild(deleteBtn);
 }
 function _showBatchProjectPicker(){
@@ -1629,11 +1629,11 @@ function _showBatchProjectPicker(){
   const bar=$('batchActionBar');if(!bar)return;
   bar.querySelectorAll('.batch-project-picker').forEach(p=>p.remove());
   const picker=document.createElement('div');picker.className='project-picker batch-project-picker';
-  const none=document.createElement('div');none.className='project-picker-item';none.textContent='No project';
+  const none=document.createElement('div');none.className='project-picker-item';none.textContent='无项目';
   none.onclick=async()=>{picker.remove();
     try{await Promise.all(ids.map(sid=>api('/api/session/move',{method:'POST',body:JSON.stringify({session_id:sid,project_id:null})})));
-      showToast('Removed from project');exitSessionSelectMode();await renderSessionList();
-    }catch(e){showToast('Move failed: '+(e.message||e));}
+      showToast('已移出项目');exitSessionSelectMode();await renderSessionList();
+    }catch(e){showToast('移动失败：'+(e.message||e));}
   };picker.appendChild(none);
   for(const p of(_allProjects||[])){
     const item=document.createElement('div');item.className='project-picker-item';
@@ -1723,7 +1723,7 @@ function _appendSessionDuplicateAction(menu, session){
 }
 
 function _openSessionActionMenu(session, anchorEl){
-  if(_isReadOnlySession(session)){ if(typeof showToast==='function') showToast('Read-only imported sessions cannot be modified.',3000); return; }
+  if(_isReadOnlySession(session)){ if(typeof showToast==='function') showToast('只读导入任务不能修改。',3000); return; }
   if(_sessionActionMenu && _sessionActionSessionId===session.session_id && _sessionActionAnchor===anchorEl){
     closeSessionActionMenu();
     return;
@@ -2544,7 +2544,7 @@ function upsertActiveSessionForLocalTurn({title='', messageCount=0, timestampMs=
   const row={
     ...S.session,
     session_id:sid,
-    title:S.session.title||title||'New chat',
+    title:S.session.title||title||'新任务',
     message_count:count,
     last_message_at:nowSec,
     updated_at:nowSec,
@@ -2737,6 +2737,9 @@ function renderSessionListFromCache(){
   _syncSidebarExpansionForActiveSession(sessions, activeSidForSidebar);
   const archivedCount=projectFiltered.filter(s=>s.archived).length;
   const list=$('sessionList');
+  const taskListMode=sessions.length>0?'has-items':(q?'search-empty':'empty');
+  const panelChat=$('panelChat');
+  if(panelChat) panelChat.dataset.taskList=taskListMode;
   const listScrollTopBeforeRender=list.scrollTop||0;
   list.innerHTML='';
   // Batch select bar (when in select mode)
@@ -2860,39 +2863,24 @@ function renderSessionListFromCache(){
     empty.style.cssText='padding:20px 14px;color:var(--muted);font-size:12px;text-align:center;opacity:.7;';
     empty.textContent=effectiveActiveProject===NO_PROJECT_FILTER?'No unassigned sessions.':'No sessions in this project yet.';
     list.appendChild(empty);
-  } else if(!effectiveActiveProject&&sessions.length===0){
+  } else if(!effectiveActiveProject&&sessions.length===0&&q){
     const empty=document.createElement('div');
     empty.className='assistant-task-empty';
     const isSearching=!!q;
-    const isCreatingAssistant=!!(typeof _assistantKey==='function'&&_assistantKey()==='create');
     const title=document.createElement('div');
     title.className='assistant-task-empty-title';
-    title.textContent=isSearching
-      ? '没有匹配的任务'
-      : isCreatingAssistant
-        ? '正在新建 AI 产品'
-        : `还没有由「${assistantTitleForList}」处理过的任务`;
+    title.textContent='没有匹配的任务';
     const sub=document.createElement('div');
     sub.className='assistant-task-empty-sub';
-    sub.textContent=isSearching
-      ? `换个关键词搜索「${assistantTitleForList}」处理过的任务。`
-      : isCreatingAssistant
-        ? '说想让它做什么后会先生成预览；确认后才会加入 AI 产品库。'
-        : `从输入框说第一句话后，这里会出现「${assistantTitleForList}」处理过的任务。`;
+    sub.textContent=`换个关键词搜索「${assistantTitleForList}」处理过的任务。`;
     const btn=document.createElement('button');
     btn.type='button';
     btn.className='assistant-task-empty-action';
-    btn.textContent=isSearching?'清空搜索':isCreatingAssistant?'返回当前产品':'开始新任务';
+    btn.textContent='清空搜索';
     btn.onclick=()=>{
-      if(isSearching){
-        const input=$('sessionSearch');
-        if(input) input.value='';
-        if(typeof renderSessionListFromCache==='function') renderSessionListFromCache();
-        return;
-      }
-      if(typeof switchPanel==='function') switchPanel('chat');
-      if(typeof startAssistantNewTask==='function') startAssistantNewTask();
-      else if(typeof openAssistantHome==='function') openAssistantHome();
+      const input=$('sessionSearch');
+      if(input) input.value='';
+      if(typeof renderSessionListFromCache==='function') renderSessionListFromCache();
     };
     empty.appendChild(title);
     empty.appendChild(sub);
@@ -2912,7 +2900,7 @@ function renderSessionListFromCache(){
   // Group sessions by date
   const groups=[];
   let curLabel=null,curItems=[];
-  if(pinned.length) groups.push({label:'\u2605 Pinned',items:pinned,isPinned:true});
+  if(pinned.length) groups.push({label:'已固定',items:pinned,isPinned:true});
   for(const s of unpinned){
     const ts=_sessionTimestampMs(s);
     const label=_sessionTimeBucketLabel(ts, now);
@@ -3097,8 +3085,8 @@ function renderSessionListFromCache(){
     }
     const title=document.createElement('span');
     title.className='session-title';
-    title.textContent=cleanTitle||'Untitled';
-    title.title=readOnly?'Read-only imported session':'Double-click to rename';
+    title.textContent=cleanTitle||'刚开始的任务';
+    title.title=readOnly?'只读导入任务':'双击重命名';
     const tsMs=_sessionTimestampMs(s);
     const ts=document.createElement('span');
     const hasAttentionState=isStreaming||hasUnread;
@@ -3230,11 +3218,11 @@ function renderSessionListFromCache(){
         const row=document.createElement('button');
         row.type='button';
         row.className='session-child-session'+(activeSidForSidebar&&child.session_id===activeSidForSidebar?' active':'');
-        const childTitle=_sessionDisplayTitle(child)||'Untitled child session';
+        const childTitle=_sessionDisplayTitle(child)||'子任务';
         const childTime=_formatRelativeSessionTime(_sessionTimestampMs(child));
         const parentNote=child._parent_segment_title?` via ${child._parent_segment_title}`:'';
         row.textContent=`-> ${childTitle}${parentNote} - ${childTime}`;
-        row.title='Open child session';
+        row.title='打开子任务';
         row.onclick=async(e)=>{
           e.stopPropagation();
           if(child.is_cli_session){
@@ -3253,7 +3241,7 @@ function renderSessionListFromCache(){
       const chip=document.createElement('span');
       chip.className='session-tag';
       chip.textContent=tag;
-      chip.title='Click to filter by '+tag;
+      chip.title='按 '+tag+' 筛选';
       chip.onclick=(e)=>{
         e.stopPropagation();
         const searchBox=$('sessionSearch');
@@ -3264,13 +3252,13 @@ function renderSessionListFromCache(){
 
     // Rename: called directly when we confirm it's a double-click
     const startRename=()=>{
-      if(_isReadOnlySession(s)){ if(typeof showToast==='function') showToast('Read-only imported sessions cannot be renamed.',3000); return; }
+      if(_isReadOnlySession(s)){ if(typeof showToast==='function') showToast('只读导入任务不能重命名。',3000); return; }
       // Guard: prevent renaming if session is currently being loaded
       if (_loadingSessionId && _loadingSessionId !== s.session_id) return;
 
       closeSessionActionMenu();
       _renamingSid = s.session_id;
-      const oldTitle=s.title||'Untitled';
+      const oldTitle=s.title||'刚开始的任务';
       const inp=document.createElement('input');
       inp.className='session-title-input';
       inp.value=oldTitle;
@@ -3299,7 +3287,7 @@ function renderSessionListFromCache(){
           releaseRename();
           return;
         }
-        const newTitle=inp.value.trim()||'Untitled';
+        const newTitle=inp.value.trim()||'刚开始的任务';
         try{
           if(newTitle!==oldTitle){
             await api('/api/session/rename',{method:'POST',body:JSON.stringify({session_id:s.session_id,title:newTitle})});
@@ -3307,7 +3295,7 @@ function renderSessionListFromCache(){
           applyTitle(newTitle);
         }catch(err){
           applyTitle(oldTitle,false);
-          const msg='Rename failed: '+(err&&err.message?err.message:String(err));
+          const msg='重命名失败：'+(err&&err.message?err.message:String(err));
           setStatus(msg);
           if(typeof showToast==='function') showToast(msg,3000,'error');
         }finally{
@@ -3351,9 +3339,9 @@ function renderSessionListFromCache(){
       const menuBtn=document.createElement('button');
       menuBtn.type='button';
       menuBtn.className='session-actions-trigger';
-      menuBtn.title='Conversation actions';
+      menuBtn.title='任务操作';
       menuBtn.setAttribute('aria-haspopup','menu');
-      menuBtn.setAttribute('aria-label','Conversation actions');
+      menuBtn.setAttribute('aria-label','任务操作');
       menuBtn.innerHTML=ICONS.more;
       menuBtn.onclick=(e)=>{
         e.stopPropagation();
@@ -3481,7 +3469,7 @@ if(typeof window!=='undefined'){
     // handler had. A user mid-turn who hits browser Back should NOT lose the
     // active stream. They can hit Back again once the turn ends.
     if(S.busy){
-      if(typeof showToast==='function') showToast('Finish the current turn before switching sessions.',3000);
+      if(typeof showToast==='function') showToast('当前任务还在处理，结束后再切换。',3000);
       return;
     }
     void loadSession(sid);
@@ -3575,7 +3563,7 @@ async function deleteSession(sid){
   try{
     response=await api('/api/session/delete',{method:'POST',body:JSON.stringify({session_id:sid})});
     _clearHandoffStorageForSession(sid);
-  }catch(e){setStatus(`Delete failed: ${e.message}`);return;}
+  }catch(e){setStatus(`删除失败：${e.message}`);return;}
   if(S.session&&S.session.session_id===sid){
     S.session=null;S.messages=[];S.entries=[];
     localStorage.removeItem('hermes-webui-session');
@@ -3585,7 +3573,7 @@ async function deleteSession(sid){
       await loadSession(remaining.sessions[0].session_id);
     }else{
       const _tt=$('topbarTitle');if(_tt)_tt.textContent=window._botName||'Next AI';
-      const _tm=$('topbarMeta');if(_tm)_tm.textContent='Start a new conversation';
+      const _tm=$('topbarMeta');if(_tm)_tm.textContent='开始一个新任务';
       $('msgInner').innerHTML='';
       $('emptyState').style.display='';
       $('fileTree').innerHTML='';
@@ -3609,14 +3597,14 @@ function _showProjectPicker(session, anchorEl){
   // "No project" option
   const none=document.createElement('div');
   none.className='project-picker-item'+(!session.project_id?' active':'');
-  none.textContent='No project';
+  none.textContent='无项目';
   none.onclick=async()=>{
     picker.remove();
     document.removeEventListener('click',close);
     await api('/api/session/move',{method:'POST',body:JSON.stringify({session_id:session.session_id,project_id:null})});
     session.project_id=null;
     renderSessionListFromCache();
-    showToast('Removed from project');
+    showToast('已移出项目');
   };
   picker.appendChild(none);
   // Project options

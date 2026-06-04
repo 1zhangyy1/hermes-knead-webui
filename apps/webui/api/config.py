@@ -4,9 +4,10 @@ Imported by all other api/* modules and by server.py.
 
 Discovery order for all paths:
   1. Explicit environment variable
-  2. Filesystem heuristics (sibling checkout, parent dir, common install locations)
-  3. Hardened defaults relative to $HOME
-  4. Fail loudly with a human-readable fix-it message if required modules are missing
+  2. Project-owned vendored runtime
+  3. Filesystem heuristics (sibling checkout, parent dir, common install locations)
+  4. Hardened defaults relative to $HOME
+  5. Fail loudly with a human-readable fix-it message if required modules are missing
 """
 
 import collections
@@ -29,6 +30,7 @@ from urllib.parse import parse_qs, urlparse
 HOME = Path.home()
 # REPO_ROOT is the directory that contains this file's parent (api/ -> repo root)
 REPO_ROOT = Path(__file__).parent.parent.resolve()
+PROJECT_ROOT = REPO_ROOT.parent.parent.resolve()
 
 # ── Network config (env-overridable) ─────────────────────────────────────────
 HOST = os.getenv("HERMES_WEBUI_HOST", "127.0.0.1")
@@ -89,15 +91,16 @@ def _env_mb_bytes(name: str, default_mb: int) -> int:
 # ── Hermes agent directory discovery ─────────────────────────────────────────
 def _discover_agent_dir() -> Path:
     """
-    Locate the hermes-agent checkout using a multi-strategy search.
+    Locate the Hermes Agent runtime using a multi-strategy search.
 
     Priority:
       1. HERMES_WEBUI_AGENT_DIR env var  -- explicit override always wins
-      2. HERMES_HOME / hermes-agent      -- e.g. ~/.hermes/hermes-agent
-      3. Sibling of this repo            -- ../hermes-agent
-      4. Parent of this repo             -- ../../hermes-agent (nested layout)
-      5. Common install paths            -- ~/.hermes/hermes-agent (again as fallback)
-      6. HOME / hermes-agent             -- ~/hermes-agent (simple flat layout)
+      2. Project runtime                 -- <project>/runtimes/hermes-agent
+      3. HERMES_HOME / hermes-agent      -- e.g. ~/.hermes/hermes-agent
+      4. Sibling of this repo            -- ../hermes-agent
+      5. Parent of this repo             -- ../../hermes-agent (nested layout)
+      6. Common install paths            -- ~/.hermes/hermes-agent (again as fallback)
+      7. HOME / hermes-agent             -- ~/hermes-agent (simple flat layout)
     """
     candidates = []
 
@@ -107,28 +110,31 @@ def _discover_agent_dir() -> Path:
             Path(os.getenv("HERMES_WEBUI_AGENT_DIR")).expanduser().resolve()
         )
 
-    # 2. HERMES_HOME / hermes-agent
+    # 2. Next AI Chat production runtime
+    candidates.append(PROJECT_ROOT / "runtimes" / "hermes-agent")
+
+    # 3. HERMES_HOME / hermes-agent
     hermes_home = os.getenv("HERMES_HOME", str(HOME / ".hermes"))
     candidates.append(Path(hermes_home).expanduser() / "hermes-agent")
 
-    # 3. Sibling: <repo-root>/../hermes-agent
+    # 4. Sibling: <repo-root>/../hermes-agent
     candidates.append(REPO_ROOT.parent / "hermes-agent")
 
-    # 4. Parent is the agent repo itself (repo cloned inside hermes-agent/)
+    # 5. Parent is the agent repo itself (repo cloned inside hermes-agent/)
     if (REPO_ROOT.parent / "run_agent.py").exists():
         candidates.append(REPO_ROOT.parent)
 
-    # 5. ~/.hermes/hermes-agent (explicit common path)
+    # 6. ~/.hermes/hermes-agent (explicit common path)
     candidates.append(HOME / ".hermes" / "hermes-agent")
 
-    # 6. ~/hermes-agent
+    # 7. ~/hermes-agent
     candidates.append(HOME / "hermes-agent")
 
-    # 7. XDG_DATA_HOME / hermes-agent  (e.g. ~/.local/share/hermes-agent)
+    # 8. XDG_DATA_HOME / hermes-agent  (e.g. ~/.local/share/hermes-agent)
     xdg_data = Path(os.getenv("XDG_DATA_HOME", str(HOME / ".local" / "share")))
     candidates.append(xdg_data.expanduser() / "hermes-agent")
 
-    # 8. System-wide install paths (e.g. /opt/hermes-agent, /usr/local/hermes-agent)
+    # 9. System-wide install paths (e.g. /opt/hermes-agent, /usr/local/hermes-agent)
     for sys_prefix in ("/opt", "/usr/local", "/usr/local/share"):
         candidates.append(Path(sys_prefix) / "hermes-agent")
 
@@ -485,12 +491,12 @@ def print_startup_config() -> None:
             f"{err}  Could not find the Hermes agent directory.\n"
             "      The server will start but agent features will not work.\n"
             "\n"
-            "      To fix, set one of:\n"
-            "        export HERMES_WEBUI_AGENT_DIR=/path/to/hermes-agent\n"
-            "        export HERMES_HOME=/path/to/.hermes\n"
+            "      To fix, make sure the project runtime exists:\n"
+            "        runtimes/hermes-agent/run_agent.py\n"
             "\n"
-            "      Or clone hermes-agent as a sibling of this repo:\n"
-            "        git clone <hermes-agent-repo> ../hermes-agent\n",
+            "      Or set an explicit override:\n"
+            "        export HERMES_WEBUI_AGENT_DIR=/absolute/path/to/hermes-agent\n"
+            "        export HERMES_HOME=/path/to/.hermes\n",
             flush=True,
         )
 

@@ -57,7 +57,7 @@ The product should not scatter Hermes internals throughout the codebase. The int
 
 ```text
 apps/webui
-  -> packages/agent-runtime-adapter
+  -> packages/hermes-client
     -> runtimes/hermes-agent
 ```
 

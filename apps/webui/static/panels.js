@@ -163,22 +163,14 @@ async function switchPanel(name, opts = {}) {
   const requestedPanel = String(name || 'chat').trim() || 'chat';
   const nextPanel = MVP_SHELL_PANELS.has(requestedPanel) ? requestedPanel : 'chat';
   const prevPanel = _currentPanel;
-  // ── Desktop sidebar collapse toggle (rail-click only) ──
-  // If the click came from a rail icon AND we're on desktop, the rail icon
-  // does double duty: clicking the already-active panel collapses the sidebar;
-  // clicking any panel while collapsed expands first. Programmatic switches
-  // (no opts.fromRailClick) are unaffected so legacy callers preserve
-  // behaviour exactly.
-  if (opts.fromRailClick && typeof _isSidebarCollapsed === 'function'
+  const fromShellNav = !!(opts.fromShellNav || opts.fromRailClick);
+  // ── Desktop sidebar collapse toggle (legacy nav control only) ──
+  // Programmatic switches (no shell-nav flag) do not mutate the sidebar.
+  if (fromShellNav && typeof _isSidebarCollapsed === 'function'
       && typeof _isDesktopWidth === 'function' && _isDesktopWidth()) {
     if (_isSidebarCollapsed()) {
-      // Expand first, then continue to the normal panel switch below so
-      // the clicked panel becomes (or stays) active in the same gesture.
       expandSidebar();
     } else if (prevPanel === nextPanel) {
-      // Same panel clicked while sidebar is open → collapse and short-circuit.
-      // Skip the guard/cleanup work below; nothing about the active panel
-      // is changing, only the visibility of the panel container.
       toggleSidebar(true);
       return false;
     }
@@ -186,9 +178,9 @@ async function switchPanel(name, opts = {}) {
   if (!opts.bypassSettingsGuard && !_beforePanelSwitch(nextPanel)) return false;
   if (prevPanel !== 'settings' && nextPanel === 'settings') _beginSettingsPanelSession();
   _currentPanel = nextPanel;
-  // Update nav tabs (rail + mobile sidebar-nav share data-panel)
+  // Update any visible mobile shell nav plus panel-scoped controls.
   document.querySelectorAll('[data-panel]').forEach(t => t.classList.toggle('active', t.dataset.panel === nextPanel));
-  // Refresh aria-expanded on the newly-active rail button to mirror sidebar state.
+  // Refresh sidebar aria state when the optional collapse control exists.
   if (typeof _syncSidebarAria === 'function') _syncSidebarAria();
   // Update panel views
   document.querySelectorAll('.panel-view').forEach(p => p.classList.remove('active'));
@@ -202,7 +194,7 @@ async function switchPanel(name, opts = {}) {
     switchSettingsSection(_currentSettingsSection);
     loadSettingsPanel();
   }
-  if (opts.fromRailClick && typeof _isDesktopWidth === 'function' && !_isDesktopWidth()) {
+  if (fromShellNav && typeof _isDesktopWidth === 'function' && !_isDesktopWidth()) {
     const sidebar = document.querySelector('.sidebar');
     const overlay = document.getElementById('mobileOverlay');
     if (sidebar) sidebar.classList.add('mobile-open');
