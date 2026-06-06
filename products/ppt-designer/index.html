@@ -7,138 +7,111 @@
   <link rel="stylesheet" href="./style.css">
 </head>
 <body>
-  <div class="app-shell">
-    <aside class="left-panel" aria-label="PPT 任务参数">
-      <div class="brand">
+  <div class="app" id="app">
+
+    <!-- 顶栏 -->
+    <header class="topbar">
+      <div class="topbar-left">
         <div class="brand-mark">P</div>
-        <div>
-          <p class="eyebrow">PPT 设计师</p>
-          <h1>当前任务</h1>
-        </div>
+        <span class="deck-title" id="deckTitle">未命名演示文稿</span>
       </div>
+      <div class="topbar-center">
+        <button class="tab active" data-tab="edit" id="tabEdit">编辑</button>
+        <button class="tab" data-tab="outline" id="tabOutline">大纲</button>
+        <button class="tab" data-tab="notes" id="tabNotes">讲稿</button>
+      </div>
+      <div class="topbar-right">
+        <span class="deck-meta" id="deckMeta">0 页</span>
+        <button class="btn-secondary" id="exportBtn">导出 PPTX</button>
+      </div>
+    </header>
 
-      <section class="card task-card">
-        <div class="section-title">
-          <span>任务设定</span>
-          <button class="ghost-button" id="resetButton">恢复示例</button>
-        </div>
-        <label>
-          主题
-          <input id="topicInput" value="Codex：面向开发者的 AI 编程代理" />
-        </label>
-        <label>
-          受众
-          <input id="audienceInput" value="产品经理、研发团队、技术决策者" />
-        </label>
-        <div class="two-col">
-          <label>
-            页数
-            <select id="pageCountInput">
-              <option>6 页</option>
-              <option selected>8 页</option>
-              <option>10 页</option>
-              <option>12 页</option>
-            </select>
-          </label>
-          <label>
-            风格
-            <select id="styleInput">
-              <option selected>科技感 / 简洁 / 深色</option>
-              <option>咨询风 / 白底 / 强结构</option>
-              <option>发布会 / 大字 / 高冲击</option>
-              <option>培训课 / 清晰 / 多注释</option>
-            </select>
-          </label>
-        </div>
-        <label>
-          目标
-          <textarea id="goalInput" rows="4">让听众快速理解 Codex 是什么、适合解决什么开发问题、如何嵌入团队工作流，以及采用前需要注意的边界。</textarea>
-        </label>
-      </section>
+    <!-- 主体 -->
+    <div class="body">
 
-      <section class="card asset-card">
-        <div class="section-title">
-          <span>素材与要求</span>
-          <button class="ghost-button" id="addAssetButton">添加素材</button>
+      <!-- 左侧幻灯片列表 -->
+      <aside class="slides-panel" id="slidesPanel">
+        <div class="slides-header">
+          <span class="slides-label">幻灯片</span>
+          <button class="icon-btn" id="addSlideBtn" title="新增页面">＋</button>
         </div>
-        <ul class="asset-list" id="assetList">
-          <li>需要解释：Codex、代码代理、工具调用、代码审查</li>
-          <li>避免过度承诺：强调适用边界与人类审核</li>
-          <li>可加入团队落地路线图：试点 → 规范 → 扩展</li>
-        </ul>
-      </section>
-    </aside>
+        <ol class="slides-list" id="slidesList"></ol>
+      </aside>
 
-    <main class="workspace">
-      <header class="topbar">
-        <div>
-          <p class="eyebrow">当前 PPT</p>
-          <h2 id="deckTitle">Codex：面向开发者的 AI 编程代理</h2>
+      <!-- 中间画布 -->
+      <main class="canvas-area" id="canvasArea">
+        <div class="empty-state" id="emptyState">
+          <div class="empty-icon">🎞</div>
+          <p class="empty-title">还没有内容</p>
+          <p class="empty-sub">在左侧对话框里告诉我主题、受众和用途<br>我来帮你生成完整的大纲和页面</p>
         </div>
-        <div class="topbar-actions">
-          <button class="secondary-button" id="compactButton">隐藏参数</button>
-          <button class="primary-button" id="generateButton">重新生成大纲</button>
+        <div class="slide-canvas" id="slideCanvas" style="display:none">
+          <div class="slide-frame" id="slideFrame"></div>
         </div>
-      </header>
+        <div class="canvas-nav" id="canvasNav" style="display:none">
+          <button class="nav-btn" id="prevBtn">‹</button>
+          <span class="nav-label" id="navLabel">1 / 1</span>
+          <button class="nav-btn" id="nextBtn">›</button>
+        </div>
+      </main>
 
-      <section class="brief-grid">
-        <article class="metric-card">
-          <span>受众</span>
-          <strong id="audiencePreview">产品经理、研发团队、技术决策者</strong>
-        </article>
-        <article class="metric-card">
-          <span>建议页数</span>
-          <strong id="pagePreview">8 页</strong>
-        </article>
-        <article class="metric-card">
-          <span>视觉风格</span>
-          <strong id="stylePreview">科技感 / 简洁 / 深色</strong>
-        </article>
-      </section>
+      <!-- 右侧属性/讲稿面板 -->
+      <aside class="info-panel" id="infoPanel">
 
-      <section class="main-grid">
-        <article class="panel outline-panel">
-          <div class="panel-header">
-            <div>
-              <p class="eyebrow">结构</p>
-              <h3>大纲区</h3>
-            </div>
-            <span class="status-pill">可编辑</span>
+        <!-- 任务信息 -->
+        <section class="info-section" id="taskSection">
+          <div class="info-section-title">任务</div>
+          <div class="info-field">
+            <label>主题</label>
+            <input type="text" id="topicInput" placeholder="例：Q2 AI 工具落地汇报">
           </div>
+          <div class="info-field">
+            <label>受众</label>
+            <input type="text" id="audienceInput" placeholder="例：研发团队、产品经理">
+          </div>
+          <div class="info-row">
+            <div class="info-field">
+              <label>页数</label>
+              <select id="pageCountInput">
+                <option value="6">6 页</option>
+                <option value="8" selected>8 页</option>
+                <option value="10">10 页</option>
+                <option value="12">12 页</option>
+                <option value="15">15 页</option>
+              </select>
+            </div>
+            <div class="info-field">
+              <label>风格</label>
+              <select id="styleInput">
+                <option value="minimal">极简白</option>
+                <option value="tech">科技深色</option>
+                <option value="consulting">咨询蓝</option>
+                <option value="warm">温暖橙</option>
+              </select>
+            </div>
+          </div>
+        </section>
+
+        <!-- 讲稿区（选中页后显示） -->
+        <section class="info-section notes-section" id="notesSection" style="display:none">
+          <div class="info-section-title">
+            <span id="notesSectionLabel">讲稿 — 第 1 页</span>
+            <button class="text-btn" id="copyNotesBtn">复制</button>
+          </div>
+          <textarea id="notesEditor" placeholder="这一页的讲稿……" rows="10"></textarea>
+        </section>
+
+        <!-- 大纲区（大纲 tab 激活时显示） -->
+        <section class="info-section outline-section" id="outlineSection" style="display:none">
+          <div class="info-section-title">大纲</div>
           <ol class="outline-list" id="outlineList"></ol>
-        </article>
+        </section>
 
-        <article class="panel slide-panel">
-          <div class="panel-header">
-            <div>
-              <p class="eyebrow">页面</p>
-              <h3>页面缩略</h3>
-            </div>
-            <span class="status-pill" id="selectedSlidePill">第 1 页</span>
-          </div>
-          <div class="slide-thumbs" id="slideThumbs"></div>
-        </article>
-
-        <article class="panel notes-panel">
-          <div class="panel-header">
-            <div>
-              <p class="eyebrow">演讲</p>
-              <h3>讲稿区</h3>
-            </div>
-            <span class="status-pill">随页联动</span>
-          </div>
-          <div class="selected-slide-card" id="selectedSlideCard"></div>
-          <textarea id="notesEditor" rows="10" aria-label="当前页面讲稿"></textarea>
-          <div class="note-actions">
-            <button class="secondary-button" id="polishButton">优化讲稿</button>
-            <button class="secondary-button" id="splitButton">拆成提示</button>
-          </div>
-        </article>
-      </section>
-    </main>
+      </aside>
+    </div>
   </div>
 
-  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <div class="toast" id="toast"></div>
   <script src="./app.js"></script>
 </body>
 </html>

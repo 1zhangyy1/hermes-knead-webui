@@ -1396,7 +1396,8 @@ function applyBotName(){
   const topbarTitle=$('topbarTitle');
   if(topbarTitle && (!S.session)) topbarTitle.textContent=name;
   const msg=$('msg');
-  if(msg) msg.placeholder='向当前 AI 产品描述你要完成的任务…';
+  if(msg) msg.placeholder='描述你要完成的任务…';
+  if(typeof syncAssistantTaskUi==='function') syncAssistantTaskUi();
 }
 
 (async()=>{

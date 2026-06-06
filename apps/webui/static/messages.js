@@ -82,29 +82,29 @@ function _productUiStatusCard(phase, context = {}, options = {}) {
     {
       label:'状态',
       value:phase === 'running'
-        ? (isInit ? '正在生成第一版任务界面' : '正在改任务界面')
+        ? (isInit ? '正在生成第一版产品画布' : '正在改产品画布')
         : phase === 'failed'
           ? '生成失败'
-          : (isInit ? '第一版任务界面已生成' : '新版任务界面已生成')
+          : (isInit ? '第一版产品画布已生成' : '新版产品画布已生成')
     }
   ];
   if (phase === 'failed' && failureReason) rows.push({label:'原因', value:failureReason});
   const actions = [];
-  if (phase === 'failed') actions.push({id:'product-regenerate', label:'重新生成任务界面'});
+  if (phase === 'failed') actions.push({id:'product-regenerate', label:'重新生成产品画布'});
   if (!isInit && phase === 'done' && options.canRollback) actions.push({id:'product-rollback', label:'恢复上一版'});
   return {
     title: phase === 'running'
-      ? (isInit ? '正在生成这个 AI 产品的第一版任务界面' : '正在改这个 AI 产品的任务界面')
+      ? (isInit ? '正在生成这个 AI 产品的第一版产品画布' : '正在改这个 AI 产品的产品画布')
       : phase === 'failed'
-        ? (isInit ? '第一版任务界面生成失败' : '任务界面改造失败')
-        : (isInit ? '第一版任务界面已生成' : '已生成新版任务界面'),
+        ? (isInit ? '第一版产品画布生成失败' : '产品画布改造失败')
+        : (isInit ? '第一版产品画布已生成' : '已生成新版产品画布'),
     subtitle: phase === 'running'
-      ? (isInit ? '继续在这里聊天，右侧会自动出现这个产品的任务界面。' : '继续在这里聊天，右侧任务界面会更新。')
+      ? (isInit ? '继续在这里聊天，右侧会自动出现这个产品的产品画布。' : '继续在这里聊天，右侧产品画布会更新。')
       : phase === 'failed'
         ? (failureReason
-          ? `${failureReason} 可以重新生成任务界面，或继续说明你想让这个产品怎么工作。`
-          : (isInit ? '可以重新生成任务界面，或继续说明你想让这个产品怎么工作。' : '可以重新生成任务界面，或直接说想让它怎么改。'))
-        : (isInit ? '右侧已刷新，可以继续用普通聊天让它完成任务或调整任务界面。' : (options.canRollback ? '右侧已刷新，可恢复上一版。' : '右侧已刷新，可以继续聊天调整。')),
+          ? `${failureReason} 可以重新生成产品画布，或继续说明你想让这个产品怎么工作。`
+          : (isInit ? '可以重新生成产品画布，或继续说明你想让这个产品怎么工作。' : '可以重新生成产品画布，或直接说想让它怎么改。'))
+        : (isInit ? '右侧已刷新，可以继续用普通聊天让它完成任务或调整产品画布。' : (options.canRollback ? '右侧已刷新，可恢复上一版。' : '右侧已刷新，可以继续聊天调整。')),
     rows,
     actions
   };
@@ -138,7 +138,7 @@ function _appendProductUiStatusCard(phase, context = {}, options = {}) {
 
 function _productFailureInfoFromAppError(payload = {}, label = '') {
   const type = String(payload && payload.type || '').trim();
-  const rawMessage = String(payload && payload.message || label || '任务界面生成失败').trim();
+  const rawMessage = String(payload && payload.message || label || '产品画布生成失败').trim();
   if (type === 'no_response' || type === 'silent_failure') {
     return {
       type: 'no_response',
@@ -155,7 +155,7 @@ function _productFailureInfoFromAppError(payload = {}, label = '') {
     return {type, message: '当前模型服务暂时不可用或额度不足，请稍后重试。'};
   }
   if (type === 'cancelled' || type === 'interrupted') {
-    return {type, message: '这次生成被中断，还没有完成任务界面。'};
+    return {type, message: '这次生成被中断，还没有完成产品画布。'};
   }
   return {type: type || 'generation_failed', message: rawMessage};
 }
@@ -718,6 +718,9 @@ async function send(){
     if(!_approvalSessionId || _approvalSessionId===activeSid) hideApprovalCard(true);removeThinking();
     if(!_clarifySessionId || _clarifySessionId===activeSid) hideClarifyCard(true, 'terminal');
     S.messages.push({role:'assistant',content:`**Error:** ${errMsg}`});
+    if(typeof window.notifyProductCanvasAgentError==='function'){
+      window.notifyProductCanvasAgentError({sessionId:activeSid,error:errMsg||'Agent 启动失败'});
+    }
     _queueDrainSid=activeSid;renderMessages();setBusy(false);setComposerStatus(`Error: ${errMsg}`);
     if(typeof clearOptimisticSessionStreaming==='function') clearOptimisticSessionStreaming(activeSid);
     // Reconcile with server truth after immediately clearing the optimistic spinner.
@@ -1916,36 +1919,46 @@ function attachLiveStream(activeSid, streamId, uploaded=[], options={}){
           // No-reply guard (#373): if agent returned nothing, show inline error
           if(!S.messages.some(m=>m.role==='assistant'&&String(m.content||'').trim())&&!assistantText){removeThinking();S.messages.push({role:'assistant',content:'**No response received.** Check your API key and model selection.'});}
           if(_markerOnlyAssistantError&&typeof showToast==='function') showToast('No response received after context compression. Please retry.',5000,'error');
+          if(typeof window.notifyProductCanvasAgentReply==='function'){
+            const bridgeAsst=[...S.messages].reverse().find(m=>m&&m.role==='assistant'&&String(typeof msgContent==='function'?msgContent(m):(m.content||'')).trim());
+            if(bridgeAsst){
+              window.notifyProductCanvasAgentReply({
+                sessionId:completedSid,
+                content:String(typeof msgContent==='function'?msgContent(bridgeAsst):(bridgeAsst.content||'')),
+                message:bridgeAsst
+              });
+            }
+          }
           if(isSessionViewed) _markSessionViewed(completedSid, completedSession.message_count ?? S.messages.length);
           syncTopbar();renderMessages({preserveScroll:true});
-	          if(shouldFollowOnDone&&typeof scrollToBottom==='function') scrollToBottom();
-	          loadDir('.');
-	          if(typeof refreshCurrentProductPreview==='function'){
-		            const _productScopeOnDone=String((productUiStatusContext&&productUiStatusContext.productScope)||(S.session&&S.session.product_scope)||'');
-		            const _productRefreshPromise=refreshCurrentProductPreview({reason:'stream-done'});
-	            if((_productScopeOnDone==='product_init'||_productScopeOnDone==='product_builder')&&productUiStatusContext){
-	              Promise.resolve(_productRefreshPromise).then(()=>{
-	                const runtime=typeof currentProductPreviewRuntimeState==='function'
-	                  ? currentProductPreviewRuntimeState()
-	                  : {};
-	                const failed=String(runtime&&runtime.uiStatus||'')==='failed';
-	                _appendProductUiStatusCard(failed?'failed':'done', productUiStatusContext, {
-	                  failureReason:runtime&&runtime.failureReason||'',
-	                  canRollback:_productScopeOnDone!=='product_init'&&!!(runtime&&runtime.canRollback)
-	                });
-	                if(shouldFollowOnDone&&typeof scrollToBottom==='function') scrollToBottom();
-	              }).catch(()=>{
-	                _appendProductUiStatusCard('done', productUiStatusContext);
-	              });
-	            }
-	            if(_productScopeOnDone==='product_init'||_productScopeOnDone==='product_builder'){
-	              setTimeout(()=>refreshCurrentProductPreview({silent:true, reason:'product-stream-done-late'}),900);
-	            }
-	          } else if(productUiStatusContext) {
-	            _appendProductUiStatusCard('done', productUiStatusContext);
-	          }
-	          // TTS auto-read: speak the last assistant response if enabled (#499)
-	          if(typeof autoReadLastAssistant==='function') setTimeout(()=>autoReadLastAssistant(), 300);
+          if(shouldFollowOnDone&&typeof scrollToBottom==='function') scrollToBottom();
+          loadDir('.');
+          if(typeof refreshCurrentProductPreview==='function'){
+            const _productScopeOnDone=String((productUiStatusContext&&productUiStatusContext.productScope)||(S.session&&S.session.product_scope)||'');
+            const _productRefreshPromise=refreshCurrentProductPreview({reason:'stream-done'});
+            if((_productScopeOnDone==='product_init'||_productScopeOnDone==='product_builder')&&productUiStatusContext){
+              Promise.resolve(_productRefreshPromise).then(()=>{
+                const runtime=typeof currentProductPreviewRuntimeState==='function'
+                  ? currentProductPreviewRuntimeState()
+                  : {};
+                const failed=String(runtime&&runtime.uiStatus||'')==='failed';
+                _appendProductUiStatusCard(failed?'failed':'done', productUiStatusContext, {
+                  failureReason:runtime&&runtime.failureReason||'',
+                  canRollback:_productScopeOnDone!=='product_init'&&!!(runtime&&runtime.canRollback)
+                });
+                if(shouldFollowOnDone&&typeof scrollToBottom==='function') scrollToBottom();
+              }).catch(()=>{
+                _appendProductUiStatusCard('done', productUiStatusContext);
+              });
+            }
+            if(_productScopeOnDone==='product_init'||_productScopeOnDone==='product_builder'){
+              setTimeout(()=>refreshCurrentProductPreview({silent:true, reason:'product-stream-done-late'}),900);
+            }
+          } else if(productUiStatusContext) {
+            _appendProductUiStatusCard('done', productUiStatusContext);
+          }
+          // TTS auto-read: speak the last assistant response if enabled (#499)
+          if(typeof autoReadLastAssistant==='function') setTimeout(()=>autoReadLastAssistant(), 300);
         }
         if(isActiveSession&&_pendingGoalContinuation&&typeof queueSessionMessage==='function'){
           const _goalNext=_pendingGoalContinuation;
@@ -2124,9 +2137,15 @@ function attachLiveStream(activeSid, streamId, uploaded=[], options={}){
           const details=d.details?String(d.details).replace(/```/g,'`\u200b``'):'';
           const detailsLabel=isCancelled?'Cancellation details':isInterrupted?'Interruption details':undefined;
           S.messages.push({role:'assistant',content:`**${label}:** ${d.message}${hint}`,provider_details:details,provider_details_label:detailsLabel});
+          if(typeof window.notifyProductCanvasAgentError==='function'){
+            window.notifyProductCanvasAgentError({sessionId:activeSid,error:d.message||label});
+          }
         }catch(_){
-          productUiFailureInfo={type:'generation_failed',message:'任务界面生成失败，可以重试。'};
+          productUiFailureInfo={type:'generation_failed',message:'产品画布生成失败，可以重试。'};
           S.messages.push({role:'assistant',content:'**Error:** An error occurred. Check server logs.'});
+          if(typeof window.notifyProductCanvasAgentError==='function'){
+            window.notifyProductCanvasAgentError({sessionId:activeSid,error:'An error occurred. Check server logs.'});
+          }
         }
         if(productUiErrorContext){
           _appendProductUiStatusCard('failed', productUiErrorContext, {

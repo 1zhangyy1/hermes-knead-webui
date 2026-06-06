@@ -4353,6 +4353,7 @@ def handle_post(handler, parsed) -> bool:
                 s.product_id = product_ctx["id"]
                 s.product_scope = product_ctx["scope"]
                 s.product_intent = product_ctx.get("intent") or ""
+                s.product_line = product_ctx.get("line") or "use"
                 session_needs_save = True
                 if not enabled_toolsets:
                     product_toolsets = _session_toolsets_from_request({"toolsets": product_ctx.get("tools") or []})
@@ -7738,6 +7739,7 @@ def _start_chat_stream_for_session(
             s.product_id = product_context.get("id")
             s.product_scope = product_context.get("scope")
             s.product_intent = product_context.get("intent") or ""
+            s.product_line = product_context.get("line") or "use"
             product_toolsets = _session_toolsets_from_request({"toolsets": product_context.get("tools") or []})
             if product_toolsets:
                 s.enabled_toolsets = product_toolsets

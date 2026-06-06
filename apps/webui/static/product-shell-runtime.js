@@ -9,11 +9,13 @@ const AI_OBJECTS = {
   general: {
     title: '通用 AI',
     avatar: 'G',
-    desc: '默认聊天产品，适合临时问题、写作、分析和文件处理。',
-    homeDesc: '直接说你想完成什么。反复出现的固定流程，可以新建成独立 AI 产品。',
-    placeholder: '向通用 AI 描述你想完成的事...',
+    desc: '普通聊天，适合临时问题、写作、分析和文件处理。',
+    homeDesc: '临时问题直接聊。重复出现的工作，可以新建成专属产品。',
+    placeholder: '说说你想完成什么…',
     productType: 'general',
     uiMode: 'chat_only',
+    productLayout: 'chat_only',
+    canvasLabel: '',
     suggestions: [
       ['帮我整理今天的工作计划，拆成可执行步骤。', '整理工作计划'],
       ['帮我改写这段文案，让它更清晰专业。', '润色一段文案'],
@@ -24,9 +26,12 @@ const AI_OBJECTS = {
     title: 'PPT 设计师',
     avatar: 'P',
     desc: '围绕 PPT 任务工作，聊天始终在场，大纲、页面和讲稿会按需要展开。',
-    homeDesc: '和我说主题、受众和用途。我会先确认方向，再按需展开大纲、页面和讲稿。',
-    placeholder: '描述你想做的 PPT，或上传资料...',
+    homeDesc: '和我说主题、受众和用途。我会先确认方向，再打开大纲、页面和讲稿。',
+    placeholder: '描述这次 PPT，或上传资料…',
     productType: 'ppt',
+    uiMode: 'workspace',
+    productLayout: 'chat_left_canvas_right',
+    canvasLabel: 'PPT 工作区',
     suggestions: [
       ['帮我做一个产品介绍 PPT，先确认主题、受众和大纲。', '从主题开始'],
       ['我有一份文档，帮我整理成汇报 PPT 的结构。', '上传资料整理'],
@@ -34,20 +39,20 @@ const AI_OBJECTS = {
     ]
   },
   create: {
-    title: '新建 AI 产品',
-    desc: '描述一个长期会复用的工作对象。创建后继续聊天，它会按需生成自己的任务界面。',
-    placeholder: '例如：我想创建一个帮我做融资路演 PPT 的 AI 产品...',
+    title: '新建产品',
+    desc: '描述一类长期任务。创建后直接聊天，需要时再生成产品画布。',
+    placeholder: '描述想长期交给它处理的事…',
     suggestions: [
-      ['我想创建一个帮我做融资路演 PPT 的 AI 产品。', '融资路演'],
-      ['我想创建一个帮我做行业研究报告的 AI 产品。', '行业研究'],
-      ['我想创建一个帮我分析运营数据的 AI 产品。', '运营数据']
+      ['我想创建一个长期帮我做融资路演 PPT 的产品。', '融资路演'],
+      ['我想创建一个长期帮我做行业研究报告的产品。', '行业研究'],
+      ['我想创建一个长期帮我分析运营数据的产品。', '运营数据']
     ]
   }
 };
 
 function _syncProductPreviewMode(activeProductPreview) {
   const title = $('productModeTitle');
-  if (title && !syncAssistantTaskUi()) title.textContent = activeProductPreview ? (activeProductPreview.name || '任务界面') : (window._currentAiAssistantTitle || window._currentAiProductTitle || 'PPT 设计师');
+  if (title && !syncAssistantTaskUi()) title.textContent = activeProductPreview ? (activeProductPreview.name || '产品画布') : (window._currentAiAssistantTitle || window._currentAiProductTitle || 'PPT 设计师');
 }
 
 function _setActiveProductPreviewMenuOpen(open) {
@@ -207,7 +212,7 @@ function _registerCustomAssistant(assistant) {
   AI_OBJECTS[assistant.kind] = {
     title,
     avatar: assistant.avatar || '',
-    desc: assistant.desc || '按照你描述的职责处理任务，需要时生成自己的任务界面。',
+    desc: assistant.desc || '按照你描述的职责处理任务，需要时生成自己的产品画布。',
     placeholder: assistant.placeholder || starterKit.placeholder,
     suggestions: Array.isArray(assistant.suggestions) && assistant.suggestions.length
       ? assistant.suggestions
@@ -225,6 +230,8 @@ function _registerCustomAssistant(assistant) {
     backendProduct: !!assistant.backendProduct,
     productType,
     uiMode: assistant.uiMode || assistant.ui_mode || 'workspace',
+    productLayout: assistant.productLayout || assistant.product_layout || assistant.layout || '',
+    canvasLabel: assistant.canvasLabel || assistant.canvas_label || '',
     toolHints: Array.isArray(assistant.toolHints) && assistant.toolHints.length
       ? assistant.toolHints
       : tools.length
@@ -264,6 +271,7 @@ function _assistantUniqueCustomTitle(title, fallback = '自定义 AI 产品') {
 
 function _assistantNeedsInitialProductUi(assistant) {
   if (!assistant || !assistant.productId) return false;
+  if (typeof _assistantUsesProductCanvas === 'function' && !_assistantUsesProductCanvas(assistant)) return false;
   const status = String(assistant.uiStatus || assistant.ui_status || '').toLowerCase();
   return !status || status === 'empty' || status === 'failed';
 }
@@ -315,24 +323,29 @@ function _assistantShortMeta(object) {
 }
 
 function _assistantBaseMeta(kind, object) {
-  if (kind === 'general') return '默认聊天';
+  if (kind === 'general') return '聊天';
   if (object && object.custom) return _assistantShortMeta(object);
   if (kind === 'ppt') return '演示文稿';
   return _assistantShortMeta(object);
 }
 
 function _assistantIsChatOnlyProduct(object) {
-  return !!(object && String(object.uiMode || object.ui_mode || '') === 'chat_only');
+  if (!object) return false;
+  if (typeof _assistantProductLayout === 'function') return _assistantProductLayout(object) === 'chat_only';
+  return String(object.uiMode || object.ui_mode || '') === 'chat_only';
 }
 
 function _assistantListMeta(kind, object) {
   if (!kind || kind === 'create') return '';
   if (object && (object.productId || object.backendProduct)) {
-    if (_assistantIsChatOnlyProduct(object)) return _assistantBaseMeta(kind, object);
+    const usesProductCanvas = typeof _assistantUsesProductCanvas === 'function'
+      ? _assistantUsesProductCanvas(object)
+      : !_assistantIsChatOnlyProduct(object);
+    if (!usesProductCanvas) return _assistantBaseMeta(kind, object);
     const status = String(object.uiStatus || object.ui_status || '').toLowerCase();
     if (status === 'generating') return '生成中';
     if (status === 'failed') return '可重试';
-    if (status === 'ready') return '有界面';
+    if (status === 'ready') return '画布';
     return '待生成';
   }
   return _assistantBaseMeta(kind, object);
@@ -423,7 +436,7 @@ function _assistantStarterKit(title, text = '') {
   const isImage = /图片|图像|生图|绘图|文生图|画图|生成图|海报|封面|插画|头像|视觉|image/i.test(seed);
   if (isImage) {
     return {
-      placeholder: '描述你想生成的图片内容、风格、尺寸或上传参考...',
+      placeholder: '描述想生成的图片内容、风格、尺寸或上传参考…',
       suggestions: [
         ['帮我生成一张产品发布会海报，先确认主题、风格和尺寸。', '生成一张海报'],
         ['帮我画一个适合作为头像的 AI 形象。', '生成头像'],
@@ -433,7 +446,7 @@ function _assistantStarterKit(title, text = '') {
   }
   if (isPpt && isSales) {
     return {
-      placeholder: '描述这次销售提案 PPT 的客户、目标或上传资料...',
+      placeholder: '描述这次销售提案 PPT 的客户、目标或上传资料…',
       suggestions: [
         ['帮我做一份销售提案 PPT，先确认客户背景、痛点和方案亮点。', '做销售提案 PPT'],
         ['帮我把客户资料整理成提案大纲。', '资料转提案大纲'],
@@ -443,7 +456,7 @@ function _assistantStarterKit(title, text = '') {
   }
   if (isPpt && isPitch) {
     return {
-      placeholder: '描述这次路演 PPT 的目标、受众或上传资料...',
+      placeholder: '描述这次路演 PPT 的目标、受众或上传资料…',
       suggestions: [
         ['帮我做一份融资路演 PPT，先确认投资人、轮次和核心叙事。', '做一份路演 PPT'],
         ['帮我把融资材料整理成路演大纲。', '资料转路演大纲'],
@@ -453,7 +466,7 @@ function _assistantStarterKit(title, text = '') {
   }
   if (isPpt) {
     return {
-      placeholder: '描述这次要做的 PPT 或上传资料...',
+      placeholder: '描述这次要做的 PPT 或上传资料…',
       suggestions: [
         ['帮我做一份 PPT，先确认主题、受众、页数和核心叙事。', '做一份 PPT'],
         ['帮我把现有资料整理成汇报大纲。', '资料转汇报大纲'],
@@ -463,7 +476,7 @@ function _assistantStarterKit(title, text = '') {
   }
   if (isResearch) {
     return {
-      placeholder: '输入这次要研究的问题...',
+      placeholder: '输入这次要研究的问题…',
       suggestions: [
         ['帮我调研这个方向，先列出问题框架和资料来源。', '调研一个方向'],
         ['帮我整理竞品差异和定位。', '整理竞品差异'],
@@ -473,7 +486,7 @@ function _assistantStarterKit(title, text = '') {
   }
   if (isData) {
     return {
-      placeholder: '描述要分析的数据或上传表格...',
+      placeholder: '描述要分析的数据或上传表格…',
       suggestions: [
         ['帮我分析这份数据，先告诉我应该看哪些指标。', '分析关键指标'],
         ['帮我把这些指标整理成看板结构。', '整理看板结构'],
@@ -482,7 +495,7 @@ function _assistantStarterKit(title, text = '') {
     };
   }
   return {
-    placeholder: title ? `向「${title}」描述这次要完成的任务...` : '向这个 AI 产品描述你要完成的任务...',
+    placeholder: title ? `向「${title}」描述这次要完成的任务…` : '向这个产品描述你要完成的任务…',
     suggestions: [
       ['帮我把这个任务拆成可执行步骤。', '拆解任务'],
       ['帮我先问几个关键问题。', '澄清需求'],
@@ -498,20 +511,25 @@ function _assistantDraftFromPrompt(prompt) {
   const isImage = /图片|图像|生图|绘图|文生图|画图|生成图|海报|封面|插画|头像|视觉|image/i.test(title + sourcePrompt);
   const isResearch = /研究|调研|资料|报告|竞品|行业/.test(title + sourcePrompt);
   const isData = /数据|运营|指标|表格|看板/.test(title + sourcePrompt);
+  const isInteractive = /c\.?ai|character|角色|人物|游戏|剧情|npc|rpg|虚拟人|陪伴|互动/.test(title + sourcePrompt);
   const kind = `custom-${_assistantSlug(title)}-${Date.now().toString(36)}`;
   const starterKit = _assistantStarterKit(title, sourcePrompt);
   const desc = isPpt
-    ? '把资料、想法和目标受众整理成清晰的演示文稿，需要时生成合适的任务界面。'
+    ? '把资料、想法和目标受众整理成清晰的演示文稿，需要时生成合适的产品画布。'
     : isImage
       ? '把一句话、参考图和风格要求转成可执行的图片生成任务，并优先调用可用的图片生成能力产出结果。'
       : isResearch
         ? '帮你拆解问题、收集资料、整理证据和结论，输出可以继续加工的研究结果。'
         : isData
           ? '帮你理解指标、整理表格、发现趋势，并把数据转成结论和报告。'
-          : '按照你描述的职责处理任务，需要结构化输入、预览或产出区时生成自己的任务界面。';
+          : isInteractive
+            ? '用自己的产品界面承载互动体验，让角色、剧情或玩法可以被直接选择、体验和继续改造。'
+            : '按照你描述的职责处理任务，需要结构化输入、预览或产出区时生成自己的产品画布。';
   const placeholder = starterKit.placeholder;
   const suggestions = starterKit.suggestions;
-  const productType = isImage ? 'image' : isPpt ? 'ppt' : isResearch ? 'research' : isData ? 'data' : 'general';
+  const productType = isImage ? 'image' : isPpt ? 'ppt' : isResearch ? 'research' : isData ? 'data' : isInteractive ? 'interactive' : 'general';
+  const productLayout = isInteractive ? 'canvas_full' : (isImage || isPpt || isResearch || isData) ? 'chat_left_canvas_right' : 'chat_center';
+  const canvasLabel = isPpt ? 'PPT 工作区' : isImage ? '图片画布' : isResearch ? '研究工作区' : isData ? '数据工作区' : isInteractive ? '互动界面' : '产品画布';
   const capabilities = _assistantDefaultCapabilities(productType, title + sourcePrompt);
   const draft = {
     kind,
@@ -523,6 +541,8 @@ function _assistantDraftFromPrompt(prompt) {
     titleSource: 'generated',
     createdAt: Date.now(),
     productType,
+    productLayout,
+    canvasLabel,
     skills: capabilities.skills,
     tools: capabilities.tools,
     toolHints: capabilities.tools.length ? capabilities.tools : (isImage ? ['image generation', 'image editing', 'visual prompt writing'] : [])
@@ -545,15 +565,15 @@ async function confirmAssistantCreatePreview(draft) {
       if (el) el.textContent = value || '';
     };
     const isPersonalVersion = !!draft.baseAssistantTitle;
-    setText('assistantCreateTitle', isPersonalVersion ? '创建专属 AI 产品？' : '创建这个 AI 产品？');
+    setText('assistantCreateTitle', isPersonalVersion ? '创建专属产品？' : '创建这个产品？');
     setText(
       'assistantCreateDesc',
       isPersonalVersion
-        ? `基于「${draft.baseAssistantTitle}」创建一个专属版本。进入它后继续聊天，需要时会生成任务界面。`
-        : '创建后会出现在左侧。进入它后继续聊天；需要结构化输入、预览或产出区时，会生成任务界面。'
+        ? `基于「${draft.baseAssistantTitle}」创建一个专属版本。进入它后继续聊天，需要时会生成产品画布。`
+        : '创建后会出现在左侧。进入它后继续聊天；需要结构化输入、预览或产出区时，会生成产品画布。'
     );
     setText('assistantCreateName', draft.title);
-    setText('assistantCreateSource', draft.sourcePrompt || '我想创建一个新的 AI 产品。');
+    setText('assistantCreateSource', draft.sourcePrompt || '我想创建一个新的产品。');
     setText('assistantCreatePreviewAvatar', _assistantAvatarLabel(draft.kind, draft));
     setText('assistantCreateDuty', draft.desc);
     const tasks = $('assistantCreateTasks');
@@ -622,13 +642,13 @@ async function confirmAssistantCreatePreview(draft) {
     `产品说明：${draft.desc}`,
     `新任务怎么开始：${draft.placeholder}`,
     `推荐任务：${taskLabels.join(' / ') || '继续这个方向'}`,
-    `任务界面：${interfaceName}`,
+    `产品画布：${interfaceName}`,
     '',
-    '创建后，它会出现在左侧 AI 产品。进入它后继续聊天；需要结构化输入、预览或产出区时，会生成任务界面。'
+    '创建后会出现在左侧。进入它后继续聊天，需要输入、预览或产出区时再生成产品画布。'
   ].join('\n');
   if (typeof showConfirmDialog === 'function') {
     return showConfirmDialog({
-      title: '新建 AI 产品',
+      title: '新建产品',
       message,
       confirmLabel: '创建并进入',
       focusCancel: true
@@ -651,20 +671,22 @@ function _assistantProductPayloadFromDraft(draft) {
     source_prompt: draft && (draft.sourcePrompt || draft.source_prompt) || '',
     product_type: draft && (draft.productType || draft.product_type) || 'custom',
     ui_mode: draft && (draft.uiMode || draft.ui_mode) || 'workspace',
+    product_layout: draft && (draft.productLayout || draft.product_layout || draft.layout) || '',
+    canvas_label: draft && (draft.canvasLabel || draft.canvas_label) || '',
     skills: Array.isArray(draft && draft.skills) ? draft.skills : [],
     tools
   };
 }
 
 async function _createProductFromAssistantDraft(draft) {
-  if (!draft || !draft.title) throw new Error('缺少 AI 产品信息');
+  if (!draft || !draft.title) throw new Error('缺少产品信息');
   const created = await api('/api/products/create', {
     method: 'POST',
     body: JSON.stringify(_assistantProductPayloadFromDraft(draft))
   });
   const product = created && created.product ? created.product : null;
   const saved = typeof _productToCustomAssistant === 'function' ? _productToCustomAssistant(product) : null;
-  if (!saved || !saved.productId) throw new Error('AI 产品创建后没有生成 productId');
+  if (!saved || !saved.productId) throw new Error('产品创建后没有生成 productId');
   _customAssistantsWrite(_mergeCustomAssistants(_customAssistantsRead(), [saved]));
   _registerCustomAssistant(saved);
   return saved;
@@ -672,7 +694,7 @@ async function _createProductFromAssistantDraft(draft) {
 
 async function _saveProductBackedAssistant(nextAssistant) {
   const productId = String(nextAssistant && (nextAssistant.productId || nextAssistant.product_id) || '').trim();
-  if (!productId) throw new Error('这个 AI 产品缺少 productId');
+  if (!productId) throw new Error('这个产品缺少 productId');
   const data = await api('/api/products/update', {
     method: 'POST',
     body: JSON.stringify({
@@ -695,7 +717,7 @@ async function _saveProductBackedAssistant(nextAssistant) {
 async function createProductFromPrompt(prompt) {
   const text = String(prompt || '').trim();
   if (!text) {
-    if (typeof showToast === 'function') showToast('先描述你想创建什么 AI 产品');
+    if (typeof showToast === 'function') showToast('先描述你想创建什么产品');
     return null;
   }
   const draft = _assistantDraftFromPrompt(text);
@@ -707,7 +729,7 @@ async function createProductFromPrompt(prompt) {
     openAssistantHome(existing.kind);
     const started = _maybeStartInitialProductUiForExistingAssistant(existing, text);
     if (typeof showToast === 'function') {
-      showToast(started ? `已打开已有 AI 产品，正在生成任务界面：${existing.title}` : `已打开已有 AI 产品：${existing.title}`);
+      showToast(started ? `已打开已有产品，正在生成产品画布：${existing.title}` : `已打开已有产品：${existing.title}`);
     }
     return existing;
   }
@@ -717,13 +739,13 @@ async function createProductFromPrompt(prompt) {
   try {
     savedDraft = await _createProductFromAssistantDraft(draft);
   } catch (err) {
-    if (typeof showToast === 'function') showToast(`创建 AI 产品失败：${err && err.message || err}`, 3200, 'error');
+    if (typeof showToast === 'function') showToast(`创建产品失败：${err && err.message || err}`, 3200, 'error');
     return null;
   }
   renderAssistantList();
   openAssistantHome(savedDraft.kind);
-  if (typeof showToast === 'function') showToast(`已创建 AI 产品：${savedDraft.title}`);
-  setTimeout(() => _startProductInitializationTask(savedDraft, text), 80);
+  if (typeof showToast === 'function') showToast(`已创建产品：${savedDraft.title}`);
+  _maybeStartInitialProductUiForExistingAssistant(savedDraft, text);
   return savedDraft;
 }
 
@@ -735,21 +757,21 @@ async function renameCurrentCustomAssistant() {
   const kind = _assistantKey();
   const assistant = _customAssistantByKind(kind);
   if (!assistant) {
-    if (typeof showToast === 'function') showToast('只有你创建的 AI 产品可以重命名');
+    if (typeof showToast === 'function') showToast('只有你创建的产品可以重命名');
     return null;
   }
   const nextTitleRaw = typeof showPromptDialog === 'function'
     ? await showPromptDialog({
-      title: '重命名 AI 产品',
-      message: '这个名称会显示在左侧 AI 产品和产品主页。',
+      title: '重命名产品',
+      message: '这个名称会显示在左侧产品列表和产品主页。',
         value: assistant.title,
         confirmLabel: '保存'
       })
-    : window.prompt('重命名 AI 产品', assistant.title);
+    : window.prompt('重命名产品', assistant.title);
   const nextTitle = String(nextTitleRaw || '').replace(/\s+/g, ' ').trim();
   if (!nextTitle || nextTitle === assistant.title) return assistant;
   if (_customAssistantTitleExists(nextTitle, kind)) {
-    if (typeof showToast === 'function') showToast('已经有同名 AI 产品');
+    if (typeof showToast === 'function') showToast('已经有同名产品');
     return assistant;
   }
   let updated = null;
@@ -769,13 +791,13 @@ async function deleteCurrentCustomAssistant() {
   const kind = _assistantKey();
   const assistant = _customAssistantByKind(kind);
   if (!assistant) {
-    if (typeof showToast === 'function') showToast('内置 AI 产品不能删除');
+    if (typeof showToast === 'function') showToast('内置产品不能删除');
     return false;
   }
   const ok = typeof showConfirmDialog === 'function'
     ? await showConfirmDialog({
         title: `删除「${assistant.title}」？`,
-        message: '只会删除这个 AI 产品对象，不会删除它处理过的历史任务。历史任务会回到最匹配的内置 AI 产品；无法识别时回到通用 AI。',
+        message: '只会删除这个产品对象，不会删除它处理过的历史任务。历史任务会回到最匹配的内置产品；无法识别时回到通用 AI。',
         confirmLabel: '删除',
         danger: true,
         focusCancel: true
@@ -789,7 +811,7 @@ async function deleteCurrentCustomAssistant() {
         body: JSON.stringify({ product_id: assistant.productId })
       });
     } catch (err) {
-      if (typeof showToast === 'function') showToast(`删除 AI 产品失败：${err && err.message || err}`, 3200, 'error');
+      if (typeof showToast === 'function') showToast(`删除产品失败：${err && err.message || err}`, 3200, 'error');
       return false;
     }
   }
@@ -798,7 +820,7 @@ async function deleteCurrentCustomAssistant() {
   renderAssistantList();
   openAssistantHome('general');
   if (typeof renderSessionListFromCache === 'function') renderSessionListFromCache();
-  if (typeof showToast === 'function') showToast(`已删除 AI 产品：${assistant.title}`);
+  if (typeof showToast === 'function') showToast(`已删除产品：${assistant.title}`);
   return true;
 }
 
@@ -808,6 +830,20 @@ function _assistantKey() {
 
 function _assistantObject(kind = _assistantKey()) {
   return AI_OBJECTS[kind] || AI_OBJECTS.ppt;
+}
+
+function _assistantDirectoryMode(hasTask = _assistantTaskHasActiveTask()) {
+  const raw = document.body && document.body.dataset ? document.body.dataset.nextAiDirectory : '';
+  if (raw === 'library' || raw === 'product') return raw;
+  if (window._nextAiDirectory === 'library' || window._nextAiDirectory === 'product') return window._nextAiDirectory;
+  return hasTask ? 'product' : 'library';
+}
+
+function _setAssistantDirectoryMode(mode) {
+  const next = mode === 'library' ? 'library' : 'product';
+  window._nextAiDirectory = next;
+  if (document.body && document.body.dataset) document.body.dataset.nextAiDirectory = next;
+  return next;
 }
 
 function assistantKindForSession(sessionId) {
@@ -886,6 +922,7 @@ function assistantKindForLoadedSession(session) {
 function syncAssistantForLoadedSession(session) {
   const productId = String(session && (session.product_id || session.productId) || '').trim();
   const kind = assistantKindForLoadedSession(session);
+  _setAssistantDirectoryMode('product');
   if (session && kind) session.next_ai_assistant_kind = kind;
   if (kind && kind !== _assistantKey() && AI_OBJECTS[kind]) {
     selectAiObject(kind);
@@ -960,6 +997,12 @@ function filterSessionsForCurrentAssistant(sessions) {
   return sessions.filter(assistantTaskBelongsToCurrentAssistant);
 }
 
+function assistantProductLabelForSession(session) {
+  const kind = assistantKindForLoadedSession(session);
+  const object = AI_OBJECTS[kind] || AI_OBJECTS.general || AI_OBJECTS.ppt;
+  return object && object.title ? object.title : '通用 AI';
+}
+
 function _assistantAvatarLabel(kind = _assistantKey(), object) {
   if (kind === 'create') return '+';
   const title = object && object.title ? object.title : (window._currentAiAssistantTitle || 'AI 产品');
@@ -1019,24 +1062,27 @@ function _syncAssistantHome(object = AI_OBJECTS[_assistantKey()] || AI_OBJECTS.p
   const newTaskBtn = $('newTaskPrimaryBtn');
   const newTaskIcon = $('newTaskPrimaryIcon');
   const isChatOnlyProduct = _assistantIsChatOnlyProduct(object);
+  const usesProductCanvas = typeof _assistantUsesProductCanvas === 'function'
+    ? _assistantUsesProductCanvas(object)
+    : !isChatOnlyProduct;
   if (home) home.classList.toggle('is-create', isCreate);
   if (title) title.textContent = assistantTitle;
   if (desc) {
     desc.textContent = isCreate
-      ? (object.desc || '描述你想创建的 AI 产品。')
-      : (object.homeDesc || object.desc || '直接说你想完成什么；需要结构化输入、预览或产出区时，它会生成自己的任务界面。');
+      ? (object.desc || '描述一类长期任务。')
+      : (object.homeDesc || object.desc || '直接说你想完成什么。需要输入、预览或产出区时，它会生成产品画布。');
   }
   if (avatar) avatar.textContent = _assistantAvatarLabel(kind, object);
-  if (eyebrow) eyebrow.textContent = isCreate ? '新建 AI 产品' : object.custom ? '你创建的 AI 产品' : 'AI 产品';
+  if (eyebrow) eyebrow.textContent = isCreate ? '新建产品' : object.custom ? '你创建的产品' : '已选择';
   if (guide) {
     guide.textContent = isCreate
       ? '说一句它长期要负责什么。'
-      : '在下方输入第一句话，开始一个任务。';
+      : '直接输入即可开始。';
   }
   if (origin) {
     if (isCreate) {
       origin.hidden = false;
-      origin.textContent = '创建后，它会出现在左侧，并保留自己的能力、任务和界面。';
+      origin.textContent = '创建后，它会出现在左侧，并保留自己的能力、任务和产品画布。';
       origin.removeAttribute('title');
     } else {
       origin.hidden = true;
@@ -1046,8 +1092,8 @@ function _syncAssistantHome(object = AI_OBJECTS[_assistantKey()] || AI_OBJECTS.p
   }
   if (nextStep) {
     if (isCreate) {
-      _renderAssistantHomeActionBar(nextStep, '确认后会打开这个 AI 产品；第一条任务会生成第一版任务界面。');
-    } else if (isChatOnlyProduct) {
+      _renderAssistantHomeActionBar(nextStep, '确认后会打开这个产品。适合结构化工作的产品，会生成第一版产品画布。');
+    } else if (!usesProductCanvas) {
       nextStep.hidden = true;
       nextStep.innerHTML = '';
     } else if (object.productId && String(object.uiStatus || 'empty') === 'failed') {
@@ -1055,20 +1101,20 @@ function _syncAssistantHome(object = AI_OBJECTS[_assistantKey()] || AI_OBJECTS.p
       _renderAssistantHomeActionBar(
         nextStep,
         failureReason
-          ? `${failureReason} 可以继续说需求，或先重新生成任务界面。`
-          : '任务界面生成失败，可以继续说需求，或先重新生成一版。',
-        '重新生成任务界面',
+          ? `${failureReason} 可以继续说需求，或先重新生成产品画布。`
+          : '产品画布生成失败，可以继续说需求，或先重新生成一版。',
+        '重新生成产品画布',
         () => requestCurrentProductUiGeneration()
       );
     } else if (object.productId && String(object.uiStatus || 'empty') === 'empty') {
       _renderAssistantHomeActionBar(
         nextStep,
-        '这个 AI 产品还没有固定任务界面。可以先聊天，也可以直接生成第一版。',
-        '生成任务界面',
+        '这个产品还没有固定产品画布。可以先聊天，也可以直接生成第一版。',
+        '生成产品画布',
         () => requestCurrentProductUiGeneration()
       );
     } else if (object.productId && String(object.uiStatus || 'empty') === 'generating') {
-      _renderAssistantHomeActionBar(nextStep, '正在生成这个产品的任务界面，完成后会自动刷新。');
+      _renderAssistantHomeActionBar(nextStep, '正在生成这个产品的产品画布，完成后会自动刷新。');
     } else {
       nextStep.hidden = true;
       nextStep.innerHTML = '';
@@ -1092,9 +1138,16 @@ function _syncAssistantHome(object = AI_OBJECTS[_assistantKey()] || AI_OBJECTS.p
 
 function selectAiObject(kind = 'ppt') {
   const object = AI_OBJECTS[kind] || AI_OBJECTS.ppt;
+  const previousKind = window._currentAiAssistantKind || '';
   window._currentAiAssistantKind = kind;
   window._currentAiAssistantTitle = object.title;
   window._currentAiProductTitle = object.title;
+  if (previousKind && previousKind !== kind && document.body && document.body.dataset) {
+    document.body.dataset.nextAiProductAdjust = 'closed';
+  }
+  document.body.dataset.nextAiProductLayout = typeof _assistantProductLayout === 'function'
+    ? _assistantProductLayout(object)
+    : (_assistantIsChatOnlyProduct(object) ? 'chat_only' : 'chat_center');
   if (kind !== 'create') _lastTaskAssistantKind = kind;
   document.querySelectorAll('.ai-object-item[data-ai-object]').forEach(btn => {
     btn.classList.toggle('active', btn.dataset.aiObject === kind);
@@ -1121,7 +1174,7 @@ function selectAiObject(kind = 'ppt') {
   const previewUrl = typeof currentAssistantPreviewUrl === 'function'
     ? currentAssistantPreviewUrl(kind)
     : (object.previewUrl || '');
-  if (previewUrl && typeof refreshCurrentProductPreview === 'function') refreshCurrentProductPreview({silent:true});
+  if (previewUrl && _assistantTaskHasActiveTask() && typeof refreshCurrentProductPreview === 'function') refreshCurrentProductPreview({silent:true});
   else _hideProductPreviewIfActive();
   if (typeof renderSessionListFromCache === 'function') renderSessionListFromCache();
 }
@@ -1133,7 +1186,7 @@ function startAssistantNewTask() {
 
 function openAssistantLanding(options = {}) {
   const kind = _assistantKey() === 'create' ? (_lastTaskAssistantKind || 'general') : _assistantKey();
-  openAssistantHome(kind, options);
+  openAssistantHome(kind, { ...options, directory: 'library' });
 }
 
 function _setAssistantHomeUrl() {
@@ -1154,6 +1207,7 @@ function openAssistantHome(kind, options = {}) {
     if (typeof showToast === 'function') showToast('当前任务还在运行，完成后再开始新任务');
     return;
   }
+  _setAssistantDirectoryMode(options.directory === 'library' ? 'library' : 'product');
   if (kind) selectAiObject(kind);
   if (typeof S !== 'undefined') {
     S.session = null;
@@ -1169,8 +1223,8 @@ function openAssistantHome(kind, options = {}) {
   const empty = $('emptyState');
   if (inner) inner.innerHTML = '';
   if (empty) empty.style.display = 'none';
+  _hideProductPreviewIfActive();
   syncAssistantTaskUi();
-  if (currentAssistantPreviewUrl()) refreshCurrentProductPreview({silent:true});
   const input = $('msg');
   if (input) {
     const object = AI_OBJECTS[_assistantKey()] || AI_OBJECTS.ppt;
@@ -1241,7 +1295,8 @@ function _assistantTaskLooksGenericTitle(value) {
 function _assistantTaskLooksProductUiCommand(value) {
   const title = _assistantTaskNormalizeTitle(value);
   if (!title) return false;
-  if (/^(请)?基于.*(产品界面|工作界面|PPT 工作界面|继续优化)/.test(title)) return true;
+  if (/^(请)?基于.*(产品画布|产品界面|工作界面|PPT 工作界面|继续优化)/.test(title)) return true;
+  if (/^生成.*产品画布$/.test(title)) return true;
   if (/^(请)?同步更新右侧/.test(title)) return true;
   if (/^(请)?(继续)?优化当前 PPT/.test(title)) return true;
   if (/^(生成页面|重排|收敛成|写\s*\d+\s*分钟讲稿|投资人审阅)/.test(title)) return true;
@@ -1410,16 +1465,16 @@ function _syncAssistantTaskContextStrip(hasTask = _assistantTaskHasActiveTask())
   const hasProductPreview = !!(_activeProductPreview && _activeProductPreview.product_preview);
   if (!hasTask || !hasProductPreview) {
     strip.hidden = true;
-    if (kicker) kicker.textContent = '任务界面';
+    if (kicker) kicker.textContent = '产品画布';
     if (title) title.textContent = '';
     if (desc) desc.textContent = '';
     return;
   }
   strip.hidden = false;
-  if (kicker) kicker.textContent = '任务界面';
-  if (title) title.textContent = (_activeProductPreview && (_activeProductPreview.name || _activeProductPreview.id)) || '当前任务界面';
+  if (kicker) kicker.textContent = '产品画布';
+  if (title) title.textContent = (_activeProductPreview && (_activeProductPreview.name || _activeProductPreview.id)) || '当前产品画布';
   if (desc) {
-    desc.textContent = '任务界面已打开，可以继续用聊天调整。';
+    desc.textContent = '产品画布已打开，可以继续用聊天调整。';
   }
 }
 
@@ -1431,6 +1486,7 @@ function _syncAssistantTaskProgress(hasTask = _assistantTaskHasActiveTask()) {
   const dot = $('assistantTaskProgressDot');
   const productUi = $('assistantTaskProgressProduct');
   const productUiKicker = $('assistantTaskProgressProductKicker');
+  const productUiItem = document.querySelector('.assistant-task-progress-product-ui');
   const isRunning = !!(typeof S !== 'undefined' && (S.busy || S.activeStreamId || (S.session && S.session.active_stream_id)));
   if (!hasTask || !isRunning) {
     progress.hidden = true;
@@ -1442,19 +1498,22 @@ function _syncAssistantTaskProgress(hasTask = _assistantTaskHasActiveTask()) {
   const productScope = String((S.session && S.session.product_scope) || '').trim();
   const isInit = productScope === 'product_init';
   const assistantTitle = window._currentAiAssistantTitle || window._currentAiProductTitle || '当前 AI 产品';
+  const object = _assistantObject();
+  const usesProductCanvas = typeof _assistantUsesProductCanvas === 'function' ? _assistantUsesProductCanvas(object) : !_assistantIsChatOnlyProduct(object);
   progress.classList.toggle('is-running', isRunning);
   progress.classList.remove('is-idle');
   if (dot) dot.setAttribute('aria-label', '任务运行中');
-  if (title) title.textContent = isInit ? '正在生成第一版任务界面' : '正在处理任务';
+  if (title) title.textContent = isInit ? '正在生成第一版产品画布' : '正在处理任务';
   if (desc) {
     desc.textContent = isInit
       ? `继续补充主题、风格和输出要求。`
       : `「${assistantTitle}」正在处理，可以继续补充要求。`;
   }
-  if (productUiKicker) productUiKicker.textContent = '任务界面';
-  if (productUi) {
+  if (productUiItem) productUiItem.hidden = !usesProductCanvas;
+  if (productUiKicker) productUiKicker.textContent = '产品画布';
+  if (usesProductCanvas && productUi) {
     if (hasProductPreview) {
-      productUi.textContent = (_activeProductPreview && _activeProductPreview.name) || '当前任务界面';
+      productUi.textContent = (_activeProductPreview && _activeProductPreview.name) || '当前产品画布';
     } else if (isInit) {
       productUi.textContent = '正在生成第一版';
     } else {
@@ -1479,10 +1538,10 @@ function _syncProductPreviewCopy() {
   const isProductPreview = !!(_activeProductPreview && _activeProductPreview.product_preview);
   const productPreviewName = _activeProductPreview
     ? (_activeProductPreview.name || _activeProductPreview.id)
-    : '任务界面';
+    : '产品画布';
   const previousVersion = _activeProductPreview && _activeProductPreview.previous_version ? _activeProductPreview.previous_version : '';
   const canRollback = !!(_activeProductPreview && _activeProductPreview.can_rollback && previousVersion);
-  if (kicker) kicker.textContent = isProductPreview ? '任务界面' : assistantTitle;
+  if (kicker) kicker.textContent = isProductPreview ? '产品画布' : assistantTitle;
   if (nameEl) nameEl.textContent = productPreviewName;
   if (versionEl) {
     versionEl.textContent = isProductPreview && canRollback ? ' · 可恢复上一版' : '';
@@ -1492,24 +1551,24 @@ function _syncProductPreviewCopy() {
     if (isProductPreview) {
       const uiStatus = String(_activeProductPreview && _activeProductPreview.ui_status || '');
       note.textContent = uiStatus === 'generating'
-        ? '正在生成任务界面'
+        ? '正在生成产品画布'
         : uiStatus === 'failed'
-          ? (_activeProductPreview.ui_error_message || '任务界面需要重新生成')
+          ? (_activeProductPreview.ui_error_message || '产品画布需要重新生成')
           : !_activeProductPreview.entry_generated
-            ? '还没有任务界面，可以继续聊天或生成第一版'
+            ? '还没有产品画布，可以继续聊天或生成第一版'
             : canRollback
               ? '已生成，可以继续聊天调整，也可恢复上一版'
               : '已生成，可以继续聊天调整';
     } else {
       note.textContent = _assistantTaskHasActiveTask()
         ? `当前任务：${taskTitle}`
-        : '任务界面按需生成';
+        : '产品画布按需生成';
     }
   }
   if (regenerateBtn) {
     regenerateBtn.hidden = !isProductPreview;
-    regenerateBtn.textContent = _activeProductPreview && _activeProductPreview.entry_generated ? '重新生成任务界面' : '生成第一版';
-    regenerateBtn.title = `根据当前聊天生成「${productPreviewName}」的任务界面`;
+    regenerateBtn.textContent = _activeProductPreview && _activeProductPreview.entry_generated ? '重新生成产品画布' : '生成第一版';
+    regenerateBtn.title = `根据当前聊天生成「${productPreviewName}」的产品画布`;
     regenerateBtn.setAttribute('aria-label', regenerateBtn.title);
   }
   if (rollbackBtn) {
@@ -1529,12 +1588,12 @@ function _syncProductPreviewCopy() {
   }
   if (collapseBtn) {
     collapseBtn.textContent = '收起';
-    collapseBtn.title = `收起「${assistantTitle}」的任务界面，聊天会保留`;
+    collapseBtn.title = `收起「${assistantTitle}」的产品画布，聊天会保留`;
     collapseBtn.setAttribute('aria-label', collapseBtn.title);
   }
   if (moreBtn) {
     moreBtn.textContent = '更多';
-    moreBtn.title = '任务界面操作';
+    moreBtn.title = '产品画布操作';
     moreBtn.disabled = false;
     moreBtn.setAttribute('aria-label', moreBtn.title);
     moreBtn.onclick = toggleActiveProductPreviewMenu;
@@ -1554,8 +1613,42 @@ function _focusActiveProductPreviewSurface() {
 
 async function openOrFocusTaskProductPreviewFromHeader() {
   if (_activeProductPreview && _focusActiveProductPreviewSurface()) return;
-  if (typeof showToast === 'function') showToast('当前任务还没有任务界面');
+  if (typeof showToast === 'function') showToast('当前任务还没有产品画布');
 }
+
+function _currentProductLayoutForTaskHeader(object = _assistantObject()) {
+  if (typeof _assistantProductLayout === 'function') return _assistantProductLayout(object);
+  return _assistantIsChatOnlyProduct(object) ? 'chat_only' : 'chat_center';
+}
+
+function _isCanvasFullProductUseMode(object = _assistantObject()) {
+  return _assistantTaskHasActiveTask() && _currentProductLayoutForTaskHeader(object) === 'canvas_full' && !!_activeProductPreview;
+}
+
+function setCurrentProductAdjustMode(open, options = {}) {
+  const next = !!open;
+  document.body.dataset.nextAiProductAdjust = next ? 'open' : 'closed';
+  const adjustHeader = $('productAdjustPanelHeader');
+  if (adjustHeader) adjustHeader.hidden = !next;
+  // 走完整同步,让侧画布(PPT)的 composer 文案、开关按钮标签随用/调切换刷新。
+  if (typeof syncAssistantTaskUi === 'function') syncAssistantTaskUi();
+  else _syncTaskHeaderStatus();
+  if (next && options.focus !== false) {
+    const input = $('msg');
+    if (input) {
+      setTimeout(() => {
+        try { input.focus(); } catch (_err) {}
+      }, 0);
+    }
+  }
+}
+
+function toggleCurrentProductAdjustMode() {
+  setCurrentProductAdjustMode(document.body.dataset.nextAiProductAdjust !== 'open');
+}
+
+window.setCurrentProductAdjustMode = setCurrentProductAdjustMode;
+window.toggleCurrentProductAdjustMode = toggleCurrentProductAdjustMode;
 
 function _syncTaskHeaderProductPreviewChipAction({ isCreate, hasTask, canOpenProductPreview, label }) {
   const productPreviewStatus = $('taskHeaderProductStatus');
@@ -1565,7 +1658,7 @@ function _syncTaskHeaderProductPreviewChipAction({ isCreate, hasTask, canOpenPro
   if (actionable) {
     productPreviewStatus.setAttribute('role', 'button');
     productPreviewStatus.setAttribute('tabindex', '0');
-    productPreviewStatus.setAttribute('aria-label', _activeProductPreview ? `跳到任务界面：${label}` : `打开任务界面：${label}`);
+    productPreviewStatus.setAttribute('aria-label', _activeProductPreview ? `跳到产品画布：${label}` : `打开产品画布：${label}`);
     productPreviewStatus.onclick = () => openOrFocusTaskProductPreviewFromHeader();
     productPreviewStatus.onkeydown = event => {
       if (event.key !== 'Enter' && event.key !== ' ') return;
@@ -1588,41 +1681,68 @@ function _syncTaskHeaderStatus(hasTask = _assistantTaskHasActiveTask()) {
   const productPreviewText = productPreviewStatus ? productPreviewStatus.querySelector('span:last-child') : null;
   const assistantTitle = window._currentAiAssistantTitle || window._currentAiProductTitle || '当前 AI 产品';
   const isCreate = _assistantKey() === 'create';
+  const object = _assistantObject();
+  const canAdjustProduct = !isCreate && !!(object && object.productId);
+  const usesProductCanvas = isCreate || (typeof _assistantUsesProductCanvas === 'function' ? _assistantUsesProductCanvas(object) : !_assistantIsChatOnlyProduct(object));
   const activeProductPreviewName = _activeProductPreview
-    ? (_activeProductPreview.name || _activeProductPreview.id || '任务界面')
+    ? (_activeProductPreview.name || _activeProductPreview.id || '产品画布')
     : '';
   const isProductPreview = !!(_activeProductPreview && _activeProductPreview.product_preview);
+  const adjustOpen = document.body.dataset.nextAiProductAdjust === 'open';
+  // 用/调是产品级入口:不依赖是否已经长出画布。
+  const adjustToggle = $('taskHeaderAdjustToggle');
+  if (adjustToggle) {
+    adjustToggle.hidden = !canAdjustProduct;
+    if (canAdjustProduct) {
+      adjustToggle.classList.toggle('is-adjust-product', adjustOpen);
+      adjustToggle.classList.toggle('is-actionable', true);
+      adjustToggle.setAttribute('aria-pressed', adjustOpen ? 'true' : 'false');
+      adjustToggle.setAttribute('aria-label', adjustOpen ? `关闭「${assistantTitle}」的产品调整` : `调整「${assistantTitle}」`);
+      const adjustLabel = adjustToggle.querySelector('span:last-child');
+      if (adjustLabel) adjustLabel.textContent = adjustOpen ? '调整中' : '调整产品';
+      adjustToggle.title = adjustOpen ? '退出调整，回到用产品做任务' : '告诉 AI 这个产品哪里要改';
+    }
+  }
+  if (productPreviewStatus) productPreviewStatus.classList.remove('is-adjust-product');
+  if (chatStatus) chatStatus.hidden = false;
   if (chatText) {
     chatText.textContent = isCreate
       ? '新建产品'
-      : hasTask
-        ? '任务中'
-        : '新任务';
+      : adjustOpen
+        ? '调整中'
+        : '使用中';
   }
-  if (productPreviewText) {
+  if (productPreviewStatus) {
+    productPreviewStatus.hidden = !usesProductCanvas;
+  }
+  if (!usesProductCanvas) {
+    _syncTaskHeaderProductPreviewChipAction({ isCreate, hasTask, canOpenProductPreview: false, label: '' });
+  } else if (productPreviewText) {
     if (isCreate) {
-      productPreviewText.textContent = '生成任务界面';
+      productPreviewText.textContent = '生成产品画布';
     } else if (_activeProductPreview) {
-      productPreviewText.textContent = isProductPreview ? '任务界面已打开' : activeProductPreviewName;
+      productPreviewText.textContent = isProductPreview ? '产品画布已打开' : activeProductPreviewName;
     } else {
-      productPreviewText.textContent = hasTask ? '任务界面按需' : '从消息开始';
+      productPreviewText.textContent = '画布按需';
     }
   }
   if (productPreviewStatus) {
     productPreviewStatus.classList.toggle('is-active-product', !isCreate && !!_activeProductPreview);
     const label = productPreviewText ? productPreviewText.textContent : '';
-    const canOpenProductPreview = !!_activeProductPreview;
-    productPreviewStatus.title = !isCreate && hasTask && canOpenProductPreview
-      ? `跳到任务界面：${label}`
+    const canOpenProductPreview = usesProductCanvas && !!_activeProductPreview;
+    productPreviewStatus.title = usesProductCanvas && !isCreate && hasTask && canOpenProductPreview
+      ? `跳到产品画布：${label}`
       : label;
     _syncTaskHeaderProductPreviewChipAction({ isCreate, hasTask, canOpenProductPreview, label });
   }
   if (chatStatus) {
     chatStatus.title = isCreate
       ? '描述要创建的 AI 产品'
-      : hasTask
+      : adjustOpen
+        ? `正在调整「${assistantTitle}」`
+        : hasTask
         ? `当前任务由「${assistantTitle}」处理`
-        : `从这里开始「${assistantTitle}」的新任务`;
+        : `从这里开始使用「${assistantTitle}」`;
   }
 }
 
@@ -1631,17 +1751,59 @@ function _syncAssistantSidebarIntro(hasTask = _assistantTaskHasActiveTask()) {
   if (!sub) return;
   const assistantTitle = window._currentAiAssistantTitle || window._currentAiProductTitle || '当前 AI 产品';
   const isCreate = _assistantKey() === 'create';
-  if (isCreate) {
+  const directoryMode = _assistantDirectoryMode(hasTask);
+  if (directoryMode === 'library' && !hasTask) {
+    sub.textContent = '选择产品，进入它的任务目录。';
+  } else if (isCreate) {
     sub.textContent = '描述新产品。';
   } else if (hasTask) {
     sub.textContent = `${assistantTitle} 的任务`;
   } else {
-    sub.textContent = '选择产品，开始任务。';
+    sub.textContent = '开始新任务，或打开它的历史任务。';
+  }
+}
+
+function _syncAssistantSidebarDirectory(hasTask = _assistantTaskHasActiveTask()) {
+  const mode = hasTask ? 'product' : _assistantDirectoryMode(hasTask);
+  _setAssistantDirectoryMode(mode);
+  const isLibrary = mode === 'library';
+  const isCreate = _assistantKey() === 'create';
+  const object = _assistantObject();
+  const assistantTitle = (object && object.title) || window._currentAiAssistantTitle || '当前产品';
+  const panelTitle = $('assistantPanelTitle');
+  const back = $('assistantProductBackBtn');
+  const listTitle = $('assistantTaskListTitle');
+  const search = $('sessionSearch');
+  const newTaskBtn = $('newTaskPrimaryBtn');
+  if (panelTitle) panelTitle.textContent = isLibrary ? '产品库' : assistantTitle;
+  if (back) back.hidden = isLibrary;
+  if (listTitle) {
+    listTitle.textContent = isLibrary
+      ? '最近活动'
+      : isCreate
+        ? '创建'
+        : '任务';
+  }
+  if (search) {
+    search.placeholder = isLibrary
+      ? '搜索最近活动'
+      : isCreate
+      ? '创建后可搜索任务...'
+      : `搜索${assistantTitle}任务`;
+  }
+  if (newTaskBtn) {
+    newTaskBtn.hidden = isLibrary;
   }
 }
 
 function syncAssistantTaskUi() {
   const assistantTitle = window._currentAiAssistantTitle || window._currentAiProductTitle || 'PPT 设计师';
+  const currentObject = _assistantObject();
+  const productLayout = _currentProductLayoutForTaskHeader(currentObject);
+  const canAdjustProduct = _assistantKey() !== 'create' && !!(currentObject && currentObject.productId);
+  const usesProductCanvas = typeof _assistantUsesProductCanvas === 'function'
+    ? _assistantUsesProductCanvas(currentObject)
+    : productLayout !== 'chat_only';
   const root = $('productCrumbRoot');
   const title = $('productModeTitle');
   const listTitle = $('assistantTaskListTitle');
@@ -1649,15 +1811,38 @@ function syncAssistantTaskUi() {
   const input = $('msg');
   const home = $('assistantHome');
   const messagesShell = document.querySelector('.messages-shell');
+  const adjustHeader = $('productAdjustPanelHeader');
   const activeProductSurface = $('activeProductSurface');
   const body = $('productChatBody');
   const hasTask = _assistantTaskHasActiveTask();
   const taskTitle = _assistantTaskTitle();
+  if (!usesProductCanvas && _activeProductPreview && _activeProductPreview.product_preview) {
+    if (typeof _hideProductPreviewIfActive === 'function') {
+      _hideProductPreviewIfActive({sync:false});
+    } else {
+      const frame = $('activeProductFrame');
+      const previewState = $('productPreviewState');
+      if (activeProductSurface) activeProductSurface.hidden = true;
+      if (frame) frame.removeAttribute('src');
+      if (previewState) previewState.hidden = true;
+      if (body) body.classList.remove('has-active-product');
+      _activeProductPreview = null;
+      _syncProductPreviewMode(null);
+    }
+  }
   document.body.dataset.nextAiView = hasTask ? 'task' : 'assistant';
+  document.body.dataset.nextAiProductLayout = productLayout;
+  document.body.dataset.nextAiCanvas = usesProductCanvas && _activeProductPreview ? 'open' : 'closed';
+  const canvasFullUseMode = hasTask && productLayout === 'canvas_full' && usesProductCanvas && !!_activeProductPreview;
+  const adjustableUseMode = canAdjustProduct;
+  if (!adjustableUseMode) document.body.dataset.nextAiProductAdjust = 'closed';
+  else if (!document.body.dataset.nextAiProductAdjust) document.body.dataset.nextAiProductAdjust = 'closed';
+  const adjustOpen = adjustableUseMode && document.body.dataset.nextAiProductAdjust === 'open';
+  if (adjustHeader) adjustHeader.hidden = !adjustOpen;
   if (body) body.dataset.nextAiView = hasTask ? 'task' : 'assistant';
   if (title) title.textContent = assistantTitle;
   if (root) {
-    root.hidden = !hasTask;
+    root.hidden = !hasTask || canvasFullUseMode;
     root.textContent = hasTask ? taskTitle : '';
     root.title = hasTask ? taskTitle : '';
   }
@@ -1667,13 +1852,15 @@ function syncAssistantTaskUi() {
     : '搜索任务';
   if (input) {
     const object = AI_OBJECTS[_assistantKey()] || AI_OBJECTS.ppt;
-    input.placeholder = hasTask
-      ? `继续补充「${taskTitle}」这次任务...`
-      : (object.placeholder || input.placeholder);
+    input.placeholder = adjustOpen
+      ? `告诉「${assistantTitle}」你想怎么调整这个产品...`
+      : hasTask
+        ? `继续补充「${taskTitle}」这次任务...`
+        : (object.placeholder || input.placeholder);
   }
-  if (home) home.hidden = hasTask;
-  if (messagesShell) messagesShell.hidden = !hasTask;
-  if (!hasTask) {
+  if (home) home.hidden = hasTask || adjustOpen;
+  if (messagesShell) messagesShell.hidden = !hasTask && !adjustOpen;
+  if (!hasTask && !adjustOpen) {
     if (activeProductSurface) activeProductSurface.hidden = true;
     if (body) body.classList.remove('has-active-product');
   }
@@ -1685,6 +1872,7 @@ function syncAssistantTaskUi() {
   _syncAssistantTaskContextStrip(hasTask);
   _syncAssistantTaskProgress(hasTask);
   if (_activeProductPreview) _syncProductPreviewCopy();
+  _syncAssistantSidebarDirectory(hasTask);
   _syncAssistantSidebarIntro(hasTask);
   _syncTaskHeaderStatus(hasTask);
   return true;
