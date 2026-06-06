@@ -2710,7 +2710,11 @@ function renderSessionListFromCache(){
     (activeSidForSidebar&&s.session_id===activeSidForSidebar) ||
     (S.session&&s.session_id===S.session.session_id&&(S.session.message_count||0)>0)
   );
-  const assistantFiltered = typeof filterSessionsForCurrentAssistant === 'function'
+  const nextAiDirectoryMode=String(document.body&&document.body.dataset&&document.body.dataset.nextAiDirectory||'');
+  const nextAiLibraryMode=nextAiDirectoryMode==='library';
+  const assistantFiltered = nextAiLibraryMode
+    ? withMessages
+    : typeof filterSessionsForCurrentAssistant === 'function'
     ? filterSessionsForCurrentAssistant(withMessages)
     : withMessages;
   // The server is authoritative for profile scoping (#1611): it filters by
@@ -3093,6 +3097,18 @@ function renderSessionListFromCache(){
     ts.className='session-time'+(hasAttentionState?' is-hidden':'');
     ts.textContent=hasAttentionState?'':_formatRelativeSessionTime(tsMs);
     titleRow.appendChild(title);
+    if(nextAiLibraryMode){
+      const productLabel=typeof assistantProductLabelForSession==='function'
+        ? assistantProductLabelForSession(s)
+        : '';
+      if(productLabel){
+        const productChip=document.createElement('span');
+        productChip.className='session-product-chip';
+        productChip.textContent=productLabel;
+        productChip.title=`属于 ${productLabel}`;
+        titleRow.appendChild(productChip);
+      }
+    }
     // Project color dot: placed BETWEEN title and timestamp, not inside the
     // title span. Inside the title span it would be clipped by the ellipsis
     // truncation, becoming invisible exactly when the title is long enough

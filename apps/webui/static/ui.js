@@ -4623,11 +4623,17 @@ function syncTopbar(){
   if(profileLabel) profileLabel.textContent=S.activeProfile||'default';
 }
 
+function stripProductHiddenContext(text){
+  return String(text||'')
+    .replace(/\n*\[\[NEXT_AI_HIDDEN_CONTEXT\]\][\s\S]*?\[\[\/NEXT_AI_HIDDEN_CONTEXT\]\]\s*/g, '')
+    .trim();
+}
+
 function msgContent(m){
   // Extract plain text content from a message for filtering
   let c=m.content||'';
   if(Array.isArray(c))c=c.filter(p=>p&&p.type==='text').map(p=>p.text||'').join('').trim();
-  return String(c).trim();
+  return stripProductHiddenContext(c);
 }
 
 function _fmtDateSep(d){
@@ -5580,6 +5586,7 @@ function renderMessages(options){
       thinkingText=content.filter(p=>p&&(p.type==='thinking'||p.type==='reasoning')).map(p=>p.thinking||p.reasoning||p.text||'').join('\n');
       content=content.filter(p=>p&&p.type==='text').map(p=>p.text||p.content||'').join('\n');
     }
+    if(typeof content==='string') content=stripProductHiddenContext(content);
     if(!thinkingText && m.reasoning) thinkingText=m.reasoning;
     if(!thinkingText && typeof content==='string'){
       const thinkMatch=content.match(/^\s*<think>([\s\S]*?)<\/think>\s*/);

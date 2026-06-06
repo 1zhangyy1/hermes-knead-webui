@@ -7,11 +7,14 @@ ephemeral prompt.
 
 from __future__ import annotations
 
+import logging
 import re
 from pathlib import Path
 from typing import Any
 
 from api.products import get_product
+
+logger = logging.getLogger(__name__)
 
 PRODUCT_SCOPES = {"product_usage", "product_init", "product_builder"}
 CAPABILITY_LABELS = {
@@ -46,19 +49,32 @@ _PRODUCT_BUILDER_NEGATION_RE = re.compile(
     r"("
     r"(?:不要|不用|不必|不需要|无需|别|先别|不要再|不用再).{0,16}"
     r"(?:改|修改|调整|重写|更新|生成|设计|动|写|编辑).{0,16}"
-    r"(?:界面|页面|UI|布局|工作流|流程|表单|面板|模块|产品界面|产品UI)"
+    r"(?:界面|页面|UI|布局|工作流|流程|表单|面板|模块|产品画布|产品界面|产品UI)"
     r"|"
     r"(?:不改|不动|不调整|不修改|不更新).{0,16}"
-    r"(?:界面|页面|UI|布局|工作流|流程|表单|面板|模块|产品界面|产品UI)"
+    r"(?:界面|页面|UI|布局|工作流|流程|表单|面板|模块|产品画布|产品界面|产品UI)"
     r")",
     re.IGNORECASE,
 )
 
 
-def infer_product_scope(intent: str, requested_scope: str = "product_usage") -> str:
-    """Infer product runtime scope when the frontend misses a builder intent."""
+def infer_product_scope(
+    intent: str,
+    requested_scope: str = "product_usage",
+    *,
+    explicit: bool = False,
+) -> str:
+    """Resolve the product runtime scope.
+
+    When ``explicit`` is True the frontend has decided the scope from the visible
+    用/调 toggle (or first-generation / bridge), so that scope is authoritative and
+    the keyword regex is skipped entirely. The regex only runs as a last-resort
+    fallback for callers that omit an explicit scope.
+    """
 
     scope = requested_scope if requested_scope in PRODUCT_SCOPES else "product_usage"
+    if explicit:
+        return scope
     if scope in {"product_init", "product_builder"}:
         return scope
     seed = str(intent or "").strip()
@@ -67,6 +83,10 @@ def infer_product_scope(intent: str, requested_scope: str = "product_usage") -> 
     if _PRODUCT_BUILDER_NEGATION_RE.search(seed):
         return scope
     if _PRODUCT_BUILDER_RE.search(seed):
+        logger.info(
+            "product_scope regex fallback fired (no explicit scope): usage -> builder; intent=%r",
+            seed[:80],
+        )
         return "product_builder"
     return scope
 
@@ -92,8 +112,16 @@ def product_context_request_body(body: dict[str, Any] | None, session: Any, mess
         or getattr(session, "pending_user_message", None)
     )
     if not (next_body.get("product_scope") or next_body.get("productScope")):
+        session_line = str(getattr(session, "product_line", None) or "").strip()
         session_scope = str(getattr(session, "product_scope", None) or "").strip()
-        if not has_existing_turns and session_scope in {"product_init", "product_builder"}:
+        if session_line == "build":
+            # 造物会话续聊:保持 build 线 scope,绝不退回 usage(双会话分离的关键)。
+            next_body["product_scope"] = session_scope if session_scope in {"product_init", "product_builder"} else "product_builder"
+            next_body["product_scope_explicit"] = True
+        elif session_line == "use":
+            next_body["product_scope"] = "product_usage"
+            next_body["product_scope_explicit"] = True
+        elif not has_existing_turns and session_scope in {"product_init", "product_builder"}:
             next_body["product_scope"] = session_scope
         else:
             next_body["product_scope"] = "product_usage"
@@ -112,18 +140,33 @@ def product_context_from_request(body: dict[str, Any], *, workspace: str | None 
         raise ValueError("AI product not found")
 
     product_workspace = Path(product["workspace_path"]).expanduser().resolve()
-    if workspace:
-        requested_workspace = Path(workspace).expanduser().resolve()
-        if requested_workspace != product_workspace:
-            raise ValueError("AI product workspace does not match this session")
 
     intent = str(body.get("product_intent") or body.get("productIntent") or body.get("message") or "").strip()
     requested_scope = str(body.get("product_scope") or body.get("productScope") or "product_usage").strip()
-    scope = infer_product_scope(intent, requested_scope)
+    scope_explicit = bool(body.get("product_scope_explicit") or body.get("productScopeExplicit"))
+    scope = infer_product_scope(intent, requested_scope, explicit=scope_explicit)
     ui_status = str(product.get("ui_status") or "").strip().lower()
     ui_mode = str(product.get("ui_mode") or "workspace").strip() or "workspace"
-    if ui_mode != "chat_only" and scope in {"product_usage", "product_builder"} and ui_status in {"", "empty", "failed"}:
+    product_layout = str(product.get("product_layout") or "chat_center").strip() or "chat_center"
+    uses_product_canvas = product_layout in {"chat_left_canvas_right", "canvas_full"}
+    if (
+        not scope_explicit
+        and ui_mode != "chat_only"
+        and uses_product_canvas
+        and scope == "product_usage"
+        and ui_status in {"", "empty", "failed"}
+    ):
         scope = "product_init"
+    elif ui_mode != "chat_only" and scope == "product_builder" and ui_status in {"", "empty", "failed"}:
+        scope = "product_init"
+    # 会话线由最终 scope 推导:build 线承载 init/builder,use 线承载 usage。
+    line = "build" if scope in {"product_init", "product_builder"} else "use"
+    # 工作区校验只对造物线生效:造物线要写产品画布,必须落在产品目录;
+    # 使用线在自己的会话工作区运行,结构上无法触碰 product.json / 画布文件。
+    if workspace and line == "build":
+        requested_workspace = Path(workspace).expanduser().resolve()
+        if requested_workspace != product_workspace:
+            raise ValueError("AI product workspace does not match this session")
     return {
         "id": product["id"],
         "kind": product.get("kind"),
@@ -133,6 +176,8 @@ def product_context_from_request(body: dict[str, Any], *, workspace: str | None 
         "source_prompt": product.get("source_prompt") or "",
         "product_type": product.get("product_type") or "custom",
         "ui_mode": ui_mode,
+        "product_layout": product_layout,
+        "canvas_label": product.get("canvas_label") or "",
         "workspace_path": str(product_workspace),
         "preview_entry": product.get("preview_entry") or "index.html",
         "preview_url": product.get("preview_url") or "",
@@ -140,6 +185,7 @@ def product_context_from_request(body: dict[str, Any], *, workspace: str | None 
         "skills": product.get("skills") if isinstance(product.get("skills"), list) else [],
         "tools": product.get("tools") if isinstance(product.get("tools"), list) else [],
         "scope": scope,
+        "line": line,
         "intent": intent,
     }
 
@@ -156,6 +202,8 @@ def product_ephemeral_prompt(context: dict[str, Any] | None) -> str:
     preview_url = context.get("preview_url") or ""
     product_type = context.get("product_type") or "custom"
     ui_mode = context.get("ui_mode") or "workspace"
+    product_layout = context.get("product_layout") or "chat_center"
+    canvas_label = context.get("canvas_label") or ""
     scope = context.get("scope") or "product_usage"
     intent = context.get("intent") or ""
     skills = [str(item) for item in context.get("skills") or [] if item]
@@ -185,7 +233,12 @@ def product_ephemeral_prompt(context: dict[str, Any] | None) -> str:
         ),
         "product_usage": (
             "This turn is normal use of the selected AI product. Complete the user's task naturally. "
-            "Do not edit the product preview UI files for ordinary task answers. If the user explicitly asks to change the product interface or workflow, update the product workspace files directly."
+            "Do NOT modify the product's own definition or interface in this scope: never edit product.json, "
+            "and never rewrite the product canvas files (index.html, style.css, app.js) in the product workspace. "
+            "Producing task outputs (decks, documents, data, images) in the workspace is fine; changing the product "
+            "ITSELF is not. If the user wants to change the product's UI, workflow, identity, or defaults, do not do it "
+            "here — tell them this belongs to the product's 调整 (adjust) entry, which switches to the builder scope where "
+            "such changes are made."
         ),
     }.get(scope, "")
 
@@ -196,6 +249,8 @@ def product_ephemeral_prompt(context: dict[str, Any] | None) -> str:
         avatar and f"- Product avatar: {avatar}",
         f"- Product type: {product_type}",
         f"- Product UI mode: {ui_mode}",
+        f"- Product page layout: {product_layout}",
+        canvas_label and f"- Product canvas label: {canvas_label}",
         f"- Product workspace: {workspace_path}",
         f"- Product preview entry: {preview_entry}",
         preview_url and f"- Product preview URL: {preview_url}",
@@ -210,13 +265,18 @@ def product_ephemeral_prompt(context: dict[str, Any] | None) -> str:
         "",
         "Direct product UI contract:",
         "- When this turn is product_init or product_builder, you should edit files in the product workspace instead of only describing a design.",
-        "- Product identity/config lives in product.json. For avatar/name/description/placeholder/skills/tools/ui_mode changes, update product.json rather than shell code.",
-        "- If ui_mode is chat_only, keep the product as a pure chat product unless the user explicitly asks for a visible workspace UI.",
+        "- Product identity/config lives in product.json. For avatar/name/description/placeholder/skills/tools/ui_mode/product_layout/canvas_label changes, update product.json rather than shell code.",
+        "- If ui_mode is chat_only, keep the product as a pure chat product unless the user explicitly asks for a visible product canvas.",
+        "- If you create a visible product UI, set product_layout in product.json: use chat_left_canvas_right for side-by-side work surfaces, or canvas_full when the product UI should be the main page, such as character chat, games, image editors, or other immersive products.",
+        "- For canvas_full, the product UI owns the primary user input. Build the product's own input/output flow and do not rely on the host composer for normal product use; the host composer is reserved for adjusting the product.",
+        "- If the product UI needs AI inside its own controls, include /static/product-bridge-sdk.js before the product's app script and call window.NextAI.chat.send({text, action, context}). Do not fetch /api/chat or call model APIs directly from product code.",
+        "- If the product UI needs durable task state, use window.NextAI.state.get/set/remove. State is scoped to the current product plus current session by default; use {scope:'product'} only for product-wide preferences.",
+        "- window.NextAI.storage is only a sandbox-safe fallback for temporary client storage. Do not rely on raw localStorage for product chat history, task data, or generated UI state.",
         "- Prefer a small browser-native static interface first: index.html, style.css, app.js. Avoid build steps unless the user asked for them.",
         "- For product_init, first write the minimal useful UI files, then optionally inspect, refine, or explain. The first UI can be simple; it must be real and usable.",
         "- For product_init, use editable defaults rather than asking the user to clarify every field. The user can continue chatting to change the product later.",
-        "- For product_usage, answer in chat and do not rewrite index.html/style.css/app.js unless the user clearly asks to change the product UI or workflow.",
-        "- Chat remains the control surface. The product UI is the evolving working surface beside chat.",
+        "- In product_usage scope, treat product.json and the canvas files (index.html/style.css/app.js) as read-only. Editing the product itself belongs to the builder scope reached via the 调整 (adjust) entry, not to ordinary use turns. When a use-scope turn seems to want a product change, say so and point the user to 调整 instead of editing files.",
+        "- Chat remains the control surface. The product UI is the evolving working surface; it can sit beside chat or become the main page when product_layout is canvas_full.",
         "- Product skills/tools are the product's configured capability hints. Prefer matching runtime skills or tools when they are available, and say clearly when a configured capability is unavailable.",
         "- Keep the first product UI clean, legible, and task-focused; no marketing landing page unless the requested product is a landing page.",
         "- After file changes, briefly tell the user what changed and what they can do next.",
@@ -231,6 +291,16 @@ def product_ephemeral_prompt(context: dict[str, Any] | None) -> str:
                 "- Useful first UI regions: topic/subject, audience, page count, style, outline, slide/page thumbnails, speaker notes, assets/references, and next-step controls.",
                 "- Keep the chat as the decision/control channel; use the UI for task state, editable inputs, and previewable PPT structure.",
                 "- For a normal PPT request while the UI is empty, both help with the requested PPT and create the first reusable PPT product interface.",
+            ]
+        )
+    if scope == "product_builder" and (ui_mode == "chat_only" or product_layout == "chat_only"):
+        lines.extend(
+            [
+                "",
+                "Chat-only product adjustment:",
+                "- This is a chat-only product (no product canvas). 'Adjusting' it means changing its identity, role, "
+                "description, avatar, skills, or tools via product.json — NOT generating index.html/style.css/app.js.",
+                "- Do not create a visible product canvas unless the user explicitly asks this chat-only product to become a UI product.",
             ]
         )
     return "\n".join(str(line) for line in lines if line)

@@ -81,6 +81,41 @@ function _assistantDefaultCapabilities(productType = '', seedText = '') {
   };
 }
 
+function _assistantNormalizeProductLayout(value = '', productType = '', uiMode = '') {
+  const raw = String(value || '').trim();
+  if (String(uiMode || '').trim() === 'chat_only') return 'chat_only';
+  if (raw === 'chat_only' || raw === 'chat_center' || raw === 'chat_left_canvas_right' || raw === 'canvas_full') return raw;
+  if (productType === 'ppt' || productType === 'research' || productType === 'data' || productType === 'image') {
+    return 'chat_left_canvas_right';
+  }
+  return 'chat_center';
+}
+
+function _assistantProductLayout(object) {
+  if (!object) return 'chat_center';
+  return _assistantNormalizeProductLayout(
+    object.productLayout || object.product_layout || object.layout,
+    object.productType || object.product_type || '',
+    object.uiMode || object.ui_mode || ''
+  );
+}
+
+function _assistantUsesProductCanvas(object) {
+  const layout = _assistantProductLayout(object);
+  return layout === 'chat_left_canvas_right' || layout === 'canvas_full';
+}
+
+function _assistantCanvasLabel(object) {
+  const explicit = String(object && (object.canvasLabel || object.canvas_label) || '').trim();
+  if (explicit) return explicit;
+  const productType = String(object && (object.productType || object.product_type) || '').trim();
+  if (productType === 'ppt') return 'PPT 工作区';
+  if (productType === 'image') return '图片画布';
+  if (productType === 'research') return '研究工作区';
+  if (productType === 'data') return '数据工作区';
+  return '产品画布';
+}
+
 function _assistantDateToMs(value) {
   const parsed = Date.parse(String(value || ''));
   return Number.isFinite(parsed) ? parsed : Date.now();
@@ -96,7 +131,7 @@ function _productToCustomAssistant(product) {
     kind: product.kind || `custom-${product.id}`,
     title,
     avatar: product.avatar || '',
-    desc: product.desc || '按照你描述的职责处理任务，需要时生成自己的任务界面。',
+    desc: product.desc || '按照你描述的职责处理任务，需要时生成自己的产品画布。',
     placeholder: product.placeholder || starterKit.placeholder,
     suggestions: Array.isArray(product.suggestions) && product.suggestions.length ? product.suggestions : starterKit.suggestions,
     sourcePrompt,
@@ -104,6 +139,8 @@ function _productToCustomAssistant(product) {
     createdAt: product.created_at ? _assistantDateToMs(product.created_at) : Date.now(),
     productType,
     uiMode: product.ui_mode || product.uiMode || 'workspace',
+    productLayout: product.product_layout || product.productLayout || product.layout || '',
+    canvasLabel: product.canvas_label || product.canvasLabel || '',
     productId: product.id,
     workspacePath: product.workspace_path || '',
     previewUrl: product.preview_url || '',
@@ -158,6 +195,8 @@ function _applyBackendProductToBuiltin(product, assistant = null) {
   object.sourcePrompt = payload.sourcePrompt || object.sourcePrompt || '';
   object.productType = payload.productType || object.productType || '';
   object.uiMode = payload.uiMode || payload.ui_mode || object.uiMode || 'workspace';
+  object.productLayout = payload.productLayout || payload.product_layout || object.productLayout || '';
+  object.canvasLabel = payload.canvasLabel || payload.canvas_label || object.canvasLabel || '';
   object.productId = payload.productId || object.productId || '';
   object.workspacePath = payload.workspacePath || object.workspacePath || '';
   object.previewUrl = payload.previewUrl || object.previewUrl || '';

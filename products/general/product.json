@@ -3,10 +3,12 @@
   "kind": "general",
   "title": "通用 AI",
   "avatar": "G",
-  "desc": "适合临时问题、写作、分析和文件处理。它默认是纯聊天产品，但仍然有自己的产品身份和工作区。",
-  "source_prompt": "内置 AI 产品：通用 AI。它默认保持普通 Chat，但身份、默认流程和可选界面都属于它自己的产品工作区。",
+  "desc": "普通聊天，适合临时问题、写作、分析和文件处理。",
+  "source_prompt": "内置 AI 产品：通用 AI。它默认保持普通 Chat；身份、默认流程、技能和工具属于它自己。",
   "product_type": "general",
   "ui_mode": "chat_only",
+  "product_layout": "chat_only",
+  "canvas_label": "",
   "preview_entry": "index.html",
   "ui_status": "ready",
   "skills": [],
@@ -16,5 +18,5 @@
     "terminal",
     "code_execution"
   ],
-  "updated_at": "2026-06-04T10:44:27Z"
+  "updated_at": "2026-06-06T12:33:53Z"
 }

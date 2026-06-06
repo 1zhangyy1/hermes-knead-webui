@@ -3,12 +3,14 @@
   "kind": "ppt",
   "title": "PPT 设计师",
   "avatar": "P",
-  "desc": "把想法、资料和要求变成清晰好看的演示文稿。Chat 始终在场，产品界面会按 PPT 任务逐步长出大纲、页面和讲稿区。",
-  "source_prompt": "内置 AI 产品：PPT 设计师。它应该能通过聊天生成、调整和沉淀自己的 PPT 产品界面。",
+  "desc": "和我说主题、受众和用途。我会先确认方向，再打开大纲、页面和讲稿。",
+  "source_prompt": "内置 AI 产品：PPT 设计师。它应该能通过聊天生成、调整和沉淀自己的 PPT 产品画布。",
   "product_type": "ppt",
   "ui_mode": "workspace",
+  "product_layout": "chat_left_canvas_right",
+  "canvas_label": "PPT 工作区",
   "preview_entry": "index.html",
-  "ui_status": "ready",
+  "ui_status": "empty",
   "skills": [
     "presentations",
     "office"
@@ -19,5 +21,5 @@
     "terminal",
     "code_execution"
   ],
-  "updated_at": "2026-06-04T07:23:04Z"
+  "updated_at": "2026-06-06T12:33:53Z"
 }

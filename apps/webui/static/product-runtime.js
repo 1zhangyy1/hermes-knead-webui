@@ -1,22 +1,5 @@
 let _productPreviewPollTimer = null;
 let _productPreviewPollProductId = '';
-const PRODUCT_BUILDER_INTENT_RE = new RegExp([
-  '界面', '页面', 'UI', '布局', '工作流', '表单',
-  '右侧', '左侧', '上方', '下方', '顶部', '底部', '侧栏', '顶栏',
-  '预览区', '工作台', '改自己', '产品自己', '长出来', '长出',
-  '按钮', '字段', '默认项', '以后', '每次', '下次', '固定', '常驻',
-  '流程', '交互', '面板', '模块', '导航', '入口', '参数区', '历史', '样式',
-  '区域', '卡片', '工具栏', '输入框', '下拉', '筛选器', '上传区', '导出', '下载',
-  '资料栏', '参考资料栏', '讲稿区', '大纲区', '缩略图', '模板选择', '风格选择', '页数选择',
-  '头像', '名称', '名字', '简介', '职责', '人设', '身份', '提示词', 'prompt', '技能', '工具', '能力',
-  '放上面', '放下面', '放到', '放在', '移到', '挪到',
-  'workflow', 'layout', 'interface', 'form', 'panel', 'sidebar', 'toolbar', 'card',
-  'default', 'always', 'next\\s*time'
-].join('|'), 'i');
-const PRODUCT_BUILDER_NEGATION_RE = new RegExp([
-  '(不要|不用|不必|不需要|无需|别|先别|不要再|不用再).{0,16}(改|修改|调整|重写|更新|生成|设计|动|写|编辑).{0,16}(界面|页面|UI|布局|工作流|流程|表单|面板|模块|产品界面|产品UI)',
-  '(不改|不动|不调整|不修改|不更新).{0,16}(界面|页面|UI|布局|工作流|流程|表单|面板|模块|产品界面|产品UI)'
-].join('|'), 'i');
 
 function currentAssistantWorkspacePath(kind = _assistantKey()) {
   const object = _assistantObject(kind);
@@ -25,19 +8,12 @@ function currentAssistantWorkspacePath(kind = _assistantKey()) {
 
 function currentAssistantPreviewUrl(kind = _assistantKey()) {
   const object = _assistantObject(kind);
-  if (object && String(object.uiMode || object.ui_mode || '') === 'chat_only') return '';
+  if (typeof _assistantUsesProductCanvas === 'function') {
+    if (!_assistantUsesProductCanvas(object)) return '';
+  } else if (object && String(object.uiMode || object.ui_mode || '') === 'chat_only') {
+    return '';
+  }
   return object && object.previewUrl ? String(object.previewUrl) : '';
-}
-
-function _inferProductScopeFromText(text = '') {
-  const seed = String(text || '');
-  if (PRODUCT_BUILDER_NEGATION_RE.test(seed)) {
-    return 'product_usage';
-  }
-  if (PRODUCT_BUILDER_INTENT_RE.test(seed)) {
-    return 'product_builder';
-  }
-  return 'product_usage';
 }
 
 function _productUiNeedsInitialGeneration(object) {
@@ -57,18 +33,22 @@ function _productUiGenerationScopeForObject(object) {
 }
 
 function _shouldInitializeProductUiForMessage(object) {
-  if (object && String(object.uiMode || object.ui_mode || '') === 'chat_only') return false;
+  if (typeof _assistantUsesProductCanvas === 'function') {
+    if (!_assistantUsesProductCanvas(object)) return false;
+  } else if (object && String(object.uiMode || object.ui_mode || '') === 'chat_only') {
+    return false;
+  }
   return !!(object && object.productId && _productUiNeedsInitialGeneration(object));
 }
 
 function _assistantProductInitTaskTitle(object = _assistantObject()) {
   const title = object && object.title ? String(object.title).trim() : '这个 AI 产品';
-  return `生成${title}任务界面`.slice(0, 64);
+  return `生成${title}产品画布`.slice(0, 64);
 }
 
 function _assistantProductInitUserMessage(object = _assistantObject()) {
   const title = object && object.title ? String(object.title).trim() : '这个 AI 产品';
-  return `开始生成「${title}」的第一版任务界面，先做一个简单可用的版本。`;
+  return `开始生成「${title}」的第一版产品画布，先做一个简单可用的版本。`;
 }
 
 function _currentSessionMatchesProduct(object) {
@@ -92,11 +72,23 @@ function currentAssistantProductContextForMessage(text = '', options = {}) {
     window._nextAiPendingProductScope = '';
     window._nextAiPendingProductIntent = '';
   }
-  const scope = pendingScope || (_shouldInitializeProductUiForMessage(object) ? 'product_init' : _inferProductScopeFromText(text));
+  // 用/调开关显式决定 scope；画布只是展示方式，不决定产品能不能被调整。
+  const adjustModeOpen = typeof document !== 'undefined' &&
+    document.body &&
+    document.body.dataset.nextAiProductAdjust === 'open';
+  const scope = pendingScope || (
+    _shouldInitializeProductUiForMessage(object)
+      ? 'product_init'
+      : adjustModeOpen
+        ? 'product_builder'
+        : 'product_usage'
+  );
   const context = {
     product_id: object.productId,
     product_title: object.title || 'AI 产品',
     product_scope: scope,
+    // scope 由可见的用/调开关(或首次生成/bridge)决定,告诉后端别再用正则二次猜。
+    product_scope_explicit: true,
     product_intent: pendingIntent || String(text || '').trim()
   };
   if (scope === 'product_init') context.product_task_title = _assistantProductInitTaskTitle(object);
@@ -112,13 +104,274 @@ function withCurrentProductContext(payload = {}, text = '', options = {}) {
   return {...base, ...context};
 }
 
+const PRODUCT_CANVAS_BRIDGE_PENDING = new Map();
+
+function _activeProductFrameWindow() {
+  const frame = $('activeProductFrame');
+  return frame && frame.contentWindow ? frame.contentWindow : null;
+}
+
+function _postProductCanvasBridgeMessage(payload = {}) {
+  const target = _activeProductFrameWindow();
+  if (!target) return false;
+  target.postMessage({source:'nextai-host', ...payload}, '*');
+  return true;
+}
+
+function _productCanvasStateContext(payload = {}) {
+  const object = _assistantObject();
+  const productId = String(
+    payload.productId ||
+    payload.product_id ||
+    (_activeProductPreview && _activeProductPreview.product_id) ||
+    (object && (object.productId || object.product_id)) ||
+    ''
+  ).trim();
+  const sessionId = String(
+    payload.sessionId ||
+    payload.session_id ||
+    (typeof S !== 'undefined' && S.session && S.session.session_id) ||
+    ''
+  ).trim();
+  const requestedScope = String(payload.scope || 'session').trim();
+  const scope = requestedScope === 'product'
+    ? 'product'
+    : `session:${sessionId || 'draft'}`;
+  return {productId, sessionId, scope};
+}
+
+function _productCanvasStateStorageKey(productId, scope, key) {
+  return [
+    'nextai',
+    'product-state',
+    encodeURIComponent(String(productId || 'unknown')),
+    encodeURIComponent(String(scope || 'session:draft')),
+    encodeURIComponent(String(key || ''))
+  ].join(':');
+}
+
+function _productCanvasStateRespond(requestId, payload = {}) {
+  if (!requestId) return false;
+  return _postProductCanvasBridgeMessage({
+    type:'nextai:host:state',
+    requestId,
+    ...payload
+  });
+}
+
+function _productCanvasStateError(requestId, error) {
+  if (!requestId) return false;
+  return _postProductCanvasBridgeMessage({
+    type:'nextai:host:error',
+    requestId,
+    error:String(error || '产品状态读写失败')
+  });
+}
+
+function _handleProductCanvasStateMessage(payload = {}, event = null) {
+  const frameWindow = _activeProductFrameWindow();
+  if (!frameWindow || (event && event.source !== frameWindow)) return false;
+  const requestId = String(payload.requestId || payload.id || '').trim();
+  const action = String(payload.action || 'get').trim();
+  const key = String(payload.key || '').trim();
+  const {productId, sessionId, scope} = _productCanvasStateContext(payload);
+  if (!productId) {
+    _productCanvasStateError(requestId, '当前产品上下文不可用');
+    return true;
+  }
+  if (!key && action !== 'clear') {
+    _productCanvasStateError(requestId, '产品状态 key 不能为空');
+    return true;
+  }
+  try {
+    if (action === 'clear') {
+      const prefix = _productCanvasStateStorageKey(productId, scope, '').replace(/:$/, ':');
+      const removeKeys = [];
+      for (let i = 0; i < localStorage.length; i += 1) {
+        const storageKey = localStorage.key(i);
+        if (storageKey && storageKey.startsWith(prefix)) removeKeys.push(storageKey);
+      }
+      removeKeys.forEach(storageKey => localStorage.removeItem(storageKey));
+      _productCanvasStateRespond(requestId, {action, productId, sessionId, scope});
+      return true;
+    }
+    const storageKey = _productCanvasStateStorageKey(productId, scope, key);
+    if (action === 'get') {
+      const raw = localStorage.getItem(storageKey);
+      const value = raw == null ? payload.fallback : JSON.parse(raw);
+      _productCanvasStateRespond(requestId, {action, key, value, exists:raw != null, productId, sessionId, scope});
+      return true;
+    }
+    if (action === 'set') {
+      localStorage.setItem(storageKey, JSON.stringify(payload.value));
+      _productCanvasStateRespond(requestId, {action, key, value:payload.value, productId, sessionId, scope});
+      return true;
+    }
+    if (action === 'remove') {
+      localStorage.removeItem(storageKey);
+      _productCanvasStateRespond(requestId, {action, key, productId, sessionId, scope});
+      return true;
+    }
+    _productCanvasStateError(requestId, `未知产品状态操作：${action}`);
+    return true;
+  } catch (err) {
+    _productCanvasStateError(requestId, err && err.message || err);
+    return true;
+  }
+}
+
+function _resolveProductCanvasBridgePending(sessionId = '') {
+  const sid = String(sessionId || '').trim();
+  if (sid && PRODUCT_CANVAS_BRIDGE_PENDING.has(sid)) {
+    return {sid, pending: PRODUCT_CANVAS_BRIDGE_PENDING.get(sid)};
+  }
+  if (PRODUCT_CANVAS_BRIDGE_PENDING.size === 1) {
+    const [fallbackSid, pending] = PRODUCT_CANVAS_BRIDGE_PENDING.entries().next().value;
+    return {sid:fallbackSid, pending};
+  }
+  return null;
+}
+
+function _clearProductCanvasBridgePending(sid) {
+  const pending = PRODUCT_CANVAS_BRIDGE_PENDING.get(sid);
+  if (pending && pending.timeoutId) {
+    clearTimeout(pending.timeoutId);
+  }
+  PRODUCT_CANVAS_BRIDGE_PENDING.delete(sid);
+}
+
+function _productCanvasBridgeInstruction(payload = {}, object = _assistantObject()) {
+  const context = payload && typeof payload.context === 'object' ? payload.context : {};
+  const character = context && typeof context.character === 'object' ? context.character : {};
+  const history = Array.isArray(context.history) ? context.history.slice(-12) : [];
+  const lines = [
+    '[[NEXT_AI_HIDDEN_CONTEXT]]',
+    'This user message came from an AI product canvas embedded in Next AI.',
+    `AI product: ${object && object.title || 'current product'}`,
+    `Product layout: ${object && (object.productLayout || object.product_layout) || 'unknown'}`,
+    payload.action && `Product action: ${payload.action}`,
+    context.mode && `Canvas mode: ${context.mode}`,
+    character.name && `Active character: ${character.name}`,
+    character.desc && `Character description: ${character.desc}`,
+    character.system && `Character instruction: ${character.system}`,
+    history.length ? 'Recent product-local history:' : '',
+    ...history.map(item => {
+      const role = String(item && item.role || 'user');
+      const content = String(item && item.content || '').replace(/\s+/g, ' ').trim();
+      return content ? `- ${role}: ${content.slice(0, 500)}` : '';
+    }).filter(Boolean),
+    'If this is character chat, reply as the active character. Return only the character-facing message unless the user clearly asks to change the product interface or workflow.',
+    '[[/NEXT_AI_HIDDEN_CONTEXT]]'
+  ].filter(Boolean);
+  return lines.join('\n');
+}
+
+async function _sendProductCanvasAgentMessage(payload = {}, event = null) {
+  const frameWindow = _activeProductFrameWindow();
+  if (!frameWindow || (event && event.source !== frameWindow)) return false;
+  const text = String(payload.text || payload.message || '').trim();
+  const requestId = String(payload.requestId || payload.id || `canvas-${Date.now().toString(36)}`).trim();
+  if (!text) {
+    _postProductCanvasBridgeMessage({type:'nextai:host:error', requestId, error:'消息不能为空'});
+    return true;
+  }
+  if (typeof S !== 'undefined' && (S.busy || S.activeStreamId || (S.session && S.session.active_stream_id))) {
+    _postProductCanvasBridgeMessage({type:'nextai:host:error', requestId, error:'Agent 正在处理上一条消息，稍后再发。'});
+    return true;
+  }
+  const input = $('msg');
+  if (!input || typeof send !== 'function') {
+    _postProductCanvasBridgeMessage({type:'nextai:host:error', requestId, error:'宿主聊天运行时不可用'});
+    return true;
+  }
+  try {
+    if ((!S || !S.session) && typeof newSession === 'function') {
+      await newSession();
+      if (typeof renderSessionList === 'function') await renderSessionList();
+    }
+    const sid = S && S.session && S.session.session_id ? S.session.session_id : '';
+    if (!sid) throw new Error('无法创建当前任务');
+    const timeoutId = setTimeout(() => {
+      PRODUCT_CANVAS_BRIDGE_PENDING.delete(sid);
+    }, 125000);
+    PRODUCT_CANVAS_BRIDGE_PENDING.set(sid, {
+      requestId,
+      sentAt: Date.now(),
+      timeoutId,
+      productId: payload.productId || (_assistantObject() && _assistantObject().productId) || ''
+    });
+    const requestedScope = String(payload.productScope || payload.scope || 'product_usage').trim();
+    window._nextAiPendingProductScope = ['product_usage', 'product_builder', 'product_init'].includes(requestedScope)
+      ? requestedScope
+      : 'product_usage';
+    window._nextAiPendingProductIntent = text;
+    window._nextAiPendingHiddenAgentInstruction = _productCanvasBridgeInstruction(payload);
+    input.value = text;
+    if (typeof autoResize === 'function') autoResize();
+    _postProductCanvasBridgeMessage({type:'nextai:host:ack', requestId, sessionId:sid});
+    await send();
+    return true;
+  } catch (err) {
+    const sid = S && S.session && S.session.session_id ? S.session.session_id : '';
+    if (sid) _clearProductCanvasBridgePending(sid);
+    _postProductCanvasBridgeMessage({
+      type:'nextai:host:error',
+      requestId,
+      error:String(err && err.message || err || '发送失败')
+    });
+    return true;
+  }
+}
+
+function notifyProductCanvasAgentReply(payload = {}) {
+  const resolved = _resolveProductCanvasBridgePending(payload.sessionId || payload.session_id || '');
+  if (!resolved) return false;
+  const {sid, pending} = resolved;
+  _clearProductCanvasBridgePending(sid);
+  return _postProductCanvasBridgeMessage({
+    type:'nextai:host:reply',
+    requestId:pending.requestId,
+    sessionId:sid,
+    content:String(payload.content || '')
+  });
+}
+
+function notifyProductCanvasAgentError(payload = {}) {
+  const resolved = _resolveProductCanvasBridgePending(payload.sessionId || payload.session_id || '');
+  if (!resolved) return false;
+  const {sid, pending} = resolved;
+  _clearProductCanvasBridgePending(sid);
+  return _postProductCanvasBridgeMessage({
+    type:'nextai:host:error',
+    requestId:pending.requestId,
+    sessionId:sid,
+    error:String(payload.error || 'Agent 返回失败')
+  });
+}
+
+window.addEventListener('message', event => {
+  const data = event && event.data;
+  if (!data || typeof data !== 'object') return;
+  if (data.source !== 'nextai-product-canvas') return;
+  if (data.type === 'nextai:product:state') {
+    _handleProductCanvasStateMessage(data, event);
+    return;
+  }
+  if (data.type === 'nextai:product:send') {
+    void _sendProductCanvasAgentMessage(data, event);
+  }
+});
+
 window.currentAssistantWorkspacePath = currentAssistantWorkspacePath;
 window.currentAssistantPreviewUrl = currentAssistantPreviewUrl;
 window.currentAssistantProductContextForMessage = currentAssistantProductContextForMessage;
 window.withCurrentProductContext = withCurrentProductContext;
+window.notifyProductCanvasAgentReply = notifyProductCanvasAgentReply;
+window.notifyProductCanvasAgentError = notifyProductCanvasAgentError;
 
 async function _startProductInitializationTask(assistant, sourcePrompt) {
   if (!assistant || !assistant.productId || !assistant.workspacePath) return false;
+  if (typeof _assistantUsesProductCanvas === 'function' && !_assistantUsesProductCanvas(assistant)) return false;
   if (typeof newSession !== 'function' || typeof send !== 'function') {
     await _setProductUiStatus(assistant, 'failed', {persist: true});
     openAssistantHome(assistant.kind);
@@ -165,7 +418,7 @@ async function _startProductInitializationTask(assistant, sourcePrompt) {
     await _setProductUiStatus(assistant, 'failed', {persist: true});
     openAssistantHome(assistant.kind);
     await refreshCurrentProductPreview({silent:true, reason:'product-init-error'});
-    if (typeof showToast === 'function') showToast(`首次生成任务界面失败：${err && err.message || err}`, 3600, 'error');
+    if (typeof showToast === 'function') showToast(`首次生成产品画布失败：${err && err.message || err}`, 3600, 'error');
     return false;
   }
 }
@@ -202,8 +455,9 @@ function _scheduleProductPreviewPolling(productId) {
   }, 2000);
 }
 
-function _hideProductPreviewIfActive() {
+function _hideProductPreviewIfActive(options = {}) {
   if (!_activeProductPreview || !_activeProductPreview.product_preview) return false;
+  const shouldSync = !(options && options.sync === false);
   _stopProductPreviewPolling(_activeProductPreview.product_id || '');
   const surface = $('activeProductSurface');
   const frame = $('activeProductFrame');
@@ -218,7 +472,7 @@ function _hideProductPreviewIfActive() {
   if (body) body.classList.remove('has-active-product');
   _activeProductPreview = null;
   _syncProductPreviewMode(null);
-  syncAssistantTaskUi();
+  if (shouldSync) syncAssistantTaskUi();
   return true;
 }
 
@@ -259,32 +513,32 @@ function _syncProductPreviewState(statusData = {}, object = _assistantObject()) 
   state.hidden = false;
   if (uiStatus === 'generating') {
     state.classList.add('is-generating');
-    if (kicker) kicker.textContent = '任务界面';
-    if (title) title.textContent = '正在生成第一版任务界面';
+    if (kicker) kicker.textContent = '产品画布';
+    if (title) title.textContent = '正在生成第一版产品画布';
     if (desc) desc.textContent = 'Agent 正在写这个产品的 index.html、style.css 和 app.js；完成后右侧会自动刷新。';
     if (action) action.hidden = true;
     return false;
   }
   if (uiStatus === 'failed') {
     state.classList.add('is-failed');
-    if (kicker) kicker.textContent = '任务界面';
-    if (title) title.textContent = '任务界面生成失败';
+    if (kicker) kicker.textContent = '产品画布';
+    if (title) title.textContent = '产品画布生成失败';
     if (desc) desc.textContent = failureMessage
-      ? `${failureMessage} 可以直接重试，或继续说明你想让这个任务界面怎么工作。`
-      : '可以继续对话让它重试，或直接说明你想让这个任务界面长什么样。';
+      ? `${failureMessage} 可以直接重试，或继续说明你想让这个产品画布怎么工作。`
+      : '可以继续对话让它重试，或直接说明你想让这个产品画布长什么样。';
     if (action) {
       action.hidden = false;
-      action.textContent = '重新生成任务界面';
+      action.textContent = '重新生成产品画布';
     }
     return false;
   }
   state.classList.add('is-empty');
-  if (kicker) kicker.textContent = '任务界面';
-  if (title) title.textContent = '这个 AI 产品还没有任务界面';
-  if (desc) desc.textContent = '继续对话，让它生成第一版任务界面。对话仍然是主入口。';
+  if (kicker) kicker.textContent = '产品画布';
+  if (title) title.textContent = '这个 AI 产品还没有产品画布';
+  if (desc) desc.textContent = '继续对话，让它生成第一版产品画布。对话仍然是主入口。';
   if (action) {
     action.hidden = false;
-    action.textContent = '生成任务界面';
+    action.textContent = '生成产品画布';
   }
   return false;
 }
@@ -293,12 +547,12 @@ async function requestCurrentProductUiGeneration() {
   const object = _assistantObject();
   if (!object || !object.productId) return false;
   if (typeof S !== 'undefined' && (S.busy || S.activeStreamId)) {
-    if (typeof showToast === 'function') showToast('当前任务还在运行，完成后再生成界面');
+    if (typeof showToast === 'function') showToast('当前任务还在运行，完成后再生成产品画布');
     return false;
   }
   const prompt = object.sourcePrompt
-    ? `请重新生成「${object.title || '这个 AI 产品'}」的任务界面。原始需求：${object.sourcePrompt}`
-    : `请为「${object.title || '这个 AI 产品'}」生成第一版任务界面。任务界面要服务它的真实任务，不要写成介绍页。`;
+    ? `请重新生成「${object.title || '这个 AI 产品'}」的产品画布。原始需求：${object.sourcePrompt}`
+    : `请为「${object.title || '这个 AI 产品'}」生成第一版产品画布。产品画布要服务它的真实任务，不要写成介绍页。`;
   try {
     const generationScope = _productUiGenerationScopeForObject(object);
     await _setProductUiStatus(object, 'generating', {persist: true});
@@ -336,7 +590,7 @@ async function requestCurrentProductUiGeneration() {
   } catch (err) {
     await _setProductUiStatus(object, 'failed', {persist: true});
     await refreshCurrentProductPreview({silent:true, reason:'manual-product-generation-error'});
-    if (typeof showToast === 'function') showToast(`生成任务界面失败：${err && err.message || err}`, 3600, 'error');
+    if (typeof showToast === 'function') showToast(`生成产品画布失败：${err && err.message || err}`, 3600, 'error');
     return false;
   }
 }
@@ -364,8 +618,7 @@ window.currentProductPreviewRuntimeState = currentProductPreviewRuntimeState;
 async function refreshCurrentProductPreview(options = {}) {
   const object = _assistantObject();
   const productId = object && object.productId ? String(object.productId) : '';
-  const previewUrl = object && object.previewUrl ? String(object.previewUrl) : '';
-  if (!productId || !previewUrl) {
+  if (!productId) {
     _hideProductPreviewIfActive();
     return false;
   }
@@ -373,7 +626,7 @@ async function refreshCurrentProductPreview(options = {}) {
   const frame = $('activeProductFrame');
   const body = $('productChatBody');
   if (!surface || !frame || !body) return false;
-  let nextPreviewUrl = previewUrl;
+  let nextPreviewUrl = object && object.previewUrl ? String(object.previewUrl) : '';
   let statusData = null;
   try {
     const status = await api(`/api/products/${encodeURIComponent(productId)}/status`);
@@ -395,12 +648,21 @@ async function refreshCurrentProductPreview(options = {}) {
       }
     }
   } catch (_err) {}
+  const usesProductCanvas = typeof _assistantUsesProductCanvas === 'function'
+    ? _assistantUsesProductCanvas(object)
+    : !(object && String(object.uiMode || object.ui_mode || '') === 'chat_only');
+  if (!usesProductCanvas || !nextPreviewUrl) {
+    _hideProductPreviewIfActive();
+    return false;
+  }
   _activeProductPreview = {
     id: `product:${productId}`,
-    name: object.title || 'AI 产品',
+    name: typeof _assistantCanvasLabel === 'function' ? _assistantCanvasLabel(object) : (object.title || '产品画布'),
     preview_url: nextPreviewUrl,
     product_preview: true,
     product_id: productId,
+    product_layout: typeof _assistantProductLayout === 'function' ? _assistantProductLayout(object) : '',
+    canvas_label: typeof _assistantCanvasLabel === 'function' ? _assistantCanvasLabel(object) : '',
     ui_status: object.uiStatus || '',
     ui_error_type: object.uiErrorType || '',
     ui_error_message: object.uiErrorMessage || '',
@@ -414,6 +676,15 @@ async function refreshCurrentProductPreview(options = {}) {
   surface.hidden = false;
   body.classList.add('has-active-product');
   const previewReady = _syncProductPreviewState(statusData || {}, object);
+  frame.onload = () => {
+    _postProductCanvasBridgeMessage({
+      type:'nextai:host:ready',
+      productId,
+      sessionId:typeof S !== 'undefined' && S.session && S.session.session_id || '',
+      layout:_activeProductPreview && _activeProductPreview.product_layout || '',
+      canvasLabel:_activeProductPreview && _activeProductPreview.canvas_label || ''
+    });
+  };
   if (previewReady) frame.src = _withPreviewTimestamp(nextPreviewUrl);
   const uiStatus = String(statusData && (statusData.ui_status || statusData.product && statusData.product.ui_status) || object.uiStatus || '');
   if (uiStatus === 'generating') _scheduleProductPreviewPolling(productId);

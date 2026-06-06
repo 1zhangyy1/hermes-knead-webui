@@ -24,6 +24,7 @@ vendor/
 
 # Local dependency/runtime output inside production app and experiments.
 apps/**/.venv/
+apps/**/.venv*/
 apps/**/node_modules/
 apps/**/.pytest_cache/
 apps/**/__pycache__/
@@ -35,5 +36,6 @@ experiments/**/build/
 
 # Generated local build/runtime outputs
 apps/**/dist/
+products/custom-*/
 products/**/versions/
 experiments/generated/

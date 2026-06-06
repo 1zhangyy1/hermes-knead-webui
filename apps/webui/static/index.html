@@ -160,18 +160,21 @@
     <!-- Chat panel -->
     <div class="panel-view active" id="panelChat" data-task-list="empty">
       <div class="panel-head">
-        <span>产品</span>
+        <button class="panel-back-btn" id="assistantProductBackBtn" type="button" onclick="openAssistantLanding()" aria-label="返回产品库" hidden>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H5"/><path d="m12 19-7-7 7-7"/></svg>
+        </button>
+        <span id="assistantPanelTitle">产品库</span>
         <div class="panel-head-actions">
           <button class="panel-head-btn has-tooltip has-tooltip--bottom-right" id="btnNewChat" data-tooltip="新任务" data-i18n-title="new_conversation" aria-label="新任务">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
           </button>
         </div>
       </div>
-      <div class="panel-head-sub" id="assistantPanelSub">选择一个 AI 产品，开始一个新任务。</div>
-      <div class="ai-object-list" aria-label="AI 产品">
+      <div class="panel-head-sub" id="assistantPanelSub">选择产品，直接开始任务。</div>
+      <div class="ai-object-list" aria-label="产品">
         <button class="ai-object-item" data-ai-object="general" type="button" onclick="openAssistantHome('general')">
           <span class="ai-object-avatar">G</span>
-          <span><strong>通用 AI</strong><small>默认聊天</small></span>
+          <span><strong>通用 AI</strong><small>聊天</small></span>
         </button>
         <button class="ai-object-item active" data-ai-object="ppt" type="button" onclick="openAssistantHome('ppt')">
           <span class="ai-object-avatar">P</span>
@@ -179,7 +182,7 @@
         </button>
         <button class="ai-object-item create" data-ai-object="create" type="button" onclick="openAssistantHome('create')">
           <span class="ai-object-avatar">+</span>
-          <span><strong>新建产品</strong><small>按需求创建</small></span>
+          <span><strong>新建产品</strong><small>创建</small></span>
         </button>
       </div>
       <div class="side-section-title" id="assistantTaskListTitle">最近任务</div>
@@ -229,21 +232,24 @@
       </div>
       <div class="product-task-status" aria-label="当前任务状态">
         <span class="product-task-chip is-primary" id="taskHeaderChatStatus">
-          <span aria-hidden="true">•</span><span>新任务</span>
+          <span aria-hidden="true">•</span><span>待开始</span>
         </span>
         <span class="product-task-chip" id="taskHeaderProductStatus">
-          <span aria-hidden="true">•</span><span>任务界面按需</span>
+          <span aria-hidden="true">•</span><span>画布按需</span>
         </span>
+        <button type="button" class="product-task-chip product-adjust-toggle" id="taskHeaderAdjustToggle" hidden aria-pressed="false" onclick="toggleCurrentProductAdjustMode()">
+          <span aria-hidden="true">⚙</span><span>调整产品</span>
+        </button>
       </div>
     </div>
     <div class="product-chat-body" id="productChatBody">
     <section class="assistant-home" id="assistantHome" aria-label="AI 产品主页">
       <div class="assistant-home-inner">
         <div class="assistant-home-avatar" id="assistantHomeAvatar" aria-hidden="true">P</div>
-        <p class="assistant-home-eyebrow" id="assistantHomeEyebrow">AI 产品</p>
+        <p class="assistant-home-eyebrow" id="assistantHomeEyebrow">已选择</p>
         <h1 id="assistantHomeTitle">PPT 设计师</h1>
-        <p id="assistantHomeDesc">和我说主题、受众和用途。我会先确认方向，再按需展开大纲、页面和讲稿。</p>
-        <div class="assistant-home-guide" id="assistantHomeGuide">在下方输入第一句话，开始一个任务。</div>
+        <p id="assistantHomeDesc">和我说主题、受众和用途。我会先确认方向，再打开大纲、页面和讲稿。</p>
+        <div class="assistant-home-guide" id="assistantHomeGuide">直接输入即可开始。</div>
         <div class="assistant-home-origin" id="assistantHomeOrigin" hidden></div>
         <div class="assistant-home-nextstep" id="assistantHomeNextStep" hidden></div>
         <div class="assistant-home-manage" id="assistantHomeManage" hidden>
@@ -258,6 +264,13 @@
       </div>
     </section>
     <div class="messages-shell">
+      <div class="product-adjust-panel-header" id="productAdjustPanelHeader" hidden>
+        <div>
+          <strong>调整产品</strong>
+          <span>用聊天改这个产品。</span>
+        </div>
+        <button type="button" onclick="setCurrentProductAdjustMode(false)" aria-label="关闭产品调整栏">关闭</button>
+      </div>
       <button id="jumpToSessionStartBtn" class="session-jump-btn session-jump-btn--start" aria-label="回到任务开头" data-i18n-aria-label="session_jump_start_label" data-i18n-title="session_jump_start_label" onclick="jumpToSessionStart()" style="display:none"><span aria-hidden="true">↑</span><span data-i18n="session_jump_start">开头</span></button>
       <button id="scrollToBottomBtn" class="scroll-to-bottom-btn" style="display:none" onclick="scrollToBottom()" aria-label="回到任务底部" data-i18n-aria-label="session_jump_end_label" data-i18n-title="session_jump_end_label"><span aria-hidden="true">↓</span><span class="session-jump-btn__text" data-i18n="session_jump_end">底部</span></button>
       <div class="assistant-task-context" id="assistantTaskContextStrip" hidden>
@@ -265,7 +278,7 @@
           <span id="assistantTaskContextKicker">当前任务</span>
           <strong id="assistantTaskContextTitle">属于这个 AI 产品</strong>
         </div>
-        <span id="assistantTaskContextDesc">继续聊天即可推进任务；需要结构化输入、预览或产出区时会打开任务界面。</span>
+        <span id="assistantTaskContextDesc">继续聊天即可推进任务；需要结构化输入、预览或产出区时会打开产品画布。</span>
       </div>
       <div class="assistant-task-progress" id="assistantTaskProgress" role="status" aria-live="polite" hidden>
         <div class="assistant-task-progress-item">
@@ -276,7 +289,7 @@
           </div>
         </div>
         <div class="assistant-task-progress-item assistant-task-progress-product-ui">
-          <span id="assistantTaskProgressProductKicker">任务界面</span>
+          <span id="assistantTaskProgressProductKicker">产品画布</span>
           <strong id="assistantTaskProgressProduct">按需打开</strong>
         </div>
       </div>
@@ -302,11 +315,11 @@
       <div id="liveToolCards" style="display:none;max-width:800px;margin:0 auto;width:100%;padding:0 24px;"></div>
     </div>
     </div>
-    <section class="active-product-surface" id="activeProductSurface" hidden aria-label="当前任务界面" tabindex="-1">
+    <section class="active-product-surface" id="activeProductSurface" hidden aria-label="当前产品画布" tabindex="-1">
       <div class="active-product-toolbar">
         <div class="active-product-title">
-          <span class="active-product-kicker" id="activeProductKicker">任务界面</span>
-          <strong id="activeProductPreviewName">当前任务界面</strong>
+          <span class="active-product-kicker" id="activeProductKicker">产品画布</span>
+          <strong id="activeProductPreviewName">当前产品画布</strong>
           <span id="activeProductVersion"></span>
           <span class="active-product-note" id="activeProductNote">需要时生成，也可以继续聊天调整。</span>
         </div>
@@ -315,7 +328,7 @@
           <div class="active-product-more">
             <button type="button" id="activeProductMoreBtn" onclick="toggleActiveProductPreviewMenu(event)" aria-haspopup="menu" aria-expanded="false">更多</button>
             <div class="active-product-menu" id="activeProductMoreMenu" hidden role="menu">
-              <button type="button" id="regenerateProductUiBtn" onclick="requestCurrentProductUiGeneration()">重新生成任务界面</button>
+              <button type="button" id="regenerateProductUiBtn" onclick="requestCurrentProductUiGeneration()">重新生成产品画布</button>
               <button type="button" id="rollbackActiveProductBtn" onclick="rollbackCurrentProductUiVersion()" hidden>恢复上一版</button>
               <button type="button" id="productCapabilitiesBtn" onclick="openCurrentProductCapabilities()" hidden>能力与工具</button>
               <button type="button" onclick="openActiveProductPreviewWindow()">在新窗口打开</button>
@@ -326,13 +339,13 @@
       <iframe
         class="active-product-frame"
         id="activeProductFrame"
-        title="当前任务界面预览"
+        title="当前产品画布预览"
         sandbox="allow-scripts allow-forms"
       ></iframe>
       <div class="product-preview-state" id="productPreviewState" hidden>
         <div class="product-preview-state-card">
-          <span class="product-preview-state-kicker" id="productPreviewStateKicker">任务界面</span>
-          <strong id="productPreviewStateTitle">这个 AI 产品还没有任务界面</strong>
+          <span class="product-preview-state-kicker" id="productPreviewStateKicker">产品画布</span>
+          <strong id="productPreviewStateTitle">这个 AI 产品还没有产品画布</strong>
           <p id="productPreviewStateDesc">继续聊天即可生成，也可以现在创建第一版。</p>
           <button type="button" id="productPreviewStateAction" onclick="requestCurrentProductUiGeneration()" hidden>生成第一版</button>
         </div>
@@ -485,7 +498,7 @@
           <span class="voice-mode-indicator" id="voiceModeIndicator"></span>
           <span class="voice-mode-label" id="voiceModeLabel"></span>
         </div>
-        <textarea id="msg" rows="1" placeholder="描述你想做的 PPT，或上传资料..."></textarea>
+        <textarea id="msg" rows="1" placeholder="描述这次 PPT，或上传资料…"></textarea>
         <div class="composer-footer">
           <div class="composer-left">
             <input type="file" id="fileInput" class="file-input-visually-hidden" multiple accept="image/*,text/*,application/pdf,application/json,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.md,.py,.js,.ts,.yaml,.yml,.toml,.csv,.sh,.txt,.log,.env,.xls,.xlsx,.doc,.docx,.zip,.tar,.gz,.tgz,.bz2,.xz">
@@ -1131,22 +1144,22 @@
   <div class="product-dialog-panel" role="dialog" aria-modal="true" aria-labelledby="assistantCreateTitle" aria-describedby="assistantCreateDesc">
     <div class="product-dialog-header">
       <div>
-        <div class="product-dialog-eyebrow">新建 AI 产品</div>
-        <h2 id="assistantCreateTitle">创建这个 AI 产品？</h2>
+        <div class="product-dialog-eyebrow">新建产品</div>
+        <h2 id="assistantCreateTitle">创建这个产品？</h2>
       </div>
       <button class="product-dialog-close" id="assistantCreateClose" type="button" aria-label="关闭创建预览">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
     </div>
-    <p class="product-dialog-desc" id="assistantCreateDesc">创建后会出现在左侧。进入它后继续聊天；需要结构化输入、预览或产出区时，会生成任务界面。</p>
+    <p class="product-dialog-desc" id="assistantCreateDesc">创建后会出现在左侧。进入它后继续聊天，需要输入、预览或产出区时再生成产品画布。</p>
     <div class="assistant-create-source" id="assistantCreateSourceWrap">
       <span>需求</span>
-      <strong id="assistantCreateSource">我想创建一个新的 AI 产品。</strong>
+      <strong id="assistantCreateSource">我想创建一个新的产品。</strong>
     </div>
     <div class="assistant-create-product">
       <div class="assistant-create-product-avatar" id="assistantCreatePreviewAvatar" aria-hidden="true">AI</div>
       <div class="assistant-create-product-main">
-        <span>AI 产品</span>
+        <span>产品</span>
         <strong id="assistantCreateName">新的 AI 产品</strong>
         <p id="assistantCreateDuty">负责处理一类长期任务</p>
       </div>
@@ -1155,7 +1168,7 @@
       <span>可以先问</span>
       <div class="product-dialog-chips" id="assistantCreateTasks"></div>
     </div>
-    <div class="product-dialog-note">聊天是主入口；任务界面只在需要输入、预览或产出时出现，并且可以继续通过聊天调整。</div>
+    <div class="product-dialog-note">聊天是主入口。产品画布只在需要输入、预览或产出时出现，也可以继续通过聊天调整。</div>
     <div class="product-dialog-actions">
       <button class="product-dialog-btn" id="assistantCreateCancel" type="button" title="取消创建，不写入任何 AI 产品" aria-label="取消创建，不写入任何 AI 产品">取消</button>
       <button class="product-dialog-btn primary" id="assistantCreateApply" type="button" title="创建并进入这个 AI 产品" aria-label="创建并进入这个 AI 产品">创建并进入</button>

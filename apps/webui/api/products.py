@@ -1,8 +1,7 @@
 """Persistent AI product registry for the Next AI layer.
 
-An AI product is a chat-facing product object plus a dedicated workspace
-directory. Some products use the base chat surface as their whole UI; others
-grow an additional preview/workspace surface from files in their directory.
+An AI product owns a product page. Chat is the stable core block in that page;
+some products also open a product canvas from files in their directory.
 """
 
 from __future__ import annotations
@@ -46,16 +45,18 @@ BUILTIN_PRODUCTS: tuple[dict[str, Any], ...] = (
         "kind": "general",
         "title": "通用 AI",
         "avatar": "G",
-        "desc": "适合临时问题、写作、分析和文件处理。它默认是纯聊天产品，但仍然有自己的产品身份和工作区。",
-        "placeholder": "向通用 AI 描述你想完成的事...",
+        "desc": "普通聊天，适合临时问题、写作、分析和文件处理。",
+        "placeholder": "说说你想完成什么…",
         "suggestions": [
             ["帮我整理今天的工作计划，拆成可执行步骤。", "整理工作计划"],
             ["帮我改写这段文案，让它更清晰专业。", "润色一段文案"],
             ["帮我分析这个问题，先给我几个可能方案。", "分析一个问题"],
         ],
-        "source_prompt": "内置 AI 产品：通用 AI。它默认保持普通 Chat，但身份、默认流程和可选界面都属于它自己的产品工作区。",
+        "source_prompt": "内置 AI 产品：通用 AI。它默认保持普通 Chat；身份、默认流程、技能和工具属于它自己。",
         "product_type": "general",
         "ui_mode": "chat_only",
+        "product_layout": "chat_only",
+        "canvas_label": "",
         "ui_status": "ready",
         "tools": ["skills", "file", "terminal", "code_execution"],
         "builtin": True,
@@ -65,16 +66,18 @@ BUILTIN_PRODUCTS: tuple[dict[str, Any], ...] = (
         "kind": "ppt",
         "title": "PPT 设计师",
         "avatar": "P",
-        "desc": "把想法、资料和要求变成清晰好看的演示文稿。Chat 始终在场，产品界面会按 PPT 任务逐步长出大纲、页面和讲稿区。",
-        "placeholder": "描述你想做的 PPT，或上传资料...",
+        "desc": "和我说主题、受众和用途。我会先确认方向，再打开大纲、页面和讲稿。",
+        "placeholder": "描述这次 PPT，或上传资料…",
         "suggestions": [
-            ["帮我做一个产品介绍 PPT，先确认主题、受众和大纲。", "做一份产品介绍 PPT"],
-            ["我有一份文档，帮我整理成汇报 PPT 的结构。", "把文档变成汇报 PPT"],
-            ["帮我优化已有 PPT 结构，先告诉我应该怎么调整。", "优化已有 PPT 结构"],
+            ["帮我做一个产品介绍 PPT，先确认主题、受众和大纲。", "从主题开始"],
+            ["我有一份文档，帮我整理成汇报 PPT 的结构。", "上传资料整理"],
+            ["帮我优化已有 PPT 结构，先告诉我应该怎么调整。", "优化已有结构"],
         ],
-        "source_prompt": "内置 AI 产品：PPT 设计师。它应该能通过聊天生成、调整和沉淀自己的 PPT 产品界面。",
+        "source_prompt": "内置 AI 产品：PPT 设计师。它应该能通过聊天生成、调整和沉淀自己的 PPT 产品画布。",
         "product_type": "ppt",
         "ui_mode": "workspace",
+        "product_layout": "chat_left_canvas_right",
+        "canvas_label": "PPT 工作区",
         "ui_status": "empty",
         "skills": ["presentations", "office"],
         "tools": ["skills", "file", "terminal", "code_execution"],
@@ -179,8 +182,35 @@ def _seed_index_html() -> str:
 <body>
   <main>
     <section>
-      <h1>这个 AI 产品还没有生成界面</h1>
+      <h1>这个 AI 产品还没有生成产品画布</h1>
       <p>继续和它聊天，让 Agent 在这个工作区里写 index.html、style.css 或 app.js。</p>
+    </section>
+  </main>
+</body>
+</html>
+"""
+
+
+def _chat_only_seed_index_html() -> str:
+    return """<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>通用 AI</title>
+  <style>
+    body{margin:0;font:14px/1.6 ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#171717;background:#fff}
+    main{min-height:100vh;display:grid;place-items:center;padding:32px}
+    section{max-width:520px;text-align:center}
+    h1{margin:0 0 8px;font-size:22px;letter-spacing:0}
+    p{margin:0;color:#737373}
+  </style>
+</head>
+<body>
+  <main>
+    <section>
+      <h1>这个产品使用默认 Chat 页面</h1>
+      <p>它不需要右侧产品画布。继续回到主页面聊天即可。</p>
     </section>
   </main>
 </body>
@@ -217,21 +247,42 @@ def _normalize_product(item: dict[str, Any]) -> dict[str, Any]:
     skills = item.get("skills") if isinstance(item.get("skills"), list) else []
     tools = item.get("tools") if isinstance(item.get("tools"), list) else []
     versions = item.get("versions") if isinstance(item.get("versions"), list) else []
+    product_type = str(item.get("product_type") or item.get("productType") or "custom").strip() or "custom"
     ui_mode = str(item.get("ui_mode") or item.get("uiMode") or "workspace").strip() or "workspace"
+    raw_layout = str(item.get("product_layout") or item.get("productLayout") or item.get("layout") or "").strip()
+    if not raw_layout:
+        raw_layout = (
+            "chat_only"
+            if ui_mode == "chat_only"
+            else "chat_left_canvas_right"
+            if product_type in {"ppt", "research", "data", "image"}
+            else "chat_center"
+        )
+    allowed_layouts = {"chat_only", "chat_center", "chat_left_canvas_right", "canvas_full"}
+    product_layout = raw_layout if raw_layout in allowed_layouts else "chat_center"
+    if ui_mode == "chat_only":
+        product_layout = "chat_only"
+    elif product_layout == "chat_only":
+        ui_mode = "chat_only"
     ui_status = str(item.get("ui_status") or item.get("status") or "empty").strip() or "empty"
     if ui_mode == "chat_only" and ui_status in {"empty", "failed"}:
         ui_status = "ready"
+    canvas_label = str(item.get("canvas_label") or item.get("canvasLabel") or "").strip()
+    if not canvas_label and product_layout != "chat_only":
+        canvas_label = "产品画布"
     return {
         "id": product_id,
         "kind": str(item.get("kind") or f"custom-{product_id}"),
         "title": title,
         "avatar": str(item.get("avatar") or "").strip(),
         "desc": str(item.get("desc") or item.get("description") or "").strip(),
-        "placeholder": str(item.get("placeholder") or f"向「{title}」描述这次要完成的任务...").strip(),
+        "placeholder": str(item.get("placeholder") or f"向「{title}」描述这次要完成的任务…").strip(),
         "suggestions": item.get("suggestions") if isinstance(item.get("suggestions"), list) else [],
         "source_prompt": str(item.get("source_prompt") or item.get("sourcePrompt") or "").strip(),
-        "product_type": str(item.get("product_type") or item.get("productType") or "custom").strip() or "custom",
+        "product_type": product_type,
         "ui_mode": ui_mode,
+        "product_layout": product_layout,
+        "canvas_label": canvas_label,
         "workspace_path": workspace_path,
         "preview_entry": str(item.get("preview_entry") or "index.html"),
         "preview_url": preview_url,
@@ -275,12 +326,14 @@ def _ensure_builtin_products_locked() -> dict[str, Any]:
         if existing_index >= 0:
             existing = products[existing_index]
             merged = {
-                **definition,
                 **existing,
+                **definition,
                 "id": product_id,
-                "kind": definition.get("kind") or existing.get("kind") or product_id,
-                "avatar": existing.get("avatar") or definition.get("avatar") or "",
-                "ui_mode": existing.get("ui_mode") or definition.get("ui_mode") or "workspace",
+                "kind": definition.get("kind") or product_id,
+                "avatar": definition.get("avatar") or existing.get("avatar") or "",
+                "ui_mode": definition.get("ui_mode") or existing.get("ui_mode") or "workspace",
+                "product_layout": definition.get("product_layout") or existing.get("product_layout") or "",
+                "canvas_label": definition.get("canvas_label") or existing.get("canvas_label") or "",
                 "workspace_path": str(_product_dir(product_id).resolve()),
                 "preview_url": f"/api/products/{product_id}/preview",
                 "ui_status": existing.get("ui_status") or definition.get("ui_status") or "empty",
@@ -337,9 +390,9 @@ def _write_seed_files(product: dict[str, Any]) -> None:
     readme = workspace / "README.md"
     if not readme.exists():
         if str(product.get("ui_mode") or "") == "chat_only":
-            workspace_note = "和这个 AI 产品聊天时，Agent 会在这里维护它自己的身份、提示词、技能、工具和可选扩展界面。"
+            workspace_note = "和这个 AI 产品聊天时，Agent 会在这里维护它自己的身份、提示词、技能和工具。它不需要右侧产品画布。"
         else:
-            workspace_note = "和这个 AI 产品聊天时，Agent 会在这里创建和修改它自己的产品界面文件。"
+            workspace_note = "和这个 AI 产品聊天时，Agent 会在这里创建和修改它自己的产品画布文件。"
         readme.write_text(
             "\n".join(
                 [
@@ -355,7 +408,8 @@ def _write_seed_files(product: dict[str, Any]) -> None:
         )
     index = workspace / "index.html"
     if not index.exists():
-        index.write_text(_seed_index_html(), encoding="utf-8")
+        seed_html = _chat_only_seed_index_html() if str(product.get("ui_mode") or "") == "chat_only" else _seed_index_html()
+        index.write_text(seed_html, encoding="utf-8")
     _write_manifest(product)
 
 
@@ -371,6 +425,8 @@ def _write_manifest(product: dict[str, Any]) -> None:
         "source_prompt": product.get("source_prompt"),
         "product_type": product.get("product_type"),
         "ui_mode": product.get("ui_mode") or "workspace",
+        "product_layout": product.get("product_layout") or "chat_center",
+        "canvas_label": product.get("canvas_label") or "",
         "preview_entry": product.get("preview_entry") or "index.html",
         "ui_status": product.get("ui_status") or "empty",
         "skills": _unique_strings(product.get("skills") if isinstance(product.get("skills"), list) else []),
@@ -431,7 +487,8 @@ def create_product(body: dict[str, Any]) -> dict[str, Any]:
         product = _normalize_product({**body, "id": product_id, "kind": body.get("kind") or f"custom-{product_id}"})
         product["workspace_path"] = str(_product_dir(product_id).resolve())
         product["preview_url"] = f"/api/products/{product_id}/preview"
-        product["ui_status"] = str(body.get("ui_status") or "empty")
+        requested_status = str(body.get("ui_status") or product.get("ui_status") or "empty").strip() or "empty"
+        product["ui_status"] = "ready" if product.get("ui_mode") == "chat_only" else requested_status
         product["sessions"] = []
         capability_defaults = suggest_product_capabilities(
             title=product.get("title") or title,
@@ -476,6 +533,8 @@ def update_product(product_id_or_kind: str, patch: dict[str, Any]) -> dict[str, 
             "source_prompt",
             "product_type",
             "ui_mode",
+            "product_layout",
+            "canvas_label",
             "preview_entry",
             "ui_status",
             "ui_error_type",
@@ -619,7 +678,7 @@ def _product_manifest_patch_from_workspace(product: dict[str, Any]) -> dict[str,
     """Read product-owned metadata changes written by the agent.
 
     Product turns may update product.json for identity/config changes such as
-    avatar, placeholder, skills, tools, or ui_mode. Keep this intentionally
+    avatar, placeholder, skills, tools, ui_mode, or product_layout. Keep this intentionally
     narrow so product code can evolve itself without mutating shell state.
     """
 
@@ -643,12 +702,17 @@ def _product_manifest_patch_from_workspace(product: dict[str, Any]) -> dict[str,
         "source_prompt",
         "product_type",
         "ui_mode",
+        "product_layout",
+        "canvas_label",
         "preview_entry",
     }
     aliases = {
         "sourcePrompt": "source_prompt",
         "productType": "product_type",
         "uiMode": "ui_mode",
+        "productLayout": "product_layout",
+        "canvasLabel": "canvas_label",
+        "layout": "product_layout",
         "previewEntry": "preview_entry",
     }
     for key, value in data.items():
@@ -798,7 +862,8 @@ def record_product_session(product_id_or_kind: str, session_id: str, *, ui_statu
 
 def _entry_is_seed(entry: Path) -> bool:
     try:
-        return entry.read_text(encoding="utf-8").strip() == _seed_index_html().strip()
+        content = entry.read_text(encoding="utf-8").strip()
+        return content == _seed_index_html().strip() or content == _chat_only_seed_index_html().strip()
     except Exception:
         return False
 
@@ -819,6 +884,7 @@ def finalize_product_generation(
         status = {"entry_generated": False}
     manifest_patch = _product_manifest_patch_from_workspace(product)
     next_ui_mode = str(manifest_patch.get("ui_mode") or product.get("ui_mode") or "workspace").strip() or "workspace"
+    next_product_layout = str(manifest_patch.get("product_layout") or product.get("product_layout") or "chat_center").strip() or "chat_center"
     if failed:
         next_status = "failed"
     elif next_ui_mode == "chat_only":
@@ -826,9 +892,13 @@ def finalize_product_generation(
     else:
         next_status = "ready" if status.get("entry_generated") else "failed"
     patch: dict[str, Any] = {**manifest_patch, "ui_status": next_status}
+    if next_status == "ready" and next_ui_mode != "chat_only" and status.get("entry_generated") and next_product_layout == "chat_center":
+        patch["product_layout"] = "chat_left_canvas_right"
+        if not patch.get("canvas_label") and not product.get("canvas_label"):
+            patch["canvas_label"] = "产品画布"
     if next_status == "failed":
         patch["ui_error_type"] = str(error_type or "generation_failed").strip()
-        patch["ui_error_message"] = str(error_message or "产品界面没有生成完成，可以重试。").strip()
+        patch["ui_error_message"] = str(error_message or "产品画布没有生成完成，可以重试。").strip()
     else:
         patch["ui_error_type"] = ""
         patch["ui_error_message"] = ""
@@ -878,17 +948,32 @@ def product_file_status(product_id_or_kind: str) -> dict[str, Any]:
         next_ui_status = "ready"
     elif ui_mode != "chat_only" and not entry_generated and ui_status == "ready":
         next_ui_status = "failed"
+    product_layout = str(product.get("product_layout") or "chat_center").strip() or "chat_center"
+    should_promote_layout = entry_generated and ui_mode != "chat_only" and product_layout == "chat_center"
     if next_ui_status != ui_status:
         try:
             patch: dict[str, Any] = {"ui_status": next_ui_status}
+            if should_promote_layout:
+                patch["product_layout"] = "chat_left_canvas_right"
+                if not product.get("canvas_label"):
+                    patch["canvas_label"] = "产品画布"
             if next_ui_status == "failed":
                 patch["ui_error_type"] = product.get("ui_error_type") or "entry_missing"
-                patch["ui_error_message"] = product.get("ui_error_message") or "产品界面文件缺失或仍是占位页，可以重新生成。"
+                patch["ui_error_message"] = product.get("ui_error_message") or "产品画布文件缺失或仍是占位页，可以重新生成。"
             updated = update_product(product["id"], patch)
             product = updated.get("product") or {**product, "ui_status": next_ui_status}
             ui_status = next_ui_status
         except Exception:
             ui_status = next_ui_status
+    elif should_promote_layout:
+        try:
+            patch = {"product_layout": "chat_left_canvas_right"}
+            if not product.get("canvas_label"):
+                patch["canvas_label"] = "产品画布"
+            updated = update_product(product["id"], patch)
+            product = updated.get("product") or {**product, **patch}
+        except Exception:
+            pass
     return {
         "ok": True,
         "product": product,
