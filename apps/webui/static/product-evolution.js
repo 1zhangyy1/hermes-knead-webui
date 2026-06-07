@@ -4,12 +4,12 @@
 
 async function rollbackCurrentProductUiVersion() {
   if (!_activeProductPreview || !_activeProductPreview.product_preview) {
-    if (typeof showToast === 'function') showToast('当前没有可恢复的产品画布');
+    if (typeof showToast === 'function') showToast('当前没有可恢复的产品界面');
     return;
   }
   const productId = String(_activeProductPreview.product_id || '').trim();
   if (!productId || !_activeProductPreview.can_rollback) {
-    if (typeof showToast === 'function') showToast('这个 AI 产品还没有上一版画布可恢复');
+    if (typeof showToast === 'function') showToast('这个 AI 产品还没有上一版界面可恢复');
     return;
   }
   try {
@@ -23,9 +23,9 @@ async function rollbackCurrentProductUiVersion() {
     if (typeof refreshCurrentProductPreview === 'function') {
       await refreshCurrentProductPreview({ silent: true, reason: 'product-rollback' });
     }
-    if (typeof showToast === 'function') showToast('已恢复上一版产品画布');
+    if (typeof showToast === 'function') showToast('已恢复上一版产品界面');
   } catch (e) {
-    if (typeof showToast === 'function') showToast('恢复上一版产品画布失败：' + (e.message || e));
+    if (typeof showToast === 'function') showToast('恢复上一版产品界面失败：' + (e.message || e));
   }
 }
 

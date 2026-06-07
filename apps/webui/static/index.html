@@ -235,7 +235,7 @@
           <span aria-hidden="true">•</span><span>待开始</span>
         </span>
         <span class="product-task-chip" id="taskHeaderProductStatus">
-          <span aria-hidden="true">•</span><span>画布按需</span>
+          <span aria-hidden="true">•</span><span>界面按需</span>
         </span>
         <button type="button" class="product-task-chip product-adjust-toggle" id="taskHeaderAdjustToggle" hidden aria-pressed="false" onclick="toggleCurrentProductAdjustMode()">
           <span aria-hidden="true">⚙</span><span>调整产品</span>
@@ -278,7 +278,7 @@
           <span id="assistantTaskContextKicker">当前任务</span>
           <strong id="assistantTaskContextTitle">属于这个 AI 产品</strong>
         </div>
-        <span id="assistantTaskContextDesc">继续聊天即可推进任务；需要结构化输入、预览或产出区时会打开产品画布。</span>
+        <span id="assistantTaskContextDesc">继续聊天即可推进任务；需要结构化输入、预览或产出区时会打开产品界面。</span>
       </div>
       <div class="assistant-task-progress" id="assistantTaskProgress" role="status" aria-live="polite" hidden>
         <div class="assistant-task-progress-item">
@@ -289,7 +289,7 @@
           </div>
         </div>
         <div class="assistant-task-progress-item assistant-task-progress-product-ui">
-          <span id="assistantTaskProgressProductKicker">产品画布</span>
+          <span id="assistantTaskProgressProductKicker">产品界面</span>
           <strong id="assistantTaskProgressProduct">按需打开</strong>
         </div>
       </div>
@@ -315,11 +315,11 @@
       <div id="liveToolCards" style="display:none;max-width:800px;margin:0 auto;width:100%;padding:0 24px;"></div>
     </div>
     </div>
-    <section class="active-product-surface" id="activeProductSurface" hidden aria-label="当前产品画布" tabindex="-1">
+    <section class="active-product-surface" id="activeProductSurface" hidden aria-label="当前产品界面" tabindex="-1">
       <div class="active-product-toolbar">
         <div class="active-product-title">
-          <span class="active-product-kicker" id="activeProductKicker">产品画布</span>
-          <strong id="activeProductPreviewName">当前产品画布</strong>
+          <span class="active-product-kicker" id="activeProductKicker">产品界面</span>
+          <strong id="activeProductPreviewName">当前产品界面</strong>
           <span id="activeProductVersion"></span>
           <span class="active-product-note" id="activeProductNote">需要时生成，也可以继续聊天调整。</span>
         </div>
@@ -328,7 +328,7 @@
           <div class="active-product-more">
             <button type="button" id="activeProductMoreBtn" onclick="toggleActiveProductPreviewMenu(event)" aria-haspopup="menu" aria-expanded="false">更多</button>
             <div class="active-product-menu" id="activeProductMoreMenu" hidden role="menu">
-              <button type="button" id="regenerateProductUiBtn" onclick="requestCurrentProductUiGeneration()">重新生成产品画布</button>
+              <button type="button" id="regenerateProductUiBtn" onclick="requestCurrentProductUiGeneration()">重新生成产品界面</button>
               <button type="button" id="rollbackActiveProductBtn" onclick="rollbackCurrentProductUiVersion()" hidden>恢复上一版</button>
               <button type="button" id="productCapabilitiesBtn" onclick="openCurrentProductCapabilities()" hidden>能力与工具</button>
               <button type="button" onclick="openActiveProductPreviewWindow()">在新窗口打开</button>
@@ -339,13 +339,13 @@
       <iframe
         class="active-product-frame"
         id="activeProductFrame"
-        title="当前产品画布预览"
+        title="当前产品界面预览"
         sandbox="allow-scripts allow-forms"
       ></iframe>
       <div class="product-preview-state" id="productPreviewState" hidden>
         <div class="product-preview-state-card">
-          <span class="product-preview-state-kicker" id="productPreviewStateKicker">产品画布</span>
-          <strong id="productPreviewStateTitle">这个 AI 产品还没有产品画布</strong>
+          <span class="product-preview-state-kicker" id="productPreviewStateKicker">产品界面</span>
+          <strong id="productPreviewStateTitle">这个 AI 产品还没有产品界面</strong>
           <p id="productPreviewStateDesc">继续聊天即可生成，也可以现在创建第一版。</p>
           <button type="button" id="productPreviewStateAction" onclick="requestCurrentProductUiGeneration()" hidden>生成第一版</button>
         </div>
@@ -1151,7 +1151,7 @@
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
     </div>
-    <p class="product-dialog-desc" id="assistantCreateDesc">创建后会出现在左侧。进入它后继续聊天，需要输入、预览或产出区时再生成产品画布。</p>
+    <p class="product-dialog-desc" id="assistantCreateDesc">创建后会出现在左侧。进入它后继续聊天，需要输入、预览或产出区时再生成产品界面。</p>
     <div class="assistant-create-source" id="assistantCreateSourceWrap">
       <span>需求</span>
       <strong id="assistantCreateSource">我想创建一个新的产品。</strong>
@@ -1168,7 +1168,7 @@
       <span>可以先问</span>
       <div class="product-dialog-chips" id="assistantCreateTasks"></div>
     </div>
-    <div class="product-dialog-note">聊天是主入口。产品画布只在需要输入、预览或产出时出现，也可以继续通过聊天调整。</div>
+    <div class="product-dialog-note">聊天是主入口。产品界面只在需要输入、预览或产出时出现，也可以继续通过聊天调整。</div>
     <div class="product-dialog-actions">
       <button class="product-dialog-btn" id="assistantCreateCancel" type="button" title="取消创建，不写入任何 AI 产品" aria-label="取消创建，不写入任何 AI 产品">取消</button>
       <button class="product-dialog-btn primary" id="assistantCreateApply" type="button" title="创建并进入这个 AI 产品" aria-label="创建并进入这个 AI 产品">创建并进入</button>
