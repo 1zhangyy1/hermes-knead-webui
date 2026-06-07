@@ -197,6 +197,8 @@
   window.addEventListener('message', event => {
     const data = event && event.data;
     if (!data || typeof data !== 'object' || data.source !== 'nextai-host') return;
+    // 安全边界:只接受来自宿主父窗口的消息,挡掉同页其它窗口伪造的 nextai-host 消息。
+    if (event.source !== window.parent) return;
     if (data.type === 'nextai:host:ready') {
       hostContext = {...data};
       window.dispatchEvent(new CustomEvent('nextai:ready', {detail: data}));
