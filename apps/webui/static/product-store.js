@@ -1,18 +1,18 @@
 const NEXT_AI_PRODUCT_SKILL_OPTIONS = [
-  { id: 'presentations', label: '演示文稿', desc: '生成和修改 PPT' },
-  { id: 'office', label: '文档处理', desc: '处理 PPTX、文档和导出' },
-  { id: 'imagegen', label: '图片生成', desc: '生成或编辑图片' },
-  { id: 'browser', label: '网页研究', desc: '浏览网页和收集资料' },
-  { id: 'spreadsheets', label: '表格数据', desc: '分析表格和数据' }
+  { id: 'presentations', label: 'Presentations', desc: 'Create and edit decks' },
+  { id: 'office', label: 'Office files', desc: 'Work with PPTX, docs, and exports' },
+  { id: 'imagegen', label: 'Image generation', desc: 'Create or edit images' },
+  { id: 'browser', label: 'Web research', desc: 'Browse and collect sources' },
+  { id: 'spreadsheets', label: 'Spreadsheets', desc: 'Analyze sheets and data' }
 ];
 const NEXT_AI_PRODUCT_TOOL_OPTIONS = [
-  { id: 'skills', label: '技能', desc: '使用已安装的专业能力' },
-  { id: 'file', label: '文件', desc: '读取和修改产品文件' },
-  { id: 'terminal', label: '命令', desc: '执行本地命令' },
-  { id: 'code_execution', label: '代码', desc: '运行代码和脚本' },
-  { id: 'browser', label: '浏览', desc: '打开网页并收集资料' },
-  { id: 'web', label: '搜索', desc: '搜索公开网页' },
-  { id: 'image_gen', label: '生图', desc: '生成或编辑图片' }
+  { id: 'skills', label: 'Skills', desc: 'Use installed specialist skills' },
+  { id: 'file', label: 'Files', desc: 'Read and update product files' },
+  { id: 'terminal', label: 'Terminal', desc: 'Run local commands' },
+  { id: 'code_execution', label: 'Code', desc: 'Run code and scripts' },
+  { id: 'browser', label: 'Browser', desc: 'Open pages and gather context' },
+  { id: 'web', label: 'Web search', desc: 'Search the public web' },
+  { id: 'image_gen', label: 'Image generation', desc: 'Create or edit images' }
 ];
 const NEXT_AI_PRODUCT_TOOLSET_ALIASES = {
   officecli: ['skills', 'file', 'terminal', 'code_execution'],
@@ -142,11 +142,32 @@ function _assistantCanvasLabel(object) {
   const explicit = String(object && (object.canvasLabel || object.canvas_label) || '').trim();
   if (explicit) return explicit;
   const productType = String(object && (object.productType || object.product_type) || '').trim();
-  if (productType === 'ppt') return 'PPT 工作区';
-  if (productType === 'image') return '图片界面';
-  if (productType === 'research') return '研究工作区';
-  if (productType === 'data') return '数据工作区';
-  return '产品界面';
+  if (productType === 'ppt') return 'PPT workspace';
+  if (productType === 'image') return 'Image workspace';
+  if (productType === 'research') return 'Research workspace';
+  if (productType === 'data') return 'Data workspace';
+  return 'Workspace';
+}
+
+function _normalizeBuiltinProductCopy(product) {
+  const id = String(product && (product.id || product.productId) || '').trim();
+  const kind = String(product && product.kind || '').trim();
+  const productType = String(product && (product.product_type || product.productType) || '').trim();
+  if (id === 'ppt-designer' || kind === 'ppt' || productType === 'ppt') {
+    return {
+      title: 'PPT Designer',
+      desc: 'Tell me the topic, audience, and goal. I will shape the outline, slides, and speaker notes.',
+      canvasLabel: 'PPT workspace'
+    };
+  }
+  if (id === 'general' || kind === 'general' || productType === 'general') {
+    return {
+      title: 'General AI',
+      desc: 'Use chat for one-off work. Repeated workflows can become their own AI.',
+      canvasLabel: 'Workspace'
+    };
+  }
+  return null;
 }
 
 function _assistantDateToMs(value) {
@@ -156,7 +177,8 @@ function _assistantDateToMs(value) {
 
 function _productToCustomAssistant(product) {
   if (!product || !product.id) return null;
-  const title = product.title || 'AI 产品';
+  const builtinCopy = _normalizeBuiltinProductCopy(product);
+  const title = (builtinCopy && builtinCopy.title) || product.title || 'AI product';
   const sourcePrompt = product.source_prompt || product.sourcePrompt || '';
   const productType = product.product_type || product.productType || 'custom';
   const uiMode = product.ui_mode || product.uiMode || 'workspace';
@@ -170,7 +192,7 @@ function _productToCustomAssistant(product) {
     kind: product.kind || `custom-${product.id}`,
     title,
     avatar: product.avatar || '',
-    desc: product.desc || '按照你描述的职责处理任务，需要时生成自己的产品界面。',
+    desc: (builtinCopy && builtinCopy.desc) || product.desc || 'Describe the job it should own. A workspace appears when structure helps.',
     placeholder: product.placeholder || starterKit.placeholder,
     suggestions: Array.isArray(product.suggestions) && product.suggestions.length ? product.suggestions : starterKit.suggestions,
     sourcePrompt,
@@ -179,7 +201,7 @@ function _productToCustomAssistant(product) {
     productType,
     uiMode,
     productLayout,
-    canvasLabel: product.canvas_label || product.canvasLabel || '',
+    canvasLabel: (builtinCopy && builtinCopy.canvasLabel) || product.canvas_label || product.canvasLabel || '',
     productId: product.id,
     workspacePath: product.workspace_path || '',
     previewUrl: product.preview_url || '',
@@ -437,7 +459,7 @@ function _renderProductCapabilityOptions(containerId, options, selectedItems, ki
 function openCurrentProductCapabilities() {
   const object = _currentBackendProductObject();
   if (!object || !object.productId) {
-    if (typeof showToast === 'function') showToast('当前不是可配置的 AI 产品');
+    if (typeof showToast === 'function') showToast('This AI cannot be configured yet.');
     return;
   }
   _setActiveProductPreviewMenuOpen(false);
@@ -447,13 +469,13 @@ function openCurrentProductCapabilities() {
   const desc = $('productCapabilitiesDesc');
   const extraSkills = $('productCapabilitiesExtraSkills');
   const extraTools = $('productCapabilitiesExtraTools');
-  if (title) title.textContent = object.title || 'AI 产品';
-  if (desc) desc.textContent = '给当前产品补充长期偏好和可用工具。保存后，之后的任务会按这些能力处理。';
+  if (title) title.textContent = object.title || 'AI product';
+  if (desc) desc.textContent = 'Set the skills and tools this AI should prefer across future tasks.';
   _renderProductCapabilityOptions('productCapabilitiesSkills', NEXT_AI_PRODUCT_SKILL_OPTIONS, skills, 'skills');
   _renderProductCapabilityOptions('productCapabilitiesTools', NEXT_AI_PRODUCT_TOOL_OPTIONS, tools, 'tools');
   if (extraSkills) extraSkills.value = _unknownCapabilityItems(skills, NEXT_AI_PRODUCT_SKILL_OPTIONS).join(', ');
   if (extraTools) extraTools.value = _unknownCapabilityItems(tools, NEXT_AI_PRODUCT_TOOL_OPTIONS).join(', ');
-  _setProductCapabilitiesStatus('保存后，当前产品会在后续任务里使用这些设置。');
+  _setProductCapabilitiesStatus('Saved settings apply to future tasks for this AI.');
   const overlay = $('productCapabilitiesOverlay');
   if (overlay) {
     overlay.hidden = false;
@@ -478,14 +500,14 @@ function _collectProductCapabilitySelection(kind, extraInputId) {
 async function saveCurrentProductCapabilities() {
   const object = _currentBackendProductObject();
   if (!object || !object.productId) {
-    _setProductCapabilitiesStatus('当前不是可配置的 AI 产品。', 'error');
+    _setProductCapabilitiesStatus('This AI cannot be configured yet.', 'error');
     return;
   }
   const saveBtn = $('productCapabilitiesSave');
   const skills = _collectProductCapabilitySelection('skills', 'productCapabilitiesExtraSkills');
   const tools = _assistantNormalizeToolsets(_collectProductCapabilitySelection('tools', 'productCapabilitiesExtraTools'));
   if (saveBtn) saveBtn.disabled = true;
-  _setProductCapabilitiesStatus('正在保存能力与工具...');
+  _setProductCapabilitiesStatus('Saving skills and tools...');
   try {
     const data = await api('/api/products/update', {
       method: 'POST',
@@ -507,11 +529,11 @@ async function saveCurrentProductCapabilities() {
       object.skills = skills;
       object.tools = tools;
     }
-    _setProductCapabilitiesStatus('已保存。之后的任务会使用新的能力与工具。', 'success');
-    if (typeof showToast === 'function') showToast('能力与工具已保存');
+    _setProductCapabilitiesStatus('Saved. Future tasks will use these skills and tools.', 'success');
+    if (typeof showToast === 'function') showToast('Skills and tools saved');
     setTimeout(closeCurrentProductCapabilities, 360);
   } catch (err) {
-    _setProductCapabilitiesStatus(`保存失败：${err && err.message || err}`, 'error');
+    _setProductCapabilitiesStatus(`Save failed: ${err && err.message || err}`, 'error');
   } finally {
     if (saveBtn) saveBtn.disabled = false;
   }

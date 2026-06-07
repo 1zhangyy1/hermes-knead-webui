@@ -1,11 +1,11 @@
 {
-  "name": "Next AI",
-  "short_name": "Next AI",
-  "description": "A chat-first AI product shell where each product can grow its own interface.",
+  "name": "Knead",
+  "short_name": "Knead",
+  "description": "Knead your own AI from one sentence, then keep shaping it as you work.",
   "start_url": "./",
   "display": "standalone",
-  "background_color": "#0D0D1A",
-  "theme_color": "#0D0D1A",
+  "background_color": "#F8F5F1",
+  "theme_color": "#F4F1EE",
   "orientation": "portrait-primary",
   "icons": [
     {

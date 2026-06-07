@@ -1386,7 +1386,7 @@ function applyBotName(){
   if(S.activeProfile && S.activeProfile!=='default'){
     name=S.activeProfile.charAt(0).toUpperCase()+S.activeProfile.slice(1);
   }else{
-    name=window._botName||'Next AI';
+    name=window._botName||'Knead';
   }
   document.title=name;
   const sidebarH1=document.querySelector('.sidebar-header h1');
@@ -1396,7 +1396,7 @@ function applyBotName(){
   const topbarTitle=$('topbarTitle');
   if(topbarTitle && (!S.session)) topbarTitle.textContent=name;
   const msg=$('msg');
-  if(msg) msg.placeholder='描述你要完成的任务…';
+  if(msg) msg.placeholder='Say what you want to finish...';
   if(typeof syncAssistantTaskUi==='function') syncAssistantTaskUi();
 }
 
@@ -1423,7 +1423,7 @@ function applyBotName(){
     window._sidebarDensity=(s.sidebar_density==='detailed'?'detailed':'compact');
     window._busyInputMode=(s.busy_input_mode||'queue');
     window._sessionEndlessScrollEnabled=!!s.session_endless_scroll;
-    window._botName=(s.bot_name && s.bot_name !== 'Hermes') ? s.bot_name : 'Next AI';
+    window._botName=(s.bot_name && s.bot_name !== 'Hermes' && s.bot_name !== 'Next AI') ? s.bot_name : 'Knead';
     if(s.default_model) window._defaultModel=s.default_model;
     window._sessionJumpButtonsEnabled=!!s.session_jump_buttons;
     // Reconcile appearance: prefer localStorage (what the user last saw) over
@@ -1487,7 +1487,7 @@ function applyBotName(){
     window._sidebarDensity='compact';
     window._busyInputMode='queue';
     window._sessionEndlessScrollEnabled=false;
-    window._botName='Next AI';
+    window._botName='Knead';
     _bootSettings={check_for_updates:false};
     if(typeof setLocale==='function'){
       const _lang=typeof resolvePreferredLocale==='function'

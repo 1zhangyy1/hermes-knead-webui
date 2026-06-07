@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Next AI</title>
+<title>Knead</title>
 <!-- base href enables subpath mount support; all static paths must stay relative (no leading slash).
      MUST appear before manifest/favicon links so browsers resolve relative URLs against the
      correct base when the page is served from /session/<id> routes. See #2226. -->
@@ -15,7 +15,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Next AI">
+<meta name="apple-mobile-web-app-title" content="Knead">
 <link rel="apple-touch-icon" sizes="512x512" href="static/apple-touch-icon.png">
 <script>(function(){var themes={light:1,dark:1,system:1},skins={default:1,ares:1,mono:1,slate:1,poseidon:1,sisyphus:1,charizard:1,sienna:1,catppuccin:1,nous:1},legacy={slate:['dark','slate'],solarized:['dark','poseidon'],monokai:['dark','sisyphus'],nord:['dark','slate'],oled:['dark','default']},t=(localStorage.getItem('hermes-theme')||'light').toLowerCase(),s=(localStorage.getItem('hermes-skin')||'').toLowerCase(),m=legacy[t],theme=m?m[0]:(themes[t]?t:'light'),skin=skins[s]?s:(m?m[1]:'default');localStorage.setItem('hermes-theme',theme);localStorage.setItem('hermes-skin',skin);if(theme==='system')theme=window.matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light';if(theme==='dark')document.documentElement.classList.add('dark');if(skin!=='default')document.documentElement.dataset.skin=skin;})()</script>
 <script>(function(){var fs=localStorage.getItem('hermes-font-size');if(fs&&fs!=='default')document.documentElement.dataset.fontSize=fs;})()</script>
@@ -120,14 +120,8 @@
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
   </button>
   <div class="app-titlebar-inner">
-    <span class="app-titlebar-icon" aria-hidden="true">
-      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-        <path d="M21 15a2 2 0 0 1-2 2H8l-5 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-        <path d="M8 9h8"/>
-        <path d="M8 13h5"/>
-      </svg>
-    </span>
-    <span class="app-titlebar-title" id="appTitlebarTitle">Next AI</span>
+    <span class="app-titlebar-icon" aria-hidden="true"><img src="static/knead-logo.svg" alt=""></span>
+    <span class="app-titlebar-title" id="appTitlebarTitle">Knead</span>
     <span class="app-titlebar-sub" id="appTitlebarSub" hidden></span>
   </div>
   <div class="app-titlebar-spacer" aria-hidden="true"></div>
@@ -135,20 +129,18 @@
 <div class="layout">
   <aside class="sidebar">
     <div class="product-brand">
-      <button class="product-brand-mark" type="button" onclick="switchPanel('chat');openAssistantLanding()" aria-label="AI 产品主页">
-        <span class="product-brand-icon" aria-hidden="true">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H8l-5 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M8 9h8"/><path d="M8 13h5"/></svg>
-        </span>
-        <span>Next AI</span>
+      <button class="product-brand-mark" type="button" onclick="switchPanel('chat');openAssistantLanding()" aria-label="AI home">
+        <span class="product-brand-icon" aria-hidden="true"><img src="static/knead-logo.svg" alt=""></span>
+        <span>Knead</span>
       </button>
-      <button class="product-collapse-btn" id="productCollapseBtn" type="button" onclick="toggleSidebar()" aria-label="收起侧边栏">
+      <button class="product-collapse-btn" id="productCollapseBtn" type="button" onclick="toggleSidebar()" aria-label="Collapse sidebar">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/></svg>
       </button>
     </div>
-    <div class="product-primary-nav" aria-label="任务入口">
+    <div class="product-primary-nav" aria-label="Task entry">
       <button class="product-nav-item is-primary" id="newTaskPrimaryBtn" type="button" onclick="switchPanel('chat');startAssistantNewTask()">
         <span class="product-nav-icon" id="newTaskPrimaryIcon" aria-hidden="true"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"/><path d="M5 12h14"/></svg></span>
-        <span id="newTaskPrimaryLabel">新任务</span>
+        <span id="newTaskPrimaryLabel">New task</span>
       </button>
     </div>
 
@@ -160,33 +152,33 @@
     <!-- Chat panel -->
     <div class="panel-view active" id="panelChat" data-task-list="empty">
       <div class="panel-head">
-        <button class="panel-back-btn" id="assistantProductBackBtn" type="button" onclick="openAssistantLanding()" aria-label="返回产品库" hidden>
+        <button class="panel-back-btn" id="assistantProductBackBtn" type="button" onclick="openAssistantLanding()" aria-label="Back to AI shelf" hidden>
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H5"/><path d="m12 19-7-7 7-7"/></svg>
         </button>
-        <span id="assistantPanelTitle">产品库</span>
+        <span id="assistantPanelTitle">AI shelf</span>
         <div class="panel-head-actions">
-          <button class="panel-head-btn has-tooltip has-tooltip--bottom-right" id="btnNewChat" data-tooltip="新任务" data-i18n-title="new_conversation" aria-label="新任务">
+          <button class="panel-head-btn has-tooltip has-tooltip--bottom-right" id="btnNewChat" data-tooltip="New task" data-i18n-title="new_conversation" aria-label="New task">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
           </button>
         </div>
       </div>
-      <div class="panel-head-sub" id="assistantPanelSub">选择产品，直接开始任务。</div>
-      <div class="ai-object-list" aria-label="产品">
+      <div class="panel-head-sub" id="assistantPanelSub">Pick an AI and start with one sentence.</div>
+      <div class="ai-object-list" aria-label="AI products">
         <button class="ai-object-item" data-ai-object="general" type="button" onclick="openAssistantHome('general')">
           <span class="ai-object-avatar">G</span>
-          <span><strong>通用 AI</strong><small>聊天</small></span>
+          <span><strong>General AI</strong><small>Chat</small></span>
         </button>
         <button class="ai-object-item active" data-ai-object="ppt" type="button" onclick="openAssistantHome('ppt')">
           <span class="ai-object-avatar">P</span>
-          <span><strong>PPT 设计师</strong><small>演示文稿</small></span>
+          <span><strong>PPT Designer</strong><small>Decks</small></span>
         </button>
         <button class="ai-object-item create" data-ai-object="create" type="button" onclick="openAssistantHome('create')">
           <span class="ai-object-avatar">+</span>
-          <span><strong>新建产品</strong><small>创建</small></span>
+          <span><strong>Knead one</strong><small>Create</small></span>
         </button>
       </div>
-      <div class="side-section-title" id="assistantTaskListTitle">最近任务</div>
-      <div class="session-search sidebar-search"><svg class="sidebar-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg><input id="sessionSearch" placeholder="搜索任务" oninput="filterSessions()" autocomplete="off"></div>
+      <div class="side-section-title" id="assistantTaskListTitle">Recent tasks</div>
+      <div class="session-search sidebar-search"><svg class="sidebar-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg><input id="sessionSearch" placeholder="Search tasks" oninput="filterSessions()" autocomplete="off"></div>
       <div class="session-list" id="sessionList"></div>
     </div>
     <!-- Settings panel (menu list; actual panes render in .main) -->
@@ -227,87 +219,81 @@
     <div id="mainChat" class="main-view">
     <div class="product-chat-header">
       <div class="product-chat-crumb">
-        <strong id="productModeTitle">PPT 设计师</strong>
+        <strong id="productModeTitle">PPT Designer</strong>
         <span id="productCrumbRoot" class="product-chat-subtitle" hidden></span>
       </div>
       <div class="product-task-status" aria-label="当前任务状态">
         <span class="product-task-chip is-primary" id="taskHeaderChatStatus">
-          <span aria-hidden="true">•</span><span>待开始</span>
+          <span aria-hidden="true">•</span><span>Ready</span>
         </span>
         <span class="product-task-chip" id="taskHeaderProductStatus">
-          <span aria-hidden="true">•</span><span>界面按需</span>
+          <span aria-hidden="true">•</span><span>Workspace on demand</span>
         </span>
         <button type="button" class="product-task-chip product-adjust-toggle" id="taskHeaderAdjustToggle" hidden aria-pressed="false" onclick="toggleCurrentProductAdjustMode()">
-          <span aria-hidden="true">⚙</span><span>调整产品</span>
+          <span aria-hidden="true">⚙</span><span>Shape it</span>
         </button>
       </div>
     </div>
     <div class="product-chat-body" id="productChatBody">
-    <section class="assistant-home" id="assistantHome" aria-label="AI 产品主页">
+    <section class="assistant-home" id="assistantHome" aria-label="AI home">
       <div class="assistant-home-inner">
         <div class="assistant-home-avatar" id="assistantHomeAvatar" aria-hidden="true">P</div>
-        <p class="assistant-home-eyebrow" id="assistantHomeEyebrow">已选择</p>
-        <h1 id="assistantHomeTitle">PPT 设计师</h1>
-        <p id="assistantHomeDesc">和我说主题、受众和用途。我会先确认方向，再打开大纲、页面和讲稿。</p>
-        <div class="assistant-home-guide" id="assistantHomeGuide">直接输入即可开始。</div>
+        <p class="assistant-home-eyebrow" id="assistantHomeEyebrow">Selected</p>
+        <h1 id="assistantHomeTitle">PPT Designer</h1>
+        <p id="assistantHomeDesc">Tell me the topic, audience, and goal. I will shape the outline, slides, and speaker notes.</p>
+        <div class="assistant-home-guide" id="assistantHomeGuide">Start with one sentence.</div>
         <div class="assistant-home-origin" id="assistantHomeOrigin" hidden></div>
         <div class="assistant-home-nextstep" id="assistantHomeNextStep" hidden></div>
         <div class="assistant-home-manage" id="assistantHomeManage" hidden>
-          <button type="button" onclick="renameCurrentCustomAssistant()">重命名</button>
-          <button type="button" class="danger" onclick="deleteCurrentCustomAssistant()">删除</button>
+          <button type="button" onclick="renameCurrentCustomAssistant()">Rename</button>
+          <button type="button" class="danger" onclick="deleteCurrentCustomAssistant()">Delete</button>
         </div>
-        <div class="assistant-home-actions" aria-label="推荐任务">
-          <button class="suggestion assistant-home-suggestion" data-ai-suggestion="0" data-msg="帮我做一个产品介绍 PPT，先确认主题、受众和大纲。"><span>从主题开始</span></button>
-          <button class="suggestion assistant-home-suggestion" data-ai-suggestion="1" data-msg="我有一份文档，帮我整理成汇报 PPT 的结构。"><span>上传资料整理</span></button>
-          <button class="suggestion assistant-home-suggestion" data-ai-suggestion="2" data-msg="帮我优化已有 PPT 结构，先告诉我应该怎么调整。"><span>优化已有结构</span></button>
+        <div class="assistant-home-actions" aria-label="Suggested tasks">
+          <button class="suggestion assistant-home-suggestion" data-ai-suggestion="0" data-msg="Help me create a product intro deck. First confirm the topic, audience, and outline."><span>Start from topic</span></button>
+          <button class="suggestion assistant-home-suggestion" data-ai-suggestion="1" data-msg="I have source material. Turn it into a presentation structure."><span>Use source material</span></button>
+          <button class="suggestion assistant-home-suggestion" data-ai-suggestion="2" data-msg="Help me improve an existing deck structure. First tell me what should change."><span>Improve structure</span></button>
         </div>
       </div>
     </section>
     <div class="messages-shell">
       <div class="product-adjust-panel-header" id="productAdjustPanelHeader" hidden>
         <div>
-          <strong>调整产品</strong>
-          <span>用聊天改这个产品。</span>
+          <strong>Shape this AI</strong>
+          <span>Use chat to change how this AI works.</span>
         </div>
-        <button type="button" onclick="setCurrentProductAdjustMode(false)" aria-label="关闭产品调整栏">关闭</button>
+        <button type="button" onclick="setCurrentProductAdjustMode(false)" aria-label="Close shaping panel">Close</button>
       </div>
       <button id="jumpToSessionStartBtn" class="session-jump-btn session-jump-btn--start" aria-label="回到任务开头" data-i18n-aria-label="session_jump_start_label" data-i18n-title="session_jump_start_label" onclick="jumpToSessionStart()" style="display:none"><span aria-hidden="true">↑</span><span data-i18n="session_jump_start">开头</span></button>
       <button id="scrollToBottomBtn" class="scroll-to-bottom-btn" style="display:none" onclick="scrollToBottom()" aria-label="回到任务底部" data-i18n-aria-label="session_jump_end_label" data-i18n-title="session_jump_end_label"><span aria-hidden="true">↓</span><span class="session-jump-btn__text" data-i18n="session_jump_end">底部</span></button>
       <div class="assistant-task-context" id="assistantTaskContextStrip" hidden>
         <div>
-          <span id="assistantTaskContextKicker">当前任务</span>
-          <strong id="assistantTaskContextTitle">属于这个 AI 产品</strong>
+          <span id="assistantTaskContextKicker">Current task</span>
+          <strong id="assistantTaskContextTitle">Belongs to this AI</strong>
         </div>
-        <span id="assistantTaskContextDesc">继续聊天即可推进任务；需要结构化输入、预览或产出区时会打开产品界面。</span>
+        <span id="assistantTaskContextDesc">Keep chatting to move the task forward. A workspace opens when structure helps.</span>
       </div>
       <div class="assistant-task-progress" id="assistantTaskProgress" role="status" aria-live="polite" hidden>
         <div class="assistant-task-progress-item">
           <span class="assistant-task-progress-dot" id="assistantTaskProgressDot" aria-hidden="true"></span>
           <div>
-            <strong id="assistantTaskProgressTitle">准备开始</strong>
-            <span id="assistantTaskProgressDesc">发送第一句话后，这个 AI 产品会开始处理任务。</span>
+            <strong id="assistantTaskProgressTitle">Ready to start</strong>
+            <span id="assistantTaskProgressDesc">Send the first sentence to start this task.</span>
           </div>
         </div>
         <div class="assistant-task-progress-item assistant-task-progress-product-ui">
-          <span id="assistantTaskProgressProductKicker">产品界面</span>
-          <strong id="assistantTaskProgressProduct">按需打开</strong>
+          <span id="assistantTaskProgressProductKicker">Workspace</span>
+          <strong id="assistantTaskProgressProduct">Opens when needed</strong>
         </div>
       </div>
     <div class="messages" id="messages">
       <div class="empty-state" id="emptyState">
-        <div class="empty-logo" aria-hidden="true">
-          <svg viewBox="0 0 24 24" width="42" height="42" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M21 15a2 2 0 0 1-2 2H8l-5 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-            <path d="M8 9h8"/>
-            <path d="M8 13h5"/>
-          </svg>
-        </div>
-        <h2 id="aiObjectEmptyTitle">PPT 设计师</h2>
-        <p id="aiObjectEmptyDesc">围绕 PPT 任务工作，聊天始终在场，大纲、页面和讲稿会按需要展开。</p>
+        <div class="empty-logo" aria-hidden="true"><img src="static/knead-logo.svg" alt=""></div>
+        <h2 id="aiObjectEmptyTitle">PPT Designer</h2>
+        <p id="aiObjectEmptyDesc">Make decks through chat. Outline, slides, and speaker notes appear when structure helps.</p>
         <div class="suggestion-grid">
-          <button class="suggestion" data-ai-suggestion="0" data-msg="帮我做一个产品介绍 PPT，先确认主题、受众和大纲。"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="14" rx="2"/><path d="M8 21h8"/><path d="M12 18v3"/></svg> <span>从主题开始</span></button>
-          <button class="suggestion" data-ai-suggestion="1" data-msg="我有一份文档，帮我整理成汇报 PPT 的结构。"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg> <span>上传资料整理</span></button>
-          <button class="suggestion" data-ai-suggestion="2" data-msg="帮我优化已有 PPT 结构，先告诉我应该怎么调整。"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3v18h18"/><path d="M7 15l4-4 3 3 5-7"/></svg> <span>优化已有结构</span></button>
+          <button class="suggestion" data-ai-suggestion="0" data-msg="Help me create a product intro deck. First confirm the topic, audience, and outline."><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="14" rx="2"/><path d="M8 21h8"/><path d="M12 18v3"/></svg> <span>Start from topic</span></button>
+          <button class="suggestion" data-ai-suggestion="1" data-msg="I have source material. Turn it into a presentation structure."><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg> <span>Use source material</span></button>
+          <button class="suggestion" data-ai-suggestion="2" data-msg="Help me improve an existing deck structure. First tell me what should change."><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3v18h18"/><path d="M7 15l4-4 3 3 5-7"/></svg> <span>Improve structure</span></button>
         </div>
       </div>
       <div class="messages-inner" id="msgInner"></div>
@@ -315,23 +301,23 @@
       <div id="liveToolCards" style="display:none;max-width:800px;margin:0 auto;width:100%;padding:0 24px;"></div>
     </div>
     </div>
-    <section class="active-product-surface" id="activeProductSurface" hidden aria-label="当前产品界面" tabindex="-1">
+    <section class="active-product-surface" id="activeProductSurface" hidden aria-label="Current workspace" tabindex="-1">
       <div class="active-product-toolbar">
         <div class="active-product-title">
-          <span class="active-product-kicker" id="activeProductKicker">产品界面</span>
-          <strong id="activeProductPreviewName">当前产品界面</strong>
+          <span class="active-product-kicker" id="activeProductKicker">Workspace</span>
+          <strong id="activeProductPreviewName">Current workspace</strong>
           <span id="activeProductVersion"></span>
-          <span class="active-product-note" id="activeProductNote">需要时生成，也可以继续聊天调整。</span>
+          <span class="active-product-note" id="activeProductNote">Appears when needed. Keep chatting to shape it.</span>
         </div>
         <div class="active-product-actions">
-          <button type="button" id="collapseActiveProductBtn" onclick="deactivateProductPreviewInChat()">收起</button>
+          <button type="button" id="collapseActiveProductBtn" onclick="deactivateProductPreviewInChat()">Hide</button>
           <div class="active-product-more">
-            <button type="button" id="activeProductMoreBtn" onclick="toggleActiveProductPreviewMenu(event)" aria-haspopup="menu" aria-expanded="false">更多</button>
+            <button type="button" id="activeProductMoreBtn" onclick="toggleActiveProductPreviewMenu(event)" aria-haspopup="menu" aria-expanded="false">More</button>
             <div class="active-product-menu" id="activeProductMoreMenu" hidden role="menu">
-              <button type="button" id="regenerateProductUiBtn" onclick="requestCurrentProductUiGeneration()">重新生成产品界面</button>
-              <button type="button" id="rollbackActiveProductBtn" onclick="rollbackCurrentProductUiVersion()" hidden>恢复上一版</button>
-              <button type="button" id="productCapabilitiesBtn" onclick="openCurrentProductCapabilities()" hidden>能力与工具</button>
-              <button type="button" onclick="openActiveProductPreviewWindow()">在新窗口打开</button>
+              <button type="button" id="regenerateProductUiBtn" onclick="requestCurrentProductUiGeneration()">Rebuild workspace</button>
+              <button type="button" id="rollbackActiveProductBtn" onclick="rollbackCurrentProductUiVersion()" hidden>Restore previous</button>
+              <button type="button" id="productCapabilitiesBtn" onclick="openCurrentProductCapabilities()" hidden>Skills and tools</button>
+              <button type="button" onclick="openActiveProductPreviewWindow()">Open in new window</button>
             </div>
           </div>
         </div>
@@ -339,15 +325,15 @@
       <iframe
         class="active-product-frame"
         id="activeProductFrame"
-        title="当前产品界面预览"
+        title="Current workspace preview"
         sandbox="allow-scripts allow-forms"
       ></iframe>
       <div class="product-preview-state" id="productPreviewState" hidden>
         <div class="product-preview-state-card">
-          <span class="product-preview-state-kicker" id="productPreviewStateKicker">产品界面</span>
-          <strong id="productPreviewStateTitle">这个 AI 产品还没有产品界面</strong>
-          <p id="productPreviewStateDesc">继续聊天即可生成，也可以现在创建第一版。</p>
-          <button type="button" id="productPreviewStateAction" onclick="requestCurrentProductUiGeneration()" hidden>生成第一版</button>
+          <span class="product-preview-state-kicker" id="productPreviewStateKicker">Workspace</span>
+          <strong id="productPreviewStateTitle">This AI does not have a workspace yet</strong>
+          <p id="productPreviewStateDesc">Keep chatting, or create the first version now.</p>
+          <button type="button" id="productPreviewStateAction" onclick="requestCurrentProductUiGeneration()" hidden>Create first version</button>
         </div>
       </div>
     </section>
@@ -369,10 +355,10 @@
       </div>
     </div>
     <div class="reconnect-banner" id="reconnectBanner">
-      <span id="reconnectMsg"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-1px"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg> 你离开时可能还有回复在生成。重新加载消息？</span>
+      <span id="reconnectMsg"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-1px"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg> A reply may still be generating. Reload messages?</span>
       <div style="display:flex;gap:8px;flex-shrink:0">
-        <button class="reconnect-btn" onclick="dismissReconnect()">忽略</button>
-        <button class="reconnect-btn" onclick="refreshSession()"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-1px"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg> 重新加载</button>
+        <button class="reconnect-btn" onclick="dismissReconnect()">Ignore</button>
+        <button class="reconnect-btn" onclick="refreshSession()"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-1px"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg> Reload</button>
       </div>
     </div>
     <div class="offline-banner" id="offlineBanner" role="status" aria-live="assertive" hidden>
@@ -443,7 +429,7 @@
             <input class="clarify-input" id="clarifyInput" type="text" data-i18n-placeholder="clarify_input_placeholder" placeholder="Type your response…">
             <button class="clarify-submit" id="clarifySubmit" onclick="respondClarify()" data-i18n="clarify_send">Send</button>
           </div>
-          <div class="clarify-hint" id="clarifyHint" data-i18n="clarify_hint">选择一个选项，或直接输入你的回答。</div>
+          <div class="clarify-hint" id="clarifyHint" data-i18n="clarify_hint">Choose an option, or type your answer.</div>
         </div>
       </div>
       <div class="composer-terminal-panel" id="composerTerminalPanel" hidden>
@@ -459,7 +445,7 @@
               <button type="button" class="composer-terminal-action" id="btnTerminalClear" onclick="clearComposerTerminal()" data-i18n="terminal_clear">清空</button>
               <button type="button" class="composer-terminal-action" id="btnTerminalCopy" onclick="copyComposerTerminalOutput()" data-i18n="terminal_copy_output">复制输出</button>
               <button type="button" class="composer-terminal-action" id="btnTerminalRestart" onclick="restartComposerTerminal()" data-i18n="terminal_restart">重启</button>
-              <button type="button" class="composer-terminal-action" id="btnTerminalCollapse" onclick="collapseComposerTerminal()" data-i18n="terminal_collapse">收起</button>
+              <button type="button" class="composer-terminal-action" id="btnTerminalCollapse" onclick="collapseComposerTerminal()" data-i18n="terminal_collapse">Collapse</button>
               <button type="button" class="composer-terminal-action" id="btnTerminalClose" onclick="closeComposerTerminal()" data-i18n="terminal_close">关闭</button>
             </div>
           </div>
@@ -498,11 +484,11 @@
           <span class="voice-mode-indicator" id="voiceModeIndicator"></span>
           <span class="voice-mode-label" id="voiceModeLabel"></span>
         </div>
-        <textarea id="msg" rows="1" placeholder="描述这次 PPT，或上传资料…"></textarea>
+        <textarea id="msg" rows="1" placeholder="Describe this deck, or upload material..."></textarea>
         <div class="composer-footer">
           <div class="composer-left">
             <input type="file" id="fileInput" class="file-input-visually-hidden" multiple accept="image/*,text/*,application/pdf,application/json,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.md,.py,.js,.ts,.yaml,.yml,.toml,.csv,.sh,.txt,.log,.env,.xls,.xlsx,.doc,.docx,.zip,.tar,.gz,.tgz,.bz2,.xz">
-            <button type="button" class="icon-btn has-tooltip" id="btnAttach" data-tooltip="上传资料" aria-label="上传资料">
+            <button type="button" class="icon-btn has-tooltip" id="btnAttach" data-tooltip="Upload material" aria-label="Upload material">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
             </button>
             <button class="icon-btn mic-btn has-tooltip" id="btnMic" data-tooltip="语音输入" data-i18n-title="voice_dictate" style="display:none">
@@ -766,7 +752,7 @@
                 <input type="checkbox" id="settingsWorkspacePanelOpen" style="width:15px;height:15px;accent-color:var(--accent)">
                 <span data-i18n="settings_label_workspace_panel_open">默认展开任务空间</span>
               </label>
-              <div style="font-size:11px;color:var(--muted);margin-top:4px" data-i18n="settings_desc_workspace_panel_open">启用后，新任务会自动打开任务空间面板，你仍然可以随时收起。</div>
+              <div style="font-size:11px;color:var(--muted);margin-top:4px" data-i18n="settings_desc_workspace_panel_open">When enabled, new tasks open the workspace panel automatically. You can still hide it anytime.</div>
             </div>
             <div class="settings-field">
               <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
@@ -819,7 +805,7 @@
                 <input type="checkbox" id="settingsSoundEnabled" style="width:15px;height:15px;accent-color:var(--accent)">
                 <span data-i18n="settings_label_sound">提示音</span>
               </label>
-              <div style="font-size:11px;color:var(--muted);margin-top:4px" data-i18n="settings_desc_sound">AI 产品回复完成时播放提示音。</div>
+              <div style="font-size:11px;color:var(--muted);margin-top:4px" data-i18n="settings_desc_sound">Play a sound when an AI finishes replying.</div>
             </div>
             <div class="settings-field">
               <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
@@ -840,7 +826,7 @@
                 <input type="checkbox" id="settingsVoiceModeEnabled" style="width:15px;height:15px;accent-color:var(--accent)">
                 <span data-i18n="settings_label_voice_mode">免手动语音按钮</span>
               </label>
-              <div style="font-size:11px;color:var(--muted);margin-top:4px" data-i18n="settings_desc_voice_mode">在听写旁显示语音模式按钮。当前 AI 产品会在停顿后发送，并在浏览器支持时朗读回复。</div>
+              <div style="font-size:11px;color:var(--muted);margin-top:4px" data-i18n="settings_desc_voice_mode">Show the voice mode button next to dictation. The current AI sends after a pause and can read replies aloud when supported.</div>
             </div>
             <div class="settings-field">
               <label for="settingsTtsVoice" data-i18n="settings_label_tts_voice">朗读声音</label>
@@ -962,8 +948,8 @@
             </div>
             <div class="settings-field">
               <label for="settingsBotName" data-i18n="settings_label_bot_name">显示名称</label>
-              <div style="font-size:11px;color:var(--muted);margin-bottom:6px" data-i18n="settings_desc_bot_name">应用中的显示名称。默认为 Next AI。</div>
-              <input type="text" id="settingsBotName" placeholder="Next AI" maxlength="64" style="width:100%;padding:8px;background:var(--code-bg);color:var(--text);border:1px solid var(--border2);border-radius:6px;font-size:13px">
+              <div style="font-size:11px;color:var(--muted);margin-bottom:6px" data-i18n="settings_desc_bot_name">Display name across the app. Default: Knead.</div>
+              <input type="text" id="settingsBotName" placeholder="Knead" maxlength="64" style="width:100%;padding:8px;background:var(--code-bg);color:var(--text);border:1px solid var(--border2);border-radius:6px;font-size:13px">
             </div>
             <button class="sm-btn" onclick="saveSettings()" style="margin-top:12px;width:100%;padding:8px;font-weight:600" data-i18n="settings_save_btn">保存设置</button>
             <div id="settingsPreferencesAutosaveStatus" class="settings-autosave-status" aria-live="polite"></div>
@@ -1011,9 +997,9 @@
             </div>
             <div class="settings-field">
               <label for="settingsPassword" data-i18n="settings_label_password">访问密码</label>
-              <div style="font-size:11px;color:var(--muted);margin-bottom:6px" data-i18n="settings_desc_password">输入新密码即可设置或修改；留空表示保持当前设置。</div>
-              <input type="password" id="settingsPassword" placeholder="输入新密码…" data-i18n-placeholder="password_placeholder" style="width:100%;padding:8px;background:var(--code-bg);color:var(--text);border:1px solid var(--border2);border-radius:6px;font-size:13px">
-              <div id="settingsPasswordEnvLock" data-i18n="password_env_var_locked" style="display:none;margin-top:6px;padding:8px 10px;font-size:11px;color:var(--muted);background:var(--code-bg);border:1px solid var(--border2);border-radius:6px;line-height:1.45">当前已设置 HERMES_WEBUI_PASSWORD 环境变量，并且优先级更高。取消该变量并重启服务后，才能在这里管理密码。</div>
+              <div style="font-size:11px;color:var(--muted);margin-bottom:6px" data-i18n="settings_desc_password">Enter a new password to set or change it. Leave blank to keep the current setting.</div>
+              <input type="password" id="settingsPassword" placeholder="Enter new password..." data-i18n-placeholder="password_placeholder" style="width:100%;padding:8px;background:var(--code-bg);color:var(--text);border:1px solid var(--border2);border-radius:6px;font-size:13px">
+              <div id="settingsPasswordEnvLock" data-i18n="password_env_var_locked" style="display:none;margin-top:6px;padding:8px 10px;font-size:11px;color:var(--muted);background:var(--code-bg);border:1px solid var(--border2);border-radius:6px;line-height:1.45">HERMES_WEBUI_PASSWORD is set and takes priority. Remove it and restart the server to manage the password here.</div>
             </div>
             <button class="sm-btn" id="btnDisableAuth" onclick="disableAuth()" style="margin-top:6px;width:100%;padding:8px;font-weight:600;color:#e8a030;border-color:rgba(232,160,48,.3);display:none" data-i18n="disable_auth">关闭登录保护</button>
             <button class="sm-btn" id="btnSignOut" onclick="signOut()" style="margin-top:6px;width:100%;padding:8px;font-weight:600;color:var(--accent);border-color:rgba(233,69,96,.3);display:none" data-i18n="sign_out">退出登录</button>
@@ -1107,8 +1093,8 @@
     <div class="onboarding-shell">
       <div class="onboarding-sidebar">
         <div class="onboarding-badge" data-i18n="onboarding_badge">首次使用</div>
-        <h2 id="onboardingTitle" data-i18n="onboarding_title">欢迎使用 Next AI</h2>
-        <p id="onboardingLead" data-i18n="onboarding_lead">先完成最小设置，选择模型和任务空间，然后开始创建、使用和改造你的 AI 产品。</p>
+        <h2 id="onboardingTitle" data-i18n="onboarding_title">Welcome to Knead</h2>
+        <p id="onboardingLead" data-i18n="onboarding_lead">Finish the minimum setup, choose a model and workspace, then start creating, using, and shaping your AI products.</p>
         <div class="onboarding-steps" id="onboardingSteps"></div>
       </div>
       <div class="onboarding-main">
@@ -1144,34 +1130,34 @@
   <div class="product-dialog-panel" role="dialog" aria-modal="true" aria-labelledby="assistantCreateTitle" aria-describedby="assistantCreateDesc">
     <div class="product-dialog-header">
       <div>
-        <div class="product-dialog-eyebrow">新建产品</div>
-        <h2 id="assistantCreateTitle">创建这个产品？</h2>
+        <div class="product-dialog-eyebrow">Knead one</div>
+        <h2 id="assistantCreateTitle">Create this AI?</h2>
       </div>
-      <button class="product-dialog-close" id="assistantCreateClose" type="button" aria-label="关闭创建预览">
+      <button class="product-dialog-close" id="assistantCreateClose" type="button" aria-label="Close create preview">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
     </div>
-    <p class="product-dialog-desc" id="assistantCreateDesc">创建后会出现在左侧。进入它后继续聊天，需要输入、预览或产出区时再生成产品界面。</p>
+    <p class="product-dialog-desc" id="assistantCreateDesc">It will appear in the AI shelf. Open it, keep chatting, and a workspace will appear when structure helps.</p>
     <div class="assistant-create-source" id="assistantCreateSourceWrap">
-      <span>需求</span>
-      <strong id="assistantCreateSource">我想创建一个新的产品。</strong>
+      <span>Request</span>
+      <strong id="assistantCreateSource">I want to create a new AI.</strong>
     </div>
     <div class="assistant-create-product">
       <div class="assistant-create-product-avatar" id="assistantCreatePreviewAvatar" aria-hidden="true">AI</div>
       <div class="assistant-create-product-main">
-        <span>产品</span>
-        <strong id="assistantCreateName">新的 AI 产品</strong>
-        <p id="assistantCreateDuty">负责处理一类长期任务</p>
+        <span>AI</span>
+        <strong id="assistantCreateName">New AI</strong>
+        <p id="assistantCreateDuty">Owns a repeatable type of work</p>
       </div>
     </div>
     <div class="assistant-create-tasks">
-      <span>可以先问</span>
+      <span>Try asking</span>
       <div class="product-dialog-chips" id="assistantCreateTasks"></div>
     </div>
-    <div class="product-dialog-note">聊天是主入口。产品界面只在需要输入、预览或产出时出现，也可以继续通过聊天调整。</div>
+    <div class="product-dialog-note">Chat is the entry point. A workspace appears only when the task needs inputs, previews, or outputs.</div>
     <div class="product-dialog-actions">
-      <button class="product-dialog-btn" id="assistantCreateCancel" type="button" title="取消创建，不写入任何 AI 产品" aria-label="取消创建，不写入任何 AI 产品">取消</button>
-      <button class="product-dialog-btn primary" id="assistantCreateApply" type="button" title="创建并进入这个 AI 产品" aria-label="创建并进入这个 AI 产品">创建并进入</button>
+      <button class="product-dialog-btn" id="assistantCreateCancel" type="button" title="Cancel without creating this AI" aria-label="Cancel without creating this AI">Cancel</button>
+      <button class="product-dialog-btn primary" id="assistantCreateApply" type="button" title="Create and open this AI" aria-label="Create and open this AI">Create and open</button>
     </div>
   </div>
 </div>
@@ -1179,34 +1165,34 @@
   <div class="product-dialog-panel product-capabilities-dialog" role="dialog" aria-modal="true" aria-labelledby="productCapabilitiesTitle" aria-describedby="productCapabilitiesDesc">
     <div class="product-dialog-header">
       <div>
-        <div class="product-dialog-eyebrow">能力与工具</div>
-        <h2 id="productCapabilitiesTitle">能力与工具</h2>
+        <div class="product-dialog-eyebrow">Skills and tools</div>
+        <h2 id="productCapabilitiesTitle">Skills and tools</h2>
       </div>
-      <button class="product-dialog-close" id="productCapabilitiesClose" type="button" aria-label="关闭能力与工具配置" onclick="closeCurrentProductCapabilities()">
+      <button class="product-dialog-close" id="productCapabilitiesClose" type="button" aria-label="Close skills and tools settings" onclick="closeCurrentProductCapabilities()">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
     </div>
-    <p class="product-dialog-desc" id="productCapabilitiesDesc">给当前 AI 产品设置长期擅长的能力和优先使用的工具。保存后，之后的任务会按这些设置执行。</p>
+    <p class="product-dialog-desc" id="productCapabilitiesDesc">Set the skills and tools this AI should prefer across future tasks.</p>
     <div class="product-capabilities-section">
       <div class="product-capabilities-section-head">
-        <strong>长期能力</strong>
-        <span>这个产品应该稳定擅长什么</span>
+        <strong>Skills</strong>
+        <span>What this AI should be good at over time</span>
       </div>
       <div class="product-capabilities-grid" id="productCapabilitiesSkills"></div>
-      <input class="product-capabilities-input" id="productCapabilitiesExtraSkills" type="text" placeholder="补充能力，用逗号分隔">
+      <input class="product-capabilities-input" id="productCapabilitiesExtraSkills" type="text" placeholder="Add skills, separated by commas">
     </div>
     <div class="product-capabilities-section">
       <div class="product-capabilities-section-head">
-        <strong>可用工具</strong>
-        <span>处理任务时优先考虑的工具</span>
+        <strong>Tools</strong>
+        <span>Tools to prefer while handling tasks</span>
       </div>
       <div class="product-capabilities-grid" id="productCapabilitiesTools"></div>
-      <input class="product-capabilities-input" id="productCapabilitiesExtraTools" type="text" placeholder="补充工具，用逗号分隔">
+      <input class="product-capabilities-input" id="productCapabilitiesExtraTools" type="text" placeholder="Add tools, separated by commas">
     </div>
-    <div class="product-dialog-note" id="productCapabilitiesStatus">保存后，当前 AI 产品会在后续任务里使用这些设置。</div>
+    <div class="product-dialog-note" id="productCapabilitiesStatus">Saved settings apply to future tasks for this AI.</div>
     <div class="product-dialog-actions">
-      <button class="product-dialog-btn" type="button" onclick="closeCurrentProductCapabilities()">取消</button>
-      <button class="product-dialog-btn primary" id="productCapabilitiesSave" type="button" onclick="saveCurrentProductCapabilities()">保存能力</button>
+      <button class="product-dialog-btn" type="button" onclick="closeCurrentProductCapabilities()">Cancel</button>
+      <button class="product-dialog-btn primary" id="productCapabilitiesSave" type="button" onclick="saveCurrentProductCapabilities()">Save settings</button>
     </div>
   </div>
 </div>

@@ -43,16 +43,16 @@ BUILTIN_PRODUCTS: tuple[dict[str, Any], ...] = (
     {
         "id": "general",
         "kind": "general",
-        "title": "通用 AI",
+        "title": "General AI",
         "avatar": "G",
-        "desc": "普通聊天，适合临时问题、写作、分析和文件处理。",
-        "placeholder": "说说你想完成什么…",
+        "desc": "Open-ended chat for quick questions, writing, analysis, and files.",
+        "placeholder": "Say what you want to do...",
         "suggestions": [
-            ["帮我整理今天的工作计划，拆成可执行步骤。", "整理工作计划"],
-            ["帮我改写这段文案，让它更清晰专业。", "润色一段文案"],
-            ["帮我分析这个问题，先给我几个可能方案。", "分析一个问题"],
+            ["Help me organize today’s work into clear next steps.", "Plan my day"],
+            ["Rewrite this copy so it is clearer and more professional.", "Polish copy"],
+            ["Analyze this problem and give me a few possible paths.", "Analyze a problem"],
         ],
-        "source_prompt": "内置 AI 产品：通用 AI。它默认保持普通 Chat；身份、默认流程、技能和工具属于它自己。",
+        "source_prompt": "Built-in AI product: General AI. It stays as normal chat by default. Its identity, flow, skills, and tools belong to itself.",
         "product_type": "general",
         "ui_mode": "chat_only",
         "product_layout": "chat_only",
@@ -64,20 +64,20 @@ BUILTIN_PRODUCTS: tuple[dict[str, Any], ...] = (
     {
         "id": "ppt-designer",
         "kind": "ppt",
-        "title": "PPT 设计师",
+        "title": "PPT Designer",
         "avatar": "P",
-        "desc": "和我说主题、受众和用途。我会先确认方向，再打开大纲、页面和讲稿。",
-        "placeholder": "描述这次 PPT，或上传资料…",
+        "desc": "Tell me the topic, audience, and goal. I will shape the outline, slides, and speaker notes.",
+        "placeholder": "Describe this deck, or upload material...",
         "suggestions": [
-            ["帮我做一个产品介绍 PPT，先确认主题、受众和大纲。", "从主题开始"],
-            ["我有一份文档，帮我整理成汇报 PPT 的结构。", "上传资料整理"],
-            ["帮我优化已有 PPT 结构，先告诉我应该怎么调整。", "优化已有结构"],
+            ["Help me create a product intro deck. First confirm the topic, audience, and outline.", "Start from topic"],
+            ["I have source material. Turn it into a presentation structure.", "Use source material"],
+            ["Help me improve an existing deck structure. First tell me what should change.", "Improve structure"],
         ],
-        "source_prompt": "内置 AI 产品：PPT 设计师。它应该能通过聊天生成、调整和沉淀自己的 PPT 产品画布。",
+        "source_prompt": "Built-in AI product: PPT Designer. It helps users create and refine presentations through chat, then opens a PPT workspace when structure is useful.",
         "product_type": "ppt",
         "ui_mode": "workspace",
         "product_layout": "chat_left_canvas_right",
-        "canvas_label": "PPT 工作区",
+        "canvas_label": "PPT workspace",
         "ui_status": "empty",
         "skills": ["presentations", "office"],
         "tools": ["skills", "file", "terminal", "code_execution"],
@@ -166,11 +166,11 @@ def _safe_version_id(raw: str) -> str:
 
 def _seed_index_html() -> str:
     return """<!doctype html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>AI 产品工作区</title>
+  <title>AI workspace</title>
   <style>
     body{margin:0;font:14px/1.6 ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#171717;background:#fff}
     main{min-height:100vh;display:grid;place-items:center;padding:32px}
@@ -182,8 +182,8 @@ def _seed_index_html() -> str:
 <body>
   <main>
     <section>
-      <h1>这个 AI 产品还没有生成产品画布</h1>
-      <p>继续和它聊天，让 Agent 在这个工作区里写 index.html、style.css 或 app.js。</p>
+      <h1>This AI does not have a workspace yet</h1>
+      <p>Keep chatting with it. The agent can create index.html, style.css, or app.js in this workspace.</p>
     </section>
   </main>
 </body>
@@ -193,11 +193,11 @@ def _seed_index_html() -> str:
 
 def _chat_only_seed_index_html() -> str:
     return """<!doctype html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>通用 AI</title>
+  <title>General AI</title>
   <style>
     body{margin:0;font:14px/1.6 ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#171717;background:#fff}
     main{min-height:100vh;display:grid;place-items:center;padding:32px}
@@ -209,8 +209,8 @@ def _chat_only_seed_index_html() -> str:
 <body>
   <main>
     <section>
-      <h1>这个产品使用默认 Chat 页面</h1>
-      <p>它不需要右侧产品画布。继续回到主页面聊天即可。</p>
+      <h1>This AI uses the default chat page</h1>
+      <p>It does not need a side workspace. Return to the main page and keep chatting.</p>
     </section>
   </main>
 </body>
@@ -237,7 +237,7 @@ def _write_state(state: dict[str, Any]) -> None:
 
 
 def _normalize_product(item: dict[str, Any]) -> dict[str, Any]:
-    title = str(item.get("title") or item.get("name") or "AI 产品").strip() or "AI 产品"
+    title = str(item.get("title") or item.get("name") or "AI product").strip() or "AI product"
     product_id = _safe_id(str(item.get("id") or item.get("kind") or title))
     workspace_path = str(item.get("workspace_path") or _product_dir(product_id))
     created_at = str(item.get("created_at") or _now())
@@ -269,14 +269,14 @@ def _normalize_product(item: dict[str, Any]) -> dict[str, Any]:
         ui_status = "ready"
     canvas_label = str(item.get("canvas_label") or item.get("canvasLabel") or "").strip()
     if not canvas_label and product_layout != "chat_only":
-        canvas_label = "产品画布"
+        canvas_label = "Workspace"
     return {
         "id": product_id,
         "kind": str(item.get("kind") or f"custom-{product_id}"),
         "title": title,
         "avatar": str(item.get("avatar") or "").strip(),
         "desc": str(item.get("desc") or item.get("description") or "").strip(),
-        "placeholder": str(item.get("placeholder") or f"向「{title}」描述这次要完成的任务…").strip(),
+        "placeholder": str(item.get("placeholder") or f'Tell "{title}" what you want to finish...').strip(),
         "suggestions": item.get("suggestions") if isinstance(item.get("suggestions"), list) else [],
         "source_prompt": str(item.get("source_prompt") or item.get("sourcePrompt") or "").strip(),
         "product_type": product_type,
@@ -390,15 +390,15 @@ def _write_seed_files(product: dict[str, Any]) -> None:
     readme = workspace / "README.md"
     if not readme.exists():
         if str(product.get("ui_mode") or "") == "chat_only":
-            workspace_note = "和这个 AI 产品聊天时，Agent 会在这里维护它自己的身份、提示词、技能和工具。它不需要右侧产品画布。"
+            workspace_note = "When you chat with this AI, the agent maintains its identity, prompt, skills, and tools here. It does not need a side workspace."
         else:
-            workspace_note = "和这个 AI 产品聊天时，Agent 会在这里创建和修改它自己的产品画布文件。"
+            workspace_note = "When you chat with this AI, the agent creates and updates its workspace files here."
         readme.write_text(
             "\n".join(
                 [
                     f"# {product['title']}",
                     "",
-                    product.get("desc") or "这个目录是该 AI 产品自己的代码工作区。",
+                    product.get("desc") or "This directory is this AI's own code workspace.",
                     "",
                     workspace_note,
                 ]
@@ -504,7 +504,7 @@ def create_product(body: dict[str, Any]) -> dict[str, Any]:
         state = _ensure_builtin_products_locked()
         products = state["products"]
         existing_ids = {item["id"] for item in products}
-        title = str(body.get("title") or body.get("name") or "AI 产品").strip() or "AI 产品"
+        title = str(body.get("title") or body.get("name") or "AI product").strip() or "AI product"
         raw_kind = str(body.get("kind") or body.get("id") or title)
         product_id = _ensure_unique_product_id(raw_kind, existing_ids)
         product = _normalize_product({**body, "id": product_id, "kind": body.get("kind") or f"custom-{product_id}"})
@@ -918,10 +918,10 @@ def finalize_product_generation(
     if next_status == "ready" and next_ui_mode != "chat_only" and status.get("entry_generated") and next_product_layout == "chat_center":
         patch["product_layout"] = "chat_left_canvas_right"
         if not patch.get("canvas_label") and not product.get("canvas_label"):
-            patch["canvas_label"] = "产品画布"
+            patch["canvas_label"] = "Workspace"
     if next_status == "failed":
         patch["ui_error_type"] = str(error_type or "generation_failed").strip()
-        patch["ui_error_message"] = str(error_message or "产品画布没有生成完成，可以重试。").strip()
+        patch["ui_error_message"] = str(error_message or "Workspace generation did not finish. Try again.").strip()
     else:
         patch["ui_error_type"] = ""
         patch["ui_error_message"] = ""
@@ -979,10 +979,10 @@ def product_file_status(product_id_or_kind: str) -> dict[str, Any]:
             if should_promote_layout:
                 patch["product_layout"] = "chat_left_canvas_right"
                 if not product.get("canvas_label"):
-                    patch["canvas_label"] = "产品画布"
+                    patch["canvas_label"] = "Workspace"
             if next_ui_status == "failed":
                 patch["ui_error_type"] = product.get("ui_error_type") or "entry_missing"
-                patch["ui_error_message"] = product.get("ui_error_message") or "产品画布文件缺失或仍是占位页，可以重新生成。"
+                patch["ui_error_message"] = product.get("ui_error_message") or "Workspace files are missing or still placeholders. You can rebuild it."
             updated = update_product(product["id"], patch)
             product = updated.get("product") or {**product, "ui_status": next_ui_status}
             ui_status = next_ui_status
@@ -992,7 +992,7 @@ def product_file_status(product_id_or_kind: str) -> dict[str, Any]:
         try:
             patch = {"product_layout": "chat_left_canvas_right"}
             if not product.get("canvas_label"):
-                patch["canvas_label"] = "产品画布"
+                patch["canvas_label"] = "Workspace"
             updated = update_product(product["id"], patch)
             product = updated.get("product") or {**product, **patch}
         except Exception:
