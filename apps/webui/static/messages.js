@@ -1051,6 +1051,8 @@ function attachLiveStream(activeSid, streamId, uploaded=[], options={}){
     // Also handles DSML-prefixed variants from DeepSeek/Bedrock, including
     // spacing variants like "<｜DSML |function_calls" and truncated prefixes.
     if(!s) return s;
+    // 升格 marker 不能在流式中闪现(完整或未闭合的尾巴都抹掉)。
+    if(typeof window!=='undefined'&&typeof window._stripProductSuggestMarker==='function'&&String(s).indexOf('NEXT_AI_SUGGEST_PRODUCT')!==-1)s=window._stripProductSuggestMarker(s);
     const lo=String(s).toLowerCase();
     if(lo.indexOf('function_calls')===-1 && lo.indexOf('dsml')===-1) return s;
     // Support both plain <function_calls> and DSML-prefixed variants.
@@ -1919,10 +1921,11 @@ function attachLiveStream(activeSid, streamId, uploaded=[], options={}){
           // No-reply guard (#373): if agent returned nothing, show inline error
           if(!S.messages.some(m=>m.role==='assistant'&&String(m.content||'').trim())&&!assistantText){removeThinking();S.messages.push({role:'assistant',content:'**No response received.** Check your API key and model selection.'});}
           if(_markerOnlyAssistantError&&typeof showToast==='function') showToast('No response received after context compression. Please retry.',5000,'error');
+          let bridgeReplySent = false;
           if(typeof window.notifyProductCanvasAgentReply==='function'){
             const bridgeAsst=[...S.messages].reverse().find(m=>m&&m.role==='assistant'&&String(typeof msgContent==='function'?msgContent(m):(m.content||'')).trim());
             if(bridgeAsst){
-              window.notifyProductCanvasAgentReply({
+              bridgeReplySent = !!window.notifyProductCanvasAgentReply({
                 sessionId:completedSid,
                 content:String(typeof msgContent==='function'?msgContent(bridgeAsst):(bridgeAsst.content||'')),
                 message:bridgeAsst
@@ -1931,7 +1934,7 @@ function attachLiveStream(activeSid, streamId, uploaded=[], options={}){
           }
           if(isSessionViewed) _markSessionViewed(completedSid, completedSession.message_count ?? S.messages.length);
           syncTopbar();renderMessages({preserveScroll:true});
-          if(shouldFollowOnDone&&typeof scrollToBottom==='function') scrollToBottom();
+          if((shouldFollowOnDone||bridgeReplySent)&&typeof scrollToBottom==='function') scrollToBottom();
           loadDir('.');
           if(typeof refreshCurrentProductPreview==='function'){
             const _productScopeOnDone=String((productUiStatusContext&&productUiStatusContext.productScope)||(S.session&&S.session.product_scope)||'');

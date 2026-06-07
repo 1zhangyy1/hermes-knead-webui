@@ -105,6 +105,39 @@ function _assistantUsesProductCanvas(object) {
   return layout === 'chat_left_canvas_right' || layout === 'canvas_full';
 }
 
+function _assistantHasGeneratedProductCanvas(object) {
+  const productId = String(object && (object.productId || object.product_id) || '').trim();
+  // 通用 AI 是产品孵化场,永不就地长画布:可复用的东西走升格成独立产品(B),
+  // 保持它作为「什么都能问」入口的稳定身份。其它自建 chat_only 产品仍可经调态长画布。
+  if (productId === 'general' || String(object && object.kind || '') === 'general') return false;
+  const activeMatches = !!(
+    productId &&
+    typeof _activeProductPreview !== 'undefined' &&
+    _activeProductPreview &&
+    String(_activeProductPreview.product_id || '') === productId &&
+    _activeProductPreview.product_preview
+  );
+  return !!(
+    object && (
+      object.entryGenerated ||
+      object.entry_generated ||
+      object.productCanvasAvailable ||
+      object.product_canvas_available
+    ) ||
+    activeMatches
+  );
+}
+
+function _assistantCanShowProductCanvas(object) {
+  return _assistantUsesProductCanvas(object) || _assistantHasGeneratedProductCanvas(object);
+}
+
+function _assistantEffectiveProductLayout(object) {
+  const layout = _assistantProductLayout(object);
+  if (layout === 'chat_only' && _assistantHasGeneratedProductCanvas(object)) return 'chat_left_canvas_right';
+  return layout;
+}
+
 function _assistantCanvasLabel(object) {
   const explicit = String(object && (object.canvasLabel || object.canvas_label) || '').trim();
   if (explicit) return explicit;
@@ -126,6 +159,12 @@ function _productToCustomAssistant(product) {
   const title = product.title || 'AI 产品';
   const sourcePrompt = product.source_prompt || product.sourcePrompt || '';
   const productType = product.product_type || product.productType || 'custom';
+  const uiMode = product.ui_mode || product.uiMode || 'workspace';
+  const productLayout = product.product_layout || product.productLayout || product.layout || '';
+  const uiStatus = product.ui_status || 'empty';
+  const entryGenerated = !!(product.entry_generated || product.entryGenerated);
+  const hasReadyPreview = !!(product.preview_url || product.previewUrl) && uiStatus === 'ready' && uiMode !== 'chat_only';
+  const productCanvasAvailable = entryGenerated || !!(product.product_canvas_available || product.productCanvasAvailable) || uiStatus === 'generating' || hasReadyPreview;
   const starterKit = _assistantStarterKit(title, sourcePrompt || product.desc || '');
   return {
     kind: product.kind || `custom-${product.id}`,
@@ -138,15 +177,19 @@ function _productToCustomAssistant(product) {
     titleSource: 'backend-product',
     createdAt: product.created_at ? _assistantDateToMs(product.created_at) : Date.now(),
     productType,
-    uiMode: product.ui_mode || product.uiMode || 'workspace',
-    productLayout: product.product_layout || product.productLayout || product.layout || '',
+    uiMode,
+    productLayout,
     canvasLabel: product.canvas_label || product.canvasLabel || '',
     productId: product.id,
     workspacePath: product.workspace_path || '',
     previewUrl: product.preview_url || '',
-    uiStatus: product.ui_status || 'empty',
+    uiStatus,
     uiErrorType: product.ui_error_type || '',
     uiErrorMessage: product.ui_error_message || '',
+    entryGenerated,
+    entry_generated: entryGenerated,
+    productCanvasAvailable,
+    product_canvas_available: productCanvasAvailable,
     skills: Array.isArray(product.skills) ? product.skills : [],
     tools: _assistantNormalizeToolsets(product.tools),
     backendProduct: true
@@ -203,6 +246,10 @@ function _applyBackendProductToBuiltin(product, assistant = null) {
   object.uiStatus = payload.uiStatus || payload.ui_status || object.uiStatus || 'empty';
   object.uiErrorType = payload.uiErrorType || payload.ui_error_type || '';
   object.uiErrorMessage = payload.uiErrorMessage || payload.ui_error_message || '';
+  object.entryGenerated = !!(payload.entryGenerated || payload.entry_generated);
+  object.entry_generated = object.entryGenerated;
+  object.productCanvasAvailable = !!(payload.productCanvasAvailable || payload.product_canvas_available || object.entryGenerated);
+  object.product_canvas_available = object.productCanvasAvailable;
   object.skills = Array.isArray(payload.skills) ? payload.skills : (Array.isArray(object.skills) ? object.skills : []);
   object.tools = Array.isArray(payload.tools) ? _assistantNormalizeToolsets(payload.tools) : _assistantNormalizeToolsets(object.tools);
   object.backendProduct = true;

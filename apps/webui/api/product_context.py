@@ -303,4 +303,19 @@ def product_ephemeral_prompt(context: dict[str, Any] | None) -> str:
                 "- Do not create a visible product canvas unless the user explicitly asks this chat-only product to become a UI product.",
             ]
         )
+    if scope == "product_usage" and (ui_mode == "chat_only" or product_layout == "chat_only"):
+        lines.extend(
+            [
+                "",
+                "Suggest making it a product (chat-only usage):",
+                "- Help with the user's request normally in chat. Do NOT grow your own canvas — you are a chat-only product.",
+                "- If the request is a REUSABLE tool, app, generator, tracker, or repeatable workflow (e.g. a timer, "
+                "calculator, habit tracker, flashcards, an image/PPT generator, a role-play chat) that the user would "
+                "likely come back to, then AFTER your normal answer, append exactly ONE suggestion marker on its own line:",
+                '  [[NEXT_AI_SUGGEST_PRODUCT]]{"title":"<short product name>","prompt":"<one-sentence creation request>","type":"interactive|ppt|image|research|data"}[[/NEXT_AI_SUGGEST_PRODUCT]]',
+                "- The marker is machine-read by the host to offer a one-click 'make it a dedicated product' button; do not describe the marker in prose.",
+                "- Only emit it when the thing is genuinely reusable. For one-off questions, writing, analysis, or chitchat, do NOT emit it.",
+                "- Emit at most one marker per reply.",
+            ]
+        )
     return "\n".join(str(line) for line in lines if line)

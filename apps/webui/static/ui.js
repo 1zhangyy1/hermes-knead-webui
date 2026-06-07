@@ -2336,6 +2336,41 @@ function _sanitizeThinkingDisplayText(text){
   return stripped.trim();
 }
 
+// 通用 AI(chat_only)在用态可在回答末尾附一个升格 marker:
+//   [[NEXT_AI_SUGGEST_PRODUCT]]{"title":"...","prompt":"...","type":"..."}[[/NEXT_AI_SUGGEST_PRODUCT]]
+// 它由宿主消费成一个「做成专属产品」按钮,绝不能原样渲染给用户。
+function _stripProductSuggestMarker(s){
+  if(!s) return s;
+  s=String(s);
+  if(s.indexOf('NEXT_AI_SUGGEST_PRODUCT')===-1) return s;
+  // 完整闭合的 marker,以及流式中尚未闭合的尾巴,都从可见文本里抹掉。
+  return s.replace(/\n*\[\[NEXT_AI_SUGGEST_PRODUCT\]\][\s\S]*?\[\[\/NEXT_AI_SUGGEST_PRODUCT\]\]/g,'')
+          .replace(/\n*\[\[NEXT_AI_SUGGEST_PRODUCT\]\][\s\S]*$/,'')
+          .trimEnd();
+}
+function _parseProductSuggestMarker(s){
+  if(!s||String(s).indexOf('NEXT_AI_SUGGEST_PRODUCT')===-1) return null;
+  const m=String(s).match(/\[\[NEXT_AI_SUGGEST_PRODUCT\]\]\s*([\s\S]*?)\s*\[\[\/NEXT_AI_SUGGEST_PRODUCT\]\]/);
+  if(!m) return null;
+  try{
+    const data=JSON.parse(m[1]);
+    const prompt=String(data&&data.prompt||'').trim();
+    if(!prompt) return null;
+    const title=String(data&&data.title||'').trim()||prompt.slice(0,20);
+    return {title, prompt, type:String(data&&data.type||'').trim()};
+  }catch(_){return null;}
+}
+function _onProductSuggestClick(btn){
+  if(!btn) return;
+  const prompt=btn.getAttribute('data-product-prompt')||'';
+  if(typeof createProductFromPrompt==='function') createProductFromPrompt(prompt);
+  else if(typeof showToast==='function') showToast('暂时无法创建产品');
+}
+if(typeof window!=='undefined'){
+  window._stripProductSuggestMarker=_stripProductSuggestMarker;
+  window._onProductSuggestClick=_onProductSuggestClick;
+}
+
 function _stripVisibleAssistantEchoFromThinking(thinkingText, visibleText){
   let out=String(thinkingText||'');
   const visible=String(visibleText||'');
@@ -5636,7 +5671,12 @@ function renderMessages(options){
         return _renderAttachmentHtml(fname,fileUrl);
       }).join('')}</div>`;
     }
-    let bodyHtml = isUser ? _renderUserFencedBlocks(displayContent) : renderMd(_stripXmlToolCallsDisplay(String(displayContent)));
+    let bodyHtml = isUser ? _renderUserFencedBlocks(displayContent) : renderMd(_stripProductSuggestMarker(_stripXmlToolCallsDisplay(String(displayContent))));
+    // 升格提议:仅在该轮最后一条助手消息(已落定、非流式)上,把 marker 变成一个按钮。
+    const productSuggest=(!isUser&&isTurnFinalAssistant&&!m._live)?_parseProductSuggestMarker(String(content||'')):null;
+    const productSuggestHtml=productSuggest
+      ? `<div class="product-suggest"><button type="button" class="product-suggest-btn" data-product-prompt="${esc(productSuggest.prompt)}" onclick="_onProductSuggestClick(this)">${li('plus',14)}<span>${esc('做成专属产品「'+productSuggest.title+'」')}</span></button></div>`
+      : '';
     if(!isUser&&m.provider_details){
       const summary=m.provider_details_label||'Provider details';
       bodyHtml += `<details class="provider-error-details"><summary>${esc(String(summary))}</summary><pre><code>${esc(String(m.provider_details))}</code></pre></details>`;
@@ -5696,7 +5736,7 @@ function renderMessages(options){
     const seg=document.createElement('div');
     seg.className='assistant-segment';
     seg.dataset.msgIdx=rawIdx;
-    seg.dataset.rawText=String(content).trim();
+    seg.dataset.rawText=String(_stripProductSuggestMarker(content)).trim();
     if(m._live){
       currentAssistantTurn.id='liveAssistantTurn';
       // Stamp the session id on the live turn so finalizeThinkingCard()
@@ -5715,7 +5755,7 @@ function renderMessages(options){
     if(statusHtml){
       seg.insertAdjacentHTML('beforeend', statusHtml);
     }else if(hasVisibleBody){
-      seg.insertAdjacentHTML('beforeend', `${filesHtml}<div class="msg-body">${bodyHtml}</div>${footHtml}`);
+      seg.insertAdjacentHTML('beforeend', `${filesHtml}<div class="msg-body">${bodyHtml}</div>${productSuggestHtml}${footHtml}`);
     }else if(!(thinkingText&&window._showThinking!==false&&!isSimplifiedToolCalling())){
       seg.classList.add('assistant-segment-anchor');
     }
