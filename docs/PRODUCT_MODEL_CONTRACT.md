@@ -120,7 +120,8 @@
 | 3 | 二次元游戏产品进左侧栏 + 角色走 bridge context（验证第三层） | ✅ 代码完成:3.1 产品入栏(API真验)；3.2 canvas 发 context.character → 宿主 _productCanvasBridgeInstruction 注入"扮演该角色" → messages 送达 agent,契约一致；运行观察需浏览器+LLM |
 | 4 | 黄金路径真人验证：5 句话造产品，≥3 个当场能用 | 🟡 机械链路已端到端验通(2026-06-06,本地 3.11 venv + 真实 gpt-5.5):一句话→创建→init会话→生成→真 index.html→清理。"一句话→可用画布"成立。剩真人验收(多句话、≥3"愿再用")需你浏览器走查。**跑法:`HERMES_WEBUI_PORT=8799 apps/webui/.venv311/bin/python apps/webui/server.py`**(勿用 3.14 的 `.venv`) |
 | 5 | 内债清理（模型证稳后机械 sweep）：删内部词副标题、砍 ui_mode、新建拆出列表、E1 命名统一、bridge origin 校验 | 缓做 |
-| 6 | 工程健康（按需）：产品层补测试、并发竞态、巨型文件、i18n | 6.1 产品 scope/line 单测 ✅(18/18,tests/test_product_scope_lines.py);其余背景 |
+| 6 | 工程健康（按需）：产品层补测试、并发竞态、巨型文件、i18n | 6.1 产品 scope/line 单测 ✅(24/24,tests/test_product_scope_lines.py);其余背景 |
+| 7 | **通用 AI 主动提议升格**：chat_only 用态聊到可复用工具时,回答末尾发 `[[NEXT_AI_SUGGEST_PRODUCT]]{title,prompt,type}[[/...]]` marker | ✅ 后端(product_ephemeral_prompt 注入协议 + 3 单测)+ 前端(ui.js 解析/抹除 marker、渲染「做成专属产品」按钮 → createProductFromPrompt;messages.js 流式不闪现;style.css 按钮样式)均完成。marker 只在该轮最终助手消息落定后变按钮 |
 
 详细分解见任务列表（TaskList）。
 

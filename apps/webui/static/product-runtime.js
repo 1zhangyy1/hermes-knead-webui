@@ -8,7 +8,9 @@ function currentAssistantWorkspacePath(kind = _assistantKey()) {
 
 function currentAssistantPreviewUrl(kind = _assistantKey()) {
   const object = _assistantObject(kind);
-  if (typeof _assistantUsesProductCanvas === 'function') {
+  if (typeof _assistantCanShowProductCanvas === 'function') {
+    if (!_assistantCanShowProductCanvas(object)) return '';
+  } else if (typeof _assistantUsesProductCanvas === 'function') {
     if (!_assistantUsesProductCanvas(object)) return '';
   } else if (object && String(object.uiMode || object.ui_mode || '') === 'chat_only') {
     return '';
@@ -470,6 +472,10 @@ function _hideProductPreviewIfActive(options = {}) {
   }
   if (previewState) previewState.hidden = true;
   if (body) body.classList.remove('has-active-product');
+  if (document.body && document.body.dataset) {
+    document.body.dataset.nextAiChatPanel = 'closed';
+    delete document.body.dataset.nextAiChatPanelManual;
+  }
   _activeProductPreview = null;
   _syncProductPreviewMode(null);
   if (shouldSync) syncAssistantTaskUi();
@@ -648,25 +654,47 @@ async function refreshCurrentProductPreview(options = {}) {
       }
     }
   } catch (_err) {}
-  const usesProductCanvas = typeof _assistantUsesProductCanvas === 'function'
-    ? _assistantUsesProductCanvas(object)
-    : !(object && String(object.uiMode || object.ui_mode || '') === 'chat_only');
-  if (!usesProductCanvas || !nextPreviewUrl) {
+  const uiStatus = String(statusData && (statusData.ui_status || statusData.product && statusData.product.ui_status) || object.uiStatus || '');
+  const entryGenerated = !!(statusData && statusData.entry_generated);
+  const productCanvasAvailable = entryGenerated || uiStatus === 'generating';
+  object.entryGenerated = entryGenerated;
+  object.entry_generated = entryGenerated;
+  object.productCanvasAvailable = productCanvasAvailable;
+  object.product_canvas_available = productCanvasAvailable;
+  const latestObject = statusData && statusData.product ? _assistantObject() : null;
+  if (latestObject && latestObject !== object && String(latestObject.productId || latestObject.product_id || '') === productId) {
+    latestObject.entryGenerated = entryGenerated;
+    latestObject.entry_generated = entryGenerated;
+    latestObject.productCanvasAvailable = productCanvasAvailable;
+    latestObject.product_canvas_available = productCanvasAvailable;
+  }
+  const canShowProductCanvas = typeof _assistantCanShowProductCanvas === 'function'
+    ? _assistantCanShowProductCanvas(object)
+    : typeof _assistantUsesProductCanvas === 'function'
+      ? _assistantUsesProductCanvas(object) || productCanvasAvailable
+      : !(object && String(object.uiMode || object.ui_mode || '') === 'chat_only') || productCanvasAvailable;
+  if (!canShowProductCanvas || !nextPreviewUrl) {
     _hideProductPreviewIfActive();
     return false;
   }
+  const productLayout = typeof _assistantEffectiveProductLayout === 'function'
+    ? _assistantEffectiveProductLayout(object)
+    : typeof _assistantProductLayout === 'function'
+      ? _assistantProductLayout(object)
+      : '';
+  const canvasLabel = typeof _assistantCanvasLabel === 'function' ? _assistantCanvasLabel(object) : '';
   _activeProductPreview = {
     id: `product:${productId}`,
-    name: typeof _assistantCanvasLabel === 'function' ? _assistantCanvasLabel(object) : (object.title || '产品画布'),
+    name: canvasLabel || (object.title || '产品画布'),
     preview_url: nextPreviewUrl,
     product_preview: true,
     product_id: productId,
-    product_layout: typeof _assistantProductLayout === 'function' ? _assistantProductLayout(object) : '',
-    canvas_label: typeof _assistantCanvasLabel === 'function' ? _assistantCanvasLabel(object) : '',
-    ui_status: object.uiStatus || '',
+    product_layout: productLayout,
+    canvas_label: canvasLabel,
+    ui_status: object.uiStatus || uiStatus || '',
     ui_error_type: object.uiErrorType || '',
     ui_error_message: object.uiErrorMessage || '',
-    entry_generated: !!(statusData && statusData.entry_generated),
+    entry_generated: entryGenerated,
     version_count: Array.isArray(statusData && statusData.product && statusData.product.versions) ? statusData.product.versions.length : 0,
     previous_version: Array.isArray(statusData && statusData.product && statusData.product.versions) && statusData.product.versions[0] ? statusData.product.versions[0].id || '' : '',
     can_rollback: !!(Array.isArray(statusData && statusData.product && statusData.product.versions) && statusData.product.versions.length)
@@ -686,7 +714,6 @@ async function refreshCurrentProductPreview(options = {}) {
     });
   };
   if (previewReady) frame.src = _withPreviewTimestamp(nextPreviewUrl);
-  const uiStatus = String(statusData && (statusData.ui_status || statusData.product && statusData.product.ui_status) || object.uiStatus || '');
   if (uiStatus === 'generating') _scheduleProductPreviewPolling(productId);
   else _stopProductPreviewPolling(productId);
   syncAssistantTaskUi();

@@ -459,9 +459,32 @@ def _unregister_workspace(product: dict[str, Any]) -> None:
         save_workspaces(next_workspaces)
 
 
+def _product_entry_generated(product: dict[str, Any]) -> bool:
+    try:
+        root = Path(product["workspace_path"]).resolve()
+        entry_rel = str(product.get("preview_entry") or "index.html").strip("/") or "index.html"
+        entry = (root / entry_rel).resolve()
+        entry.relative_to(root)
+    except Exception:
+        return False
+    if not entry.exists() or not entry.is_file():
+        return False
+    return not _entry_is_seed(entry)
+
+
 def list_products() -> dict[str, Any]:
     with _LOCK:
-        return _ensure_builtin_products_locked()
+        state = _ensure_builtin_products_locked()
+        products = []
+        for product in state["products"]:
+            item = dict(product)
+            entry_generated = _product_entry_generated(item)
+            item["entry_generated"] = entry_generated
+            item["product_canvas_available"] = entry_generated or str(item.get("ui_status") or "") == "generating"
+            if entry_generated and str(item.get("ui_status") or "") in {"empty", "generating"}:
+                item["ui_status"] = "ready"
+            products.append(item)
+        return {"products": products}
 
 
 def get_product(product_id_or_kind: str) -> dict[str, Any] | None:

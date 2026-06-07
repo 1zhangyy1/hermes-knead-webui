@@ -338,7 +338,9 @@ function _assistantIsChatOnlyProduct(object) {
 function _assistantListMeta(kind, object) {
   if (!kind || kind === 'create') return '';
   if (object && (object.productId || object.backendProduct)) {
-    const usesProductCanvas = typeof _assistantUsesProductCanvas === 'function'
+    const usesProductCanvas = typeof _assistantCanShowProductCanvas === 'function'
+      ? _assistantCanShowProductCanvas(object)
+      : typeof _assistantUsesProductCanvas === 'function'
       ? _assistantUsesProductCanvas(object)
       : !_assistantIsChatOnlyProduct(object);
     if (!usesProductCanvas) return _assistantBaseMeta(kind, object);
@@ -1062,7 +1064,9 @@ function _syncAssistantHome(object = AI_OBJECTS[_assistantKey()] || AI_OBJECTS.p
   const newTaskBtn = $('newTaskPrimaryBtn');
   const newTaskIcon = $('newTaskPrimaryIcon');
   const isChatOnlyProduct = _assistantIsChatOnlyProduct(object);
-  const usesProductCanvas = typeof _assistantUsesProductCanvas === 'function'
+  const usesProductCanvas = typeof _assistantCanShowProductCanvas === 'function'
+    ? _assistantCanShowProductCanvas(object)
+    : typeof _assistantUsesProductCanvas === 'function'
     ? _assistantUsesProductCanvas(object)
     : !isChatOnlyProduct;
   if (home) home.classList.toggle('is-create', isCreate);
@@ -1144,6 +1148,8 @@ function selectAiObject(kind = 'ppt') {
   window._currentAiProductTitle = object.title;
   if (previousKind && previousKind !== kind && document.body && document.body.dataset) {
     document.body.dataset.nextAiProductAdjust = 'closed';
+    document.body.dataset.nextAiChatPanel = 'closed';
+    delete document.body.dataset.nextAiChatPanelManual;
   }
   document.body.dataset.nextAiProductLayout = typeof _assistantProductLayout === 'function'
     ? _assistantProductLayout(object)
@@ -1499,7 +1505,11 @@ function _syncAssistantTaskProgress(hasTask = _assistantTaskHasActiveTask()) {
   const isInit = productScope === 'product_init';
   const assistantTitle = window._currentAiAssistantTitle || window._currentAiProductTitle || '当前 AI 产品';
   const object = _assistantObject();
-  const usesProductCanvas = typeof _assistantUsesProductCanvas === 'function' ? _assistantUsesProductCanvas(object) : !_assistantIsChatOnlyProduct(object);
+  const usesProductCanvas = typeof _assistantCanShowProductCanvas === 'function'
+    ? _assistantCanShowProductCanvas(object)
+    : typeof _assistantUsesProductCanvas === 'function'
+    ? _assistantUsesProductCanvas(object)
+    : !_assistantIsChatOnlyProduct(object);
   progress.classList.toggle('is-running', isRunning);
   progress.classList.remove('is-idle');
   if (dot) dot.setAttribute('aria-label', '任务运行中');
@@ -1613,10 +1623,15 @@ function _focusActiveProductPreviewSurface() {
 
 async function openOrFocusTaskProductPreviewFromHeader() {
   if (_activeProductPreview && _focusActiveProductPreviewSurface()) return;
+  if (typeof refreshCurrentProductPreview === 'function') {
+    const opened = await refreshCurrentProductPreview({ focus: true, reason: 'header-open-product-preview' });
+    if (opened) return;
+  }
   if (typeof showToast === 'function') showToast('当前任务还没有产品画布');
 }
 
 function _currentProductLayoutForTaskHeader(object = _assistantObject()) {
+  if (typeof _assistantEffectiveProductLayout === 'function') return _assistantEffectiveProductLayout(object);
   if (typeof _assistantProductLayout === 'function') return _assistantProductLayout(object);
   return _assistantIsChatOnlyProduct(object) ? 'chat_only' : 'chat_center';
 }
@@ -1628,6 +1643,7 @@ function _isCanvasFullProductUseMode(object = _assistantObject()) {
 function setCurrentProductAdjustMode(open, options = {}) {
   const next = !!open;
   document.body.dataset.nextAiProductAdjust = next ? 'open' : 'closed';
+  if (next) document.body.dataset.nextAiChatPanel = 'closed';
   const adjustHeader = $('productAdjustPanelHeader');
   if (adjustHeader) adjustHeader.hidden = !next;
   // 走完整同步,让侧画布(PPT)的 composer 文案、开关按钮标签随用/调切换刷新。
@@ -1647,8 +1663,37 @@ function toggleCurrentProductAdjustMode() {
   setCurrentProductAdjustMode(document.body.dataset.nextAiProductAdjust !== 'open');
 }
 
+function setCurrentProductChatPanelMode(open, options = {}) {
+  const next = !!open;
+  document.body.dataset.nextAiChatPanel = next ? 'open' : 'closed';
+  if (!(options && options.auto)) {
+    document.body.dataset.nextAiChatPanelManual = next ? 'open' : 'closed';
+  }
+  if (next) {
+    document.body.dataset.nextAiProductAdjust = 'closed';
+    const adjustHeader = $('productAdjustPanelHeader');
+    if (adjustHeader) adjustHeader.hidden = true;
+  }
+  if (typeof syncAssistantTaskUi === 'function') syncAssistantTaskUi();
+  else _syncTaskHeaderStatus();
+  if (next && options.focus !== false) {
+    const input = $('msg');
+    if (input) {
+      setTimeout(() => {
+        try { input.focus(); } catch (_err) {}
+      }, 0);
+    }
+  }
+}
+
+function toggleCurrentProductChatPanelMode() {
+  setCurrentProductChatPanelMode(document.body.dataset.nextAiChatPanel !== 'open');
+}
+
 window.setCurrentProductAdjustMode = setCurrentProductAdjustMode;
 window.toggleCurrentProductAdjustMode = toggleCurrentProductAdjustMode;
+window.setCurrentProductChatPanelMode = setCurrentProductChatPanelMode;
+window.toggleCurrentProductChatPanelMode = toggleCurrentProductChatPanelMode;
 
 function _syncTaskHeaderProductPreviewChipAction({ isCreate, hasTask, canOpenProductPreview, label }) {
   const productPreviewStatus = $('taskHeaderProductStatus');
@@ -1683,12 +1728,21 @@ function _syncTaskHeaderStatus(hasTask = _assistantTaskHasActiveTask()) {
   const isCreate = _assistantKey() === 'create';
   const object = _assistantObject();
   const canAdjustProduct = !isCreate && !!(object && object.productId);
-  const usesProductCanvas = isCreate || (typeof _assistantUsesProductCanvas === 'function' ? _assistantUsesProductCanvas(object) : !_assistantIsChatOnlyProduct(object));
+  const usesProductCanvas = isCreate || (
+    typeof _assistantCanShowProductCanvas === 'function'
+      ? _assistantCanShowProductCanvas(object)
+      : typeof _assistantUsesProductCanvas === 'function'
+      ? _assistantUsesProductCanvas(object)
+      : !_assistantIsChatOnlyProduct(object)
+  );
   const activeProductPreviewName = _activeProductPreview
     ? (_activeProductPreview.name || _activeProductPreview.id || '产品画布')
     : '';
   const isProductPreview = !!(_activeProductPreview && _activeProductPreview.product_preview);
   const adjustOpen = document.body.dataset.nextAiProductAdjust === 'open';
+  const chatPanelOpen = document.body.dataset.nextAiChatPanel === 'open';
+  const canvasOpen = usesProductCanvas && !!_activeProductPreview;
+  const canToggleChatPanel = !isCreate && hasTask && canvasOpen && _currentProductLayoutForTaskHeader(object) === 'chat_left_canvas_right';
   // 用/调是产品级入口:不依赖是否已经长出画布。
   const adjustToggle = $('taskHeaderAdjustToggle');
   if (adjustToggle) {
@@ -1699,7 +1753,7 @@ function _syncTaskHeaderStatus(hasTask = _assistantTaskHasActiveTask()) {
       adjustToggle.setAttribute('aria-pressed', adjustOpen ? 'true' : 'false');
       adjustToggle.setAttribute('aria-label', adjustOpen ? `关闭「${assistantTitle}」的产品调整` : `调整「${assistantTitle}」`);
       const adjustLabel = adjustToggle.querySelector('span:last-child');
-      if (adjustLabel) adjustLabel.textContent = adjustOpen ? '调整中' : '调整产品';
+      if (adjustLabel) adjustLabel.textContent = adjustOpen ? '关闭调整' : '调整产品';
       adjustToggle.title = adjustOpen ? '退出调整，回到用产品做任务' : '告诉 AI 这个产品哪里要改';
     }
   }
@@ -1710,6 +1764,8 @@ function _syncTaskHeaderStatus(hasTask = _assistantTaskHasActiveTask()) {
       ? '新建产品'
       : adjustOpen
         ? '调整中'
+        : chatPanelOpen
+          ? '聊天中'
         : '使用中';
   }
   if (productPreviewStatus) {
@@ -1729,20 +1785,43 @@ function _syncTaskHeaderStatus(hasTask = _assistantTaskHasActiveTask()) {
   if (productPreviewStatus) {
     productPreviewStatus.classList.toggle('is-active-product', !isCreate && !!_activeProductPreview);
     const label = productPreviewText ? productPreviewText.textContent : '';
-    const canOpenProductPreview = usesProductCanvas && !!_activeProductPreview;
+    const canOpenProductPreview = usesProductCanvas && !!(
+      _activeProductPreview ||
+      typeof _assistantHasGeneratedProductCanvas === 'function' && _assistantHasGeneratedProductCanvas(object)
+    );
     productPreviewStatus.title = usesProductCanvas && !isCreate && hasTask && canOpenProductPreview
-      ? `跳到产品画布：${label}`
+      ? (_activeProductPreview ? `跳到产品画布：${label}` : `打开产品画布：${label}`)
       : label;
     _syncTaskHeaderProductPreviewChipAction({ isCreate, hasTask, canOpenProductPreview, label });
   }
   if (chatStatus) {
+    chatStatus.classList.toggle('is-actionable', canToggleChatPanel);
     chatStatus.title = isCreate
       ? '描述要创建的 AI 产品'
-      : adjustOpen
-        ? `正在调整「${assistantTitle}」`
-        : hasTask
-        ? `当前任务由「${assistantTitle}」处理`
-        : `从这里开始使用「${assistantTitle}」`;
+      : canToggleChatPanel
+        ? (chatPanelOpen ? '收起聊天栏' : '打开聊天栏')
+        : adjustOpen
+          ? `正在调整「${assistantTitle}」`
+          : hasTask
+          ? `当前任务由「${assistantTitle}」处理`
+          : `从这里开始使用「${assistantTitle}」`;
+    if (canToggleChatPanel) {
+      chatStatus.setAttribute('role', 'button');
+      chatStatus.setAttribute('tabindex', '0');
+      chatStatus.setAttribute('aria-label', chatPanelOpen ? '收起聊天栏' : '打开聊天栏');
+      chatStatus.onclick = () => toggleCurrentProductChatPanelMode();
+      chatStatus.onkeydown = event => {
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        event.preventDefault();
+        toggleCurrentProductChatPanelMode();
+      };
+    } else {
+      chatStatus.removeAttribute('role');
+      chatStatus.removeAttribute('tabindex');
+      chatStatus.removeAttribute('aria-label');
+      chatStatus.onclick = null;
+      chatStatus.onkeydown = null;
+    }
   }
 }
 
@@ -1801,7 +1880,9 @@ function syncAssistantTaskUi() {
   const currentObject = _assistantObject();
   const productLayout = _currentProductLayoutForTaskHeader(currentObject);
   const canAdjustProduct = _assistantKey() !== 'create' && !!(currentObject && currentObject.productId);
-  const usesProductCanvas = typeof _assistantUsesProductCanvas === 'function'
+  const usesProductCanvas = typeof _assistantCanShowProductCanvas === 'function'
+    ? _assistantCanShowProductCanvas(currentObject)
+    : typeof _assistantUsesProductCanvas === 'function'
     ? _assistantUsesProductCanvas(currentObject)
     : productLayout !== 'chat_only';
   const root = $('productCrumbRoot');
@@ -1834,10 +1915,23 @@ function syncAssistantTaskUi() {
   document.body.dataset.nextAiProductLayout = productLayout;
   document.body.dataset.nextAiCanvas = usesProductCanvas && _activeProductPreview ? 'open' : 'closed';
   const canvasFullUseMode = hasTask && productLayout === 'canvas_full' && usesProductCanvas && !!_activeProductPreview;
+  const canvasOpen = usesProductCanvas && !!_activeProductPreview;
+  const sideCanvasUseMode = hasTask && productLayout === 'chat_left_canvas_right' && canvasOpen;
   const adjustableUseMode = canAdjustProduct;
   if (!adjustableUseMode) document.body.dataset.nextAiProductAdjust = 'closed';
   else if (!document.body.dataset.nextAiProductAdjust) document.body.dataset.nextAiProductAdjust = 'closed';
   const adjustOpen = adjustableUseMode && document.body.dataset.nextAiProductAdjust === 'open';
+  if (!hasTask || !canvasOpen || canvasFullUseMode) {
+    document.body.dataset.nextAiChatPanel = 'closed';
+    delete document.body.dataset.nextAiChatPanelManual;
+  } else if (adjustOpen) {
+    document.body.dataset.nextAiChatPanel = 'closed';
+  } else if (sideCanvasUseMode) {
+    const manualChatPanel = document.body.dataset.nextAiChatPanelManual;
+    document.body.dataset.nextAiChatPanel = manualChatPanel === 'closed' ? 'closed' : 'open';
+  } else if (!document.body.dataset.nextAiChatPanel) {
+    document.body.dataset.nextAiChatPanel = 'closed';
+  }
   if (adjustHeader) adjustHeader.hidden = !adjustOpen;
   if (body) body.dataset.nextAiView = hasTask ? 'task' : 'assistant';
   if (title) title.textContent = assistantTitle;
@@ -1886,6 +1980,10 @@ function deactivateProductPreviewInChat() {
   if (surface) surface.hidden = true;
   if (frame) frame.removeAttribute('src');
   if (body) body.classList.remove('has-active-product');
+  if (document.body && document.body.dataset) {
+    document.body.dataset.nextAiChatPanel = 'closed';
+    delete document.body.dataset.nextAiChatPanelManual;
+  }
   _activeProductPreview = null;
   _syncProductPreviewMode(null);
   _syncAssistantTaskContextStrip();

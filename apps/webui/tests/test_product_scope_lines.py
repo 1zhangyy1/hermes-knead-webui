@@ -189,3 +189,32 @@ def test_chat_only_usage_has_no_builder_guard():
          "product_layout": "chat_only"}
     )
     assert "Chat-only product adjustment" not in prompt
+
+
+# --- productize suggestion (chat_only usage) ----------------------------------
+
+def test_chat_only_usage_gets_productize_suggestion_protocol():
+    prompt = product_ephemeral_prompt(
+        {"title": "通用 AI", "scope": "product_usage", "ui_mode": "chat_only",
+         "product_layout": "chat_only"}
+    )
+    assert "NEXT_AI_SUGGEST_PRODUCT" in prompt
+    assert "Only emit it when the thing is genuinely reusable" in prompt
+
+
+def test_canvas_usage_has_no_productize_suggestion():
+    # A specialized canvas product (PPT) should not nudge to create another product.
+    prompt = product_ephemeral_prompt(
+        {"title": "PPT 设计师", "scope": "product_usage", "ui_mode": "workspace",
+         "product_layout": "chat_left_canvas_right"}
+    )
+    assert "NEXT_AI_SUGGEST_PRODUCT" not in prompt
+
+
+def test_chat_only_builder_has_no_productize_suggestion():
+    # Adjusting the chat-only product is not a usage turn; no productize nudge.
+    prompt = product_ephemeral_prompt(
+        {"title": "通用 AI", "scope": "product_builder", "ui_mode": "chat_only",
+         "product_layout": "chat_only"}
+    )
+    assert "NEXT_AI_SUGGEST_PRODUCT" not in prompt
