@@ -39,3 +39,6 @@ apps/**/dist/
 products/custom-*/
 products/**/versions/
 experiments/generated/
+
+# Vendored third-party skill drops inside products (large, not source of truth)
+products/**/maxgpt_ppt_skill-main/
