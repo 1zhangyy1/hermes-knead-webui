@@ -355,6 +355,10 @@ window.addEventListener('message', event => {
   const data = event && event.data;
   if (!data || typeof data !== 'object') return;
   if (data.source !== 'nextai-product-canvas') return;
+  // 安全边界:画布 iframe 是 sandbox(无 allow-same-origin),其 origin 是不透明的
+  // "null",所以不能按 origin 字符串校验。改为校验消息确实来自我们当前的画布窗口,
+  // 挡掉其它窗口/iframe 伪造的 nextai-product-canvas 消息。
+  if (event.source !== _activeProductFrameWindow()) return;
   if (data.type === 'nextai:product:state') {
     _handleProductCanvasStateMessage(data, event);
     return;
