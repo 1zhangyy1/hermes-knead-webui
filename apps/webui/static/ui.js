@@ -3554,7 +3554,7 @@ function showConfirmDialog(opts={}){
   if(title) title.textContent=opts.title||t('dialog_confirm_title');
   if(desc) desc.textContent=opts.message||'';
   if(input){input.style.display='none';input.value='';}
-  if(cancelBtn) cancelBtn.textContent=opts.cancelLabel||(_isNextAiProductView()?'取消':t('cancel'));
+  if(cancelBtn) cancelBtn.textContent=opts.cancelLabel||(_isNextAiProductView()?'Cancel':t('cancel'));
   if(confirmBtn){
     confirmBtn.textContent=opts.confirmLabel||t('dialog_confirm_btn');
     confirmBtn.classList.toggle('danger',!!opts.danger);
@@ -3584,7 +3584,7 @@ function showPromptDialog(opts={}){
     input.value=prefill;input.placeholder=opts.placeholder||'';
     input.autocomplete='off';input.spellcheck=false;
   }
-  if(cancelBtn) cancelBtn.textContent=opts.cancelLabel||(_isNextAiProductView()?'取消':t('cancel'));
+  if(cancelBtn) cancelBtn.textContent=opts.cancelLabel||(_isNextAiProductView()?'Cancel':t('cancel'));
   if(confirmBtn){confirmBtn.textContent=opts.confirmLabel||t('create');confirmBtn.classList.remove('danger');}
   if(dialog) dialog.setAttribute('role','dialog');
   if(overlay){overlay.style.display='flex';overlay.setAttribute('aria-hidden','false');}
@@ -4535,9 +4535,9 @@ function syncTopbar(){
     ? assistantChromeTitleState()
     : null;
   if(!S.session){
-    document.title=(assistantChrome&&assistantChrome.documentTitle)||window._botName||'Next AI';
+    document.title=(assistantChrome&&assistantChrome.documentTitle)||window._botName||'Knead';
     const _topbarTitle=$('topbarTitle');
-    if(_topbarTitle&&assistantChrome)_topbarTitle.textContent=assistantChrome.main||'AI 产品';
+    if(_topbarTitle&&assistantChrome)_topbarTitle.textContent=assistantChrome.main||'AI product';
     const _topbarMeta=$('topbarMeta');
     if(_topbarMeta&&assistantChrome)_topbarMeta.textContent=assistantChrome.sub||'';
     if(typeof syncWorkspaceDisplays==='function') syncWorkspaceDisplays();
@@ -4559,7 +4559,7 @@ function syncTopbar(){
   }
   const sessionTitle=(assistantChrome&&assistantChrome.main)||(S.session.title||t('untitled'));
   const _topbarTitle=$('topbarTitle');if(_topbarTitle)_topbarTitle.textContent=sessionTitle;
-  document.title=(assistantChrome&&assistantChrome.documentTitle)||(sessionTitle+' \u2014 '+(window._botName||'Next AI'));
+  document.title=(assistantChrome&&assistantChrome.documentTitle)||(sessionTitle+' \u2014 '+(window._botName||'Knead'));
   const vis=S.messages.filter(m=>m&&m.role&&m.role!=='tool');
   const _topbarMeta=$('topbarMeta');
   if(_topbarMeta){
