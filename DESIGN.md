@@ -23,10 +23,10 @@ Warmth without earthiness: warm-tinted neutrals + the aura, never a brown/cream 
 | var | old (blue/cool) | aura |
 |---|---|---|
 | `--bg` | `#fbfbfc` | `#FCFCFB` clean near-white |
-| `--sidebar` / `--topbar-bg` | `#f4f5f7` | `#FAF5F0` soft warm tint |
+| `--sidebar` / `--topbar-bg` | `#f4f5f7` | `#F7F6F4` low-chroma porcelain (warmth lives in the aura, NOT the chrome — beige reads "土") |
 | `--surface` / `--main-bg` | `#fff` | `#FFFFFF` (chat stays clean white) |
-| `--surface-2` | `#f6f7f9` | `#F8F6F2` |
-| `--border` / `--border2` | cool grays | `#ECEAE5` / `#E3DFD8` warm hairlines |
+| `--surface-2` | `#f6f7f9` | `#F6F5F3` |
+| `--border` / `--border2` | cool grays | `#EBEAE7` / `#E2E0DC` near-neutral hairlines |
 | `--text` / `--muted` / `--muted2` | `#181b20` … | `#1A1A1A` / `#6E6E6E` / `#8A8A8A` |
 | `--accent` | `#2563eb` blue | `#1F1D1B` warm ink (controls, selection) |
 | `--accent-hover` | `#1d4ed8` | `#000000` |
@@ -63,4 +63,4 @@ no card radius ≥24px, no repeated eyebrows, no cream-body fill. Warmth via aur
 ## Process
 WIP=1, in the real app, verify each surface before the next: ① token base → ② first screen aura →
 ③ composer → ④ sidebar → ⑤ dark mode → ⑥ polish pass (contrast, states, spacing).
-Brand assets: `docs/brand/` (`app-aura.html` is the reference; `nie-*.svg` logo).
+Brand assets: `docs/brand/` (`app-aura.html` is the reference). **Logo (designer-owned):** the live mark is a warm clay-face squircle in `apps/webui/static/knead-logo.svg` (in-app) + `favicon.svg` (tab/PWA); raster fallbacks are `favicon-*.png` / `.ico`. `docs/brand/knead-*.svg` are earlier ink two-dot concepts; old terracotta `nie-*.svg` are superseded.
