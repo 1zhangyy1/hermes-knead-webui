@@ -42,3 +42,6 @@ experiments/generated/
 
 # Vendored third-party skill drops inside products (large, not source of truth)
 products/**/maxgpt_ppt_skill-main/
+
+# Generated demo/test artifacts from running products (not source)
+products/**/hermes_intro.*
