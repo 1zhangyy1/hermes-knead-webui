@@ -43,15 +43,22 @@
         <div class="empty-state" id="emptyState">
           <div class="empty-icon">🎞</div>
           <p class="empty-title">还没有内容</p>
-          <p class="empty-sub">在左侧对话框里告诉我主题、受众和用途<br>我来帮你生成完整的大纲和页面</p>
+          <p class="empty-sub">继续在聊天里说主题、受众和用途<br>我会把大纲、页面和讲稿整理到这里</p>
         </div>
         <div class="slide-canvas" id="slideCanvas" style="display:none">
+          <!-- 图片模式 -->
+          <div class="slide-frame slide-frame-img" id="slideFrameImg" style="display:none">
+            <img id="slideImg" alt="">
+            <div class="slide-img-badge" id="slideImgBadge"></div>
+          </div>
+          <!-- HTML 预览模式 -->
           <div class="slide-frame" id="slideFrame"></div>
         </div>
         <div class="canvas-nav" id="canvasNav" style="display:none">
           <button class="nav-btn" id="prevBtn">‹</button>
           <span class="nav-label" id="navLabel">1 / 1</span>
           <button class="nav-btn" id="nextBtn">›</button>
+          <button class="nav-mode-btn" id="viewModeBtn" title="切换预览模式">🖼</button>
         </div>
       </main>
 
@@ -60,7 +67,7 @@
 
         <!-- 任务信息 -->
         <section class="info-section" id="taskSection">
-          <div class="info-section-title">任务</div>
+          <div class="info-section-title">本次 PPT</div>
           <div class="info-field">
             <label>主题</label>
             <input type="text" id="topicInput" placeholder="例：Q2 AI 工具落地汇报">
@@ -92,6 +99,59 @@
           </div>
         </section>
 
+        <!-- 生成服务状态 -->
+        <div class="fal-status-bar" id="falStatusBar">
+          <span class="fal-status-dot" id="falStatusDot"></span>
+          <span class="fal-status-text" id="falStatusText">FAL_KEY 未配置</span>
+          <button class="text-btn" id="falConfigBtn">配置</button>
+        </div>
+
+        <section class="info-section skill-section" id="skillSection">
+          <div class="info-section-title">
+            <span>生成流程</span>
+            <span class="status-pill" id="workflowStagePill">Brief</span>
+          </div>
+          <div class="workflow-steps" id="workflowSteps">
+            <div class="workflow-step active" data-stage="brief"><span>1</span>补齐信息</div>
+            <div class="workflow-step" data-stage="spec"><span>2</span>确认方案</div>
+            <div class="workflow-step" data-stage="prompts"><span>3</span>细化画面</div>
+            <div class="workflow-step" data-stage="generate"><span>4</span>生成图片</div>
+            <div class="workflow-step" data-stage="pack"><span>5</span>导出文件</div>
+          </div>
+          <div class="info-field">
+            <label>Deck 名称</label>
+            <input type="text" id="deckNameInput" placeholder="q2-ai-tools">
+          </div>
+          <div class="info-row">
+            <div class="info-field">
+              <label>尺寸</label>
+              <select id="deckSizeInput">
+                <option value="1280x720">1280×720 预览</option>
+                <option value="2048x1152" selected>2048×1152 高清</option>
+                <option value="3840x2160">3840×2160 4K</option>
+              </select>
+            </div>
+            <div class="info-field">
+              <label>质量</label>
+              <select id="qualityInput">
+                <option value="medium">medium</option>
+                <option value="high" selected>high</option>
+                <option value="low">low</option>
+              </select>
+            </div>
+          </div>
+          <div class="deck-spec-box">
+            <label for="deckSpecInput">方案备忘</label>
+            <textarea id="deckSpecInput" rows="7" placeholder="AI 生成的页面方案会同步到这里。你也可以直接改，再继续生成。"></textarea>
+          </div>
+          <div class="action-grid">
+            <button class="btn-primary" id="requestSpecBtn">生成页面方案</button>
+            <button class="btn-secondary" id="confirmSpecBtn">确认并生成</button>
+            <button class="btn-secondary" id="packDeckBtn">打包导出</button>
+          </div>
+          <p class="workflow-hint" id="workflowHint">先让 AI 生成页面方案，确认后再生成图片和导出。</p>
+        </section>
+
         <!-- 讲稿区（选中页后显示） -->
         <section class="info-section notes-section" id="notesSection" style="display:none">
           <div class="info-section-title">
@@ -112,6 +172,7 @@
   </div>
 
   <div class="toast" id="toast"></div>
+  <script src="/static/product-bridge-sdk.js"></script>
   <script src="./app.js"></script>
 </body>
 </html>

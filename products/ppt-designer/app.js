@@ -2,6 +2,9 @@
 let slides = [];
 let selectedIndex = 0;
 let currentTab = 'edit';
+let workflowStage = 'brief';
+let viewMode = 'html'; // 'html' | 'img'
+let falKeyOk = false;
 
 // ─── 示例数据（从 Chat 生成后替换） ────────────────
 const EXAMPLE_SLIDES = [
@@ -75,16 +78,31 @@ const els = {
   emptyState: $('emptyState'),
   slideCanvas: $('slideCanvas'),
   slideFrame: $('slideFrame'),
+  slideFrameImg: $('slideFrameImg'),
+  slideImg: $('slideImg'),
+  slideImgBadge: $('slideImgBadge'),
   canvasNav: $('canvasNav'),
   prevBtn: $('prevBtn'),
   nextBtn: $('nextBtn'),
   navLabel: $('navLabel'),
+  viewModeBtn: $('viewModeBtn'),
   infoPanel: $('infoPanel'),
   taskSection: $('taskSection'),
   topicInput: $('topicInput'),
   audienceInput: $('audienceInput'),
   pageCountInput: $('pageCountInput'),
   styleInput: $('styleInput'),
+  skillSection: $('skillSection'),
+  workflowStagePill: $('workflowStagePill'),
+  workflowSteps: $('workflowSteps'),
+  deckNameInput: $('deckNameInput'),
+  deckSizeInput: $('deckSizeInput'),
+  qualityInput: $('qualityInput'),
+  deckSpecInput: $('deckSpecInput'),
+  requestSpecBtn: $('requestSpecBtn'),
+  confirmSpecBtn: $('confirmSpecBtn'),
+  packDeckBtn: $('packDeckBtn'),
+  workflowHint: $('workflowHint'),
   notesSection: $('notesSection'),
   notesSectionLabel: $('notesSectionLabel'),
   notesEditor: $('notesEditor'),
@@ -92,6 +110,9 @@ const els = {
   outlineSection: $('outlineSection'),
   outlineList: $('outlineList'),
   exportBtn: $('exportBtn'),
+  falStatusDot: $('falStatusDot'),
+  falStatusText: $('falStatusText'),
+  falConfigBtn: $('falConfigBtn'),
   toast: $('toast'),
 };
 
@@ -102,6 +123,288 @@ function showToast(msg) {
   els.toast.classList.add('show');
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => els.toast.classList.remove('show'), 2000);
+}
+
+// ─── FAL KEY 状态 ──────────────────────────────────
+const FAL_KEY_STORE = 'ppt-fal-key';
+
+function getFalKey() {
+  try {
+    return localStorage.getItem(FAL_KEY_STORE) || '';
+  } catch (_) { return ''; }
+}
+
+function setFalKey(key) {
+  try { localStorage.setItem(FAL_KEY_STORE, key); } catch (_) {}
+}
+
+function updateFalStatus() {
+  const key = getFalKey();
+  falKeyOk = !!(key && key.length > 10);
+  if (els.falStatusDot) els.falStatusDot.className = 'fal-status-dot ' + (falKeyOk ? 'ok' : '');
+  if (els.falStatusText) els.falStatusText.textContent = falKeyOk ? '图片服务已配置' : '图片服务未配置';
+  if (els.falConfigBtn) els.falConfigBtn.textContent = falKeyOk ? '修改' : '配置';
+}
+
+if (els.falConfigBtn) {
+  els.falConfigBtn.addEventListener('click', () => {
+    const cur = getFalKey();
+    const val = prompt('请输入 fal.ai API Key（格式：xxxx:xxxx）：', cur || '');
+    if (val === null) return;
+    if (val.trim()) { setFalKey(val.trim()); showToast('FAL_KEY 已保存'); }
+    else { localStorage.removeItem(FAL_KEY_STORE); showToast('FAL_KEY 已清除'); }
+    updateFalStatus();
+  });
+}
+
+// ─── 图片幻灯片模式 ────────────────────────────────
+// slides 数组里，每个 slide 可以有 .imgPath（本地绝对路径或 /api/... URL）
+
+function setViewMode(mode) {
+  viewMode = mode;
+  const isImg = mode === 'img';
+  if (els.viewModeBtn) els.viewModeBtn.textContent = isImg ? '📝' : '🖼';
+  if (els.viewModeBtn) els.viewModeBtn.title = isImg ? '切换为文字预览' : '切换为图片预览';
+  renderCanvasFrame();
+}
+
+function renderCanvasFrame() {
+  const slide = slides[selectedIndex];
+  if (!slide) return;
+
+  const hasImg = !!(slide.imgPath);
+  const showImg = viewMode === 'img' && hasImg;
+
+  if (els.slideFrame) els.slideFrame.style.display = showImg ? 'none' : 'flex';
+  if (els.slideFrameImg) els.slideFrameImg.style.display = showImg ? 'flex' : 'none';
+
+  if (showImg) {
+    els.slideImg.src = slide.imgPath;
+    els.slideImg.alt = `Slide ${selectedIndex + 1}`;
+    if (els.slideImgBadge) els.slideImgBadge.textContent = `${selectedIndex + 1} / ${slides.length}`;
+  } else {
+    els.slideFrame.innerHTML = renderSlideHTML(slide, selectedIndex);
+  }
+}
+
+function renderThumbMode(slide, index) {
+  if (slide.imgPath) {
+    return `<div class="thumb-preview thumb-img" style="background:#111">
+      <img src="${slide.imgPath}" alt="Slide ${index+1}" loading="lazy">
+    </div>
+    <div class="thumb-label">${slide.title || `第 ${index+1} 页`}</div>`;
+  }
+  return renderThumbHTML(slide, index);
+}
+
+// ─── Skill 工作流 ──────────────────────────────────
+const STAGE_LABELS = {
+  brief: '补齐信息',
+  spec: '确认方案',
+  prompts: '细化画面',
+  generate: '生成图片',
+  pack: '导出文件'
+};
+
+const STAGE_HINTS = {
+  brief: '先补齐主题、受众、页数和风格，然后让 AI 生成页面方案。',
+  spec: '检查页面方案：每一页都应该有画面设计和正文内容。',
+  prompts: '确认后让 AI 细化每页画面，再进入图片生成。',
+  generate: 'AI 会按页面方案生成图片页；缺少图片服务密钥时会提示配置。',
+  pack: '图片页完成后导出 PPTX 文件。'
+};
+
+function slugifyDeckName(value) {
+  const text = String(value || '').trim().toLowerCase();
+  const ascii = text
+    .replace(/[^a-z0-9\u4e00-\u9fa5]+/gi, '-')
+    .replace(/^-+|-+$/g, '');
+  if (/^[a-z0-9][a-z0-9-]*$/i.test(ascii)) return ascii.slice(0, 48);
+  return `deck-${Date.now().toString(36)}`;
+}
+
+function ensureDeckName() {
+  if (els.deckNameInput.value.trim()) return els.deckNameInput.value.trim();
+  const source = els.topicInput.value.trim() || els.deckTitle.textContent.trim() || 'ppt-deck';
+  const name = slugifyDeckName(source);
+  els.deckNameInput.value = name;
+  return name;
+}
+
+function collectBrief() {
+  return {
+    title: els.deckTitle.textContent.trim(),
+    topic: els.topicInput.value.trim(),
+    audience: els.audienceInput.value.trim(),
+    pageCount: els.pageCountInput.value,
+    style: els.styleInput.value,
+    deckName: ensureDeckName(),
+    size: els.deckSizeInput.value,
+    quality: els.qualityInput.value,
+    deckSpec: els.deckSpecInput.value.trim(),
+    slides: slides.map(slide => ({
+      type: slide.type || '',
+      title: slide.title || '',
+      body: slide.body || '',
+      bullets: Array.isArray(slide.bullets) ? slide.bullets : [],
+      notes: slide.notes || ''
+    }))
+  };
+}
+
+function setWorkflowStage(stage, options = {}) {
+  workflowStage = STAGE_LABELS[stage] ? stage : 'brief';
+  if (els.workflowStagePill) els.workflowStagePill.textContent = STAGE_LABELS[workflowStage];
+  if (els.workflowSteps) {
+    els.workflowSteps.querySelectorAll('.workflow-step').forEach(step => {
+      step.classList.toggle('active', step.dataset.stage === workflowStage);
+    });
+  }
+  if (els.workflowHint) els.workflowHint.textContent = STAGE_HINTS[workflowStage] || STAGE_HINTS.brief;
+  if (options.persist !== false) persistWorkflowState();
+}
+
+async function persistWorkflowState() {
+  const state = {
+    stage: workflowStage,
+    brief: collectBrief()
+  };
+  try {
+    if (window.NextAI && window.NextAI.state) {
+      await window.NextAI.state.set('ppt-workflow', state, {scope: 'session'});
+    } else {
+      localStorage.setItem('ppt-workflow', JSON.stringify(state));
+    }
+  } catch (_err) {}
+}
+
+async function restoreWorkflowState() {
+  try {
+    let state = null;
+    if (window.NextAI && window.NextAI.state) {
+      state = await window.NextAI.state.get('ppt-workflow', null, {scope: 'session'});
+    } else {
+      state = JSON.parse(localStorage.getItem('ppt-workflow') || 'null');
+    }
+    const brief = state && state.brief ? state.brief : null;
+    if (brief) {
+      if (brief.title) els.deckTitle.textContent = brief.title;
+      if (brief.topic) els.topicInput.value = brief.topic;
+      if (brief.audience) els.audienceInput.value = brief.audience;
+      if (brief.pageCount) els.pageCountInput.value = brief.pageCount;
+      if (brief.style) els.styleInput.value = brief.style;
+      if (brief.deckName) els.deckNameInput.value = brief.deckName;
+      if (brief.size) els.deckSizeInput.value = brief.size;
+      if (brief.quality) els.qualityInput.value = brief.quality;
+      if (brief.deckSpec) els.deckSpecInput.value = brief.deckSpec;
+    }
+    syncStyle();
+    setWorkflowStage(state && state.stage || 'brief', {persist: false});
+  } catch (_err) {
+    setWorkflowStage('brief', {persist: false});
+  }
+}
+
+function agentInstruction(kind) {
+  const brief = collectBrief();
+  const skillPath = 'maxgpt_ppt_skill-main/maxgpt_ppt_skill-main/SKILL.md';
+  if (kind === 'spec') {
+    return [
+      `请按当前 PPT 产品画布里的 brief 生成完整 deck_spec。`,
+      `优先参考产品工作区里的 ${skillPath} 和 rules/workflow.md。`,
+      `只做 Phase 1-2：收集输入、输出完整 deck_spec，暂时不要调用 API、不要生成图片。`,
+      `deck_spec 必须包含 Style Decisions，以及每一页的 Visual design 和 Text content；不要写占位符。`,
+      `主题：${brief.topic || brief.title || '未填写'}`,
+      `受众：${brief.audience || 'general'}`,
+      `页数：${brief.pageCount}`,
+      `Deck 名称：${brief.deckName}`,
+      `尺寸：${brief.size}`,
+      `质量：${brief.quality}`,
+      brief.deckSpec ? `已有 deck_spec 备忘：\n${brief.deckSpec}` : ''
+    ].filter(Boolean).join('\n');
+  }
+  if (kind === 'generate') {
+    return [
+      `我确认当前 deck_spec，请继续按 gpt-image-2-ppt skill 生成这份 PPT。`,
+      `先构建每页完整 prompt，再按 workflow 的两阶段流程生成图片：第 1 页先串行，其余页带 --slot 并发。`,
+      `如果缺少图片服务密钥或依赖，请明确告诉我需要配置什么，不要假装已生成。`,
+      `Deck 名称：${brief.deckName}`,
+      `尺寸：${brief.size}`,
+      `质量：${brief.quality}`,
+      brief.deckSpec ? `确认版 deck_spec：\n${brief.deckSpec}` : '确认版 deck_spec 在上一轮对话里，请沿用。',
+      ``,
+      `生成完成后，请在回复末尾附上如下代码块（替换实际值），让画布自动显示图片：`,
+      `\`\`\`js`,
+      `window.PPT.loadImages("${brief.title || brief.deckName}", "${brief.deckName}", [`,
+      `  {slot:1, imgUrl:"/api/products/ppt-designer/preview/maxgpt_ppt_skill-main/maxgpt_ppt_skill-main/outputs/${brief.deckName}/slide-01.png", title:"第1页标题"},`,
+      `  // ...其余页...`,
+      `]);`,
+      `\`\`\``,
+    ].join('\n');
+  }
+  return [
+    `请使用 gpt-image-2-ppt skill 打包当前 deck，并告诉我 deck.pptx 和 index.html 的路径。`,
+    `Deck 名称：${brief.deckName}`,
+    `如果 outputs/${brief.deckName}/ 里还没有可打包的 slide-NN.png，请先说明当前缺少什么。`
+  ].join('\n');
+}
+
+async function sendWorkflowToAgent(kind, button) {
+  const stageByKind = {spec: 'spec', generate: 'generate', pack: 'pack'};
+  setWorkflowStage(stageByKind[kind] || 'brief');
+  const text = agentInstruction(kind);
+  const canUseHostBridge = window.parent !== window &&
+    window.NextAI &&
+    window.NextAI.chat &&
+    window.NextAI.chat.send;
+  if (!canUseHostBridge) {
+    try { await navigator.clipboard.writeText(text); } catch (_err) {}
+    showToast('已复制指令，请粘贴到 Chat');
+    return;
+  }
+  const oldText = button ? button.textContent : '';
+  if (button) {
+    button.disabled = true;
+    button.textContent = '已发送...';
+  }
+  try {
+    const response = await window.NextAI.chat.send({
+      text,
+      action: `ppt:${kind}`,
+      context: {ppt: collectBrief()}
+    });
+    applyAgentWorkflowReply(kind, response && response.content || '');
+    showToast('已发送给 Agent');
+  } catch (err) {
+    showToast(err && err.message ? err.message : '发送失败');
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = oldText;
+    }
+  }
+}
+
+function extractDeckSpec(content) {
+  const text = String(content || '').trim();
+  if (!text) return '';
+  const styleIndex = text.search(/(^|\n)#{1,3}\s*Style Decisions\b/i);
+  if (styleIndex >= 0) return text.slice(styleIndex).trim();
+  if (/Style Decisions/i.test(text) && /Slide\s+\d+/i.test(text)) return text;
+  if (/deck[_\s-]*spec/i.test(text)) return text;
+  if (/(Visual design|Text content|Layout|HEADLINE|SLIDE\s+\d+)/i.test(text)) return text;
+  if (/(视觉设计|文本内容|页面\s*\d+|幻灯片\s*\d+|版式|标题)/.test(text)) return text;
+  return '';
+}
+
+async function applyAgentWorkflowReply(kind, content) {
+  if (kind !== 'spec') return;
+  const deckSpec = extractDeckSpec(content);
+  if (!deckSpec) return;
+  if (els.deckSpecInput) els.deckSpecInput.value = deckSpec;
+  setWorkflowStage('spec');
+  await persistWorkflowState();
+  showToast('页面方案已同步到工作区');
 }
 
 // ─── 幻灯片渲染 ────────────────────────────────────
@@ -168,7 +471,7 @@ function renderAll() {
   }
 
   // 当前幻灯片画布
-  els.slideFrame.innerHTML = renderSlideHTML(slides[selectedIndex], selectedIndex);
+  renderCanvasFrame();
   els.navLabel.textContent = `${selectedIndex + 1} / ${slides.length}`;
   els.prevBtn.disabled = selectedIndex === 0;
   els.nextBtn.disabled = selectedIndex === slides.length - 1;
@@ -177,7 +480,7 @@ function renderAll() {
   els.slidesList.innerHTML = slides.map((sl, i) => `
     <li>
       <button class="slide-thumb ${i === selectedIndex ? 'active' : ''}" data-index="${i}">
-        ${renderThumbHTML(sl, i)}
+        ${renderThumbMode(sl, i)}
       </button>
     </li>
   `).join('');
@@ -249,6 +552,13 @@ els.outlineList.addEventListener('click', e => {
 els.prevBtn.addEventListener('click', () => selectSlide(selectedIndex - 1));
 els.nextBtn.addEventListener('click', () => selectSlide(selectedIndex + 1));
 
+// 切换图片/文字预览模式
+if (els.viewModeBtn) {
+  els.viewModeBtn.addEventListener('click', () => {
+    setViewMode(viewMode === 'img' ? 'html' : 'img');
+  });
+}
+
 document.addEventListener('keydown', e => {
   if (slides.length === 0) return;
   if (e.target.matches('input, textarea, select, [contenteditable]')) return;
@@ -270,9 +580,22 @@ els.deckTitle.addEventListener('click', () => {
 [els.topicInput, els.audienceInput].forEach(input => {
   input.addEventListener('change', () => {
     if (els.topicInput.value.trim()) els.deckTitle.textContent = els.topicInput.value.trim();
+    if (!els.deckNameInput.value.trim() && els.topicInput.value.trim()) ensureDeckName();
+    persistWorkflowState();
   });
 });
-els.styleInput.addEventListener('change', syncStyle);
+els.styleInput.addEventListener('change', () => {
+  syncStyle();
+  persistWorkflowState();
+});
+[els.pageCountInput, els.deckNameInput, els.deckSizeInput, els.qualityInput, els.deckSpecInput].forEach(input => {
+  input.addEventListener('change', persistWorkflowState);
+  input.addEventListener('input', persistWorkflowState);
+});
+
+els.requestSpecBtn.addEventListener('click', () => sendWorkflowToAgent('spec', els.requestSpecBtn));
+els.confirmSpecBtn.addEventListener('click', () => sendWorkflowToAgent('generate', els.confirmSpecBtn));
+els.packDeckBtn.addEventListener('click', () => sendWorkflowToAgent('pack', els.packDeckBtn));
 
 // 新增空白页
 els.addSlideBtn.addEventListener('click', () => {
@@ -295,7 +618,7 @@ els.copyNotesBtn.addEventListener('click', () => {
 
 // 导出（占位）
 els.exportBtn.addEventListener('click', () => {
-  showToast('请在 Chat 中输入"导出 PPTX"，我来帮你生成文件');
+  sendWorkflowToAgent('pack', els.exportBtn);
 });
 
 // ─── 公共 API（供 Chat 调用）─────────────────────────
@@ -313,9 +636,32 @@ window.PPT = {
     showToast('已更新 PPT 内容');
   },
 
+  /**
+   * 加载已生成的图片幻灯片
+   * @param {string} title        演示文稿标题
+   * @param {string} deckName     deck 名称（用于 outputs/ 路径）
+   * @param {Array}  imageEntries [{slot, imgUrl, title?, notes?}, ...]
+   *   imgUrl: 可以是 /api/products/ppt-designer/... 或绝对路径
+   */
+  loadImages(title, deckName, imageEntries) {
+    els.deckTitle.textContent = title || deckName || '未命名演示文稿';
+    if (deckName && els.deckNameInput) els.deckNameInput.value = deckName;
+    slides = (imageEntries || []).map((entry, i) => ({
+      type: 'cover',
+      title: entry.title || `第 ${i + 1} 页`,
+      notes: entry.notes || '',
+      imgPath: entry.imgUrl || entry.imgPath || '',
+    }));
+    selectedIndex = 0;
+    // 有图片时自动切到图片模式
+    if (slides.some(s => s.imgPath)) setViewMode('img');
+    renderAll();
+    showToast(`已加载 ${slides.length} 张幻灯片`);
+  },
+
   /** 获取当前所有幻灯片数据 */
   get() {
-    return { title: els.deckTitle.textContent, slides };
+    return { title: els.deckTitle.textContent, slides, workflowStage, brief: collectBrief() };
   },
 
   /** 更新单页内容 */
@@ -323,9 +669,37 @@ window.PPT = {
     if (!slides[index]) return;
     Object.assign(slides[index], data);
     renderAll();
+  },
+
+  /** 更新 skill 工作流状态 */
+  setWorkflow(stage, patch = {}) {
+    if (patch.deckSpec != null) els.deckSpecInput.value = String(patch.deckSpec);
+    if (patch.deckName != null) els.deckNameInput.value = String(patch.deckName);
+    if (patch.size != null) els.deckSizeInput.value = String(patch.size);
+    if (patch.quality != null) els.qualityInput.value = String(patch.quality);
+    setWorkflowStage(stage || workflowStage);
+    persistWorkflowState();
+  },
+
+  /** 设置 FAL_KEY（Agent 生成成功后可回调通知状态）*/
+  setFalKey(key) {
+    if (key) { setFalKey(key); updateFalStatus(); }
   }
 };
 
 // ─── 初始化 ────────────────────────────────────────
 // 加载示例内容，方便演示
 window.PPT.load('AI 工具在研发团队的落地实践', EXAMPLE_SLIDES);
+restoreWorkflowState();
+updateFalStatus();
+
+// 如果有已生成的测试图片，自动加载展示
+(function tryLoadTestDeck() {
+  const testImg = new Image();
+  const testUrl = '/api/products/ppt-designer/preview/maxgpt_ppt_skill-main/maxgpt_ppt_skill-main/outputs/test-demo/slide-01.png';
+  testImg.onload = function() {
+    // 测试图存在 — 不自动覆盖（保留示例数据）
+    // 用户可以通过 Chat 调用 PPT.loadImages() 来加载真实幻灯片
+  };
+  testImg.src = testUrl;
+})();
