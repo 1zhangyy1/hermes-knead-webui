@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>捏 / Knead — theme explorer</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC",system-ui,sans-serif;
+       -webkit-font-smoothing:antialiased;letter-spacing:-.003em}
+  button{font-family:inherit;cursor:pointer}
+
+  /* ── theme switcher (un-themed) ── */
+  .switch{position:fixed;top:0;left:0;right:0;height:46px;z-index:50;display:flex;align-items:center;gap:8px;
+          padding:0 16px;background:#15151a;color:#eee;font-size:13px}
+  .switch b{font-weight:600;margin-right:8px}
+  .switch button{background:#2a2a31;color:#cfcfd6;border:1px solid #3a3a44;border-radius:999px;
+                 padding:6px 14px;font-size:12.5px}
+  .switch button.on{background:#fff;color:#15151a;border-color:#fff;font-weight:600}
+  .switch .meta{margin-left:auto;color:#8a8a94;font-size:12px}
+
+  /* ── themed app ── */
+  #app{position:fixed;top:46px;left:0;right:0;bottom:0;
+    --bg:#F4F5F7;--surface:#fff;--canvas:#FAFBFC;--line:#E9EBEF;--line-soft:#F0F2F5;
+    --ink:#15171C;--muted:#697586;--faint:#9AA4B2;--chip:#E4E7EC;--chip2:#EFF1F4;
+    --accent:#4F46E5;--accent-ink:#4338CA;--accent-tint:rgba(79,70,229,.09);--accent-wash:#EEF0FD;--on-accent:#fff;
+    --radius:10px;
+    color:var(--ink);background:var(--bg)}
+
+  #app[data-theme="graphite"]{--bg:#121317;--surface:#17181D;--canvas:#14151A;--line:#282B33;--line-soft:#1F2228;
+    --ink:#ECEDF0;--muted:#9096A1;--faint:#6C7280;--chip:#2B2E36;--chip2:#23262D;
+    --accent:#8B7BFF;--accent-ink:#A99CFF;--accent-tint:rgba(139,123,255,.16);--accent-wash:rgba(139,123,255,.12);--on-accent:#fff;--radius:10px}
+  #app[data-theme="mono"]{--bg:#FAFAFA;--surface:#fff;--canvas:#FCFCFC;--line:#E8E8E8;--line-soft:#F2F2F2;
+    --ink:#0A0A0A;--muted:#6B6B6B;--faint:#9B9B9B;--chip:#ECECEC;--chip2:#F4F4F4;
+    --accent:#111;--accent-ink:#000;--accent-tint:rgba(0,0,0,.055);--accent-wash:#F1F1F1;--on-accent:#fff;--radius:7px}
+  #app[data-theme="paper"]{--bg:#EEE9DF;--surface:#FBF8F2;--canvas:#F6F1E8;--line:#E5DDCD;--line-soft:#EDE6D8;
+    --ink:#262220;--muted:#8A7F6F;--faint:#ADA293;--chip:#E3DBCA;--chip2:#EDE6D6;
+    --accent:#C9573C;--accent-ink:#A8442D;--accent-tint:rgba(201,87,60,.10);--accent-wash:#F6ECE4;--on-accent:#fff;--radius:11px}
+  #app[data-theme="evergreen"]{--bg:#F2F4F1;--surface:#fff;--canvas:#FAFBF9;--line:#E6EBE4;--line-soft:#EFF2ED;
+    --ink:#15201A;--muted:#647067;--faint:#97A29A;--chip:#E2E8E1;--chip2:#EDF1EC;
+    --accent:#1F7A55;--accent-ink:#196645;--accent-tint:rgba(31,122,85,.10);--accent-wash:#E9F3EE;--on-accent:#fff;--radius:12px}
+
+  .body{height:100%;display:grid;grid-template-columns:248px 1fr 348px}
+
+  /* sidebar */
+  .side{background:var(--bg);border-right:1px solid var(--line);display:flex;flex-direction:column;min-height:0}
+  .brand{display:flex;align-items:center;gap:10px;padding:18px 16px 12px;font-weight:600;font-size:16px;color:var(--ink)}
+  .seal{width:24px;height:24px;border-radius:50%;background:var(--accent)}
+  .sp{padding:0 12px}
+  .new{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;background:var(--accent);color:var(--on-accent);
+       border:none;font-size:13.5px;font-weight:500;padding:10px;border-radius:var(--radius);transition:filter .15s,transform .1s}
+  .new:hover{filter:brightness(1.06)} .new:active{transform:translateY(1px)}
+  .cap{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);padding:18px 18px 7px}
+  .nav{padding:0 12px;display:flex;flex-direction:column;gap:1px}
+  .ai{display:flex;align-items:center;gap:10px;padding:8px 9px;border-radius:8px;font-size:14px;color:var(--muted)}
+  .ai .ic{width:18px;height:18px;border-radius:5px;background:var(--chip);flex:0 0 auto}
+  .ai:hover{background:var(--accent-tint)}
+  .ai.on{background:var(--surface);color:var(--ink);font-weight:500;box-shadow:inset 0 0 0 1px var(--line)}
+  .ai.on .ic{background:var(--accent)}
+  .tasks{margin-top:4px;padding:0 12px;overflow:auto;flex:1;min-height:0}
+  .task{padding:8px 9px;border-radius:8px}.task:hover{background:var(--accent-tint)}
+  .task .tt{font-size:13.5px;color:var(--ink);opacity:.85;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .task .tm{font-size:11.5px;color:var(--faint);margin-top:1px}
+
+  /* chat */
+  .main{background:var(--surface);display:flex;flex-direction:column;min-height:0}
+  .chead{display:flex;align-items:center;gap:12px;padding:13px 22px;border-bottom:1px solid var(--line-soft)}
+  .crumb{font-weight:600;font-size:14.5px;color:var(--ink)}
+  .chip{font-size:12px;font-weight:500;color:var(--accent-ink);background:var(--accent-tint);padding:3px 10px;border-radius:999px}
+  #app[data-theme="graphite"] .chip,#app[data-theme="mono"] .chip{color:var(--accent-ink)}
+  .grow{flex:1}
+  .ghost{font-size:13px;color:var(--muted);background:none;border:1px solid var(--line);padding:6px 13px;border-radius:8px;transition:background .15s}
+  .ghost:hover{background:var(--bg)}
+  .msgs{flex:1;overflow:auto;padding:26px 22px;display:flex;flex-direction:column;gap:20px;min-height:0}
+  .m{display:flex;gap:11px;max-width:640px}
+  .av{width:24px;height:24px;border-radius:50%;flex:0 0 auto;margin-top:1px}
+  .av.a{background:var(--accent)} .av.u{background:var(--chip)}
+  .m .txt{font-size:14.5px;color:var(--ink);opacity:.92}
+  .m.user{align-self:flex-end;flex-direction:row-reverse}
+  .m.user .txt{background:var(--accent-tint);color:var(--ink);opacity:1;padding:10px 14px;border-radius:13px 13px 4px 13px}
+  .m .lab{font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:var(--faint);margin-bottom:5px}
+  .composer{padding:14px 22px 20px}
+  .well{display:flex;align-items:center;gap:12px;background:var(--surface);border:1px solid var(--line);
+        border-radius:var(--radius);padding:11px 11px 11px 16px;transition:border-color .15s,box-shadow .15s}
+  .well:focus-within{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-wash)}
+  .well input{flex:1;border:none;outline:none;background:none;font:inherit;font-size:14.5px;color:var(--ink)}
+  .well input::placeholder{color:var(--faint)}
+  .send{width:34px;height:34px;border-radius:calc(var(--radius) - 1px);border:none;background:var(--accent);color:var(--on-accent);
+        font-size:16px;display:grid;place-items:center;transition:filter .15s,transform .1s}
+  .send:hover{filter:brightness(1.06)} .send:active{transform:translateY(1px)}
+
+  /* canvas */
+  .canvas{background:var(--canvas);border-left:1px solid var(--line);display:flex;flex-direction:column;min-height:0}
+  .ctool{display:flex;align-items:center;gap:10px;padding:12px 18px;border-bottom:1px solid var(--line-soft)}
+  .ctool .cl{font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:var(--faint)}
+  .ctool .ct{font-size:13px;font-weight:600;color:var(--ink)}
+  .ico{width:28px;height:28px;border-radius:7px;border:1px solid var(--line);background:var(--surface);color:var(--muted);display:grid;place-items:center;font-size:14px}
+  .cbody{padding:20px 18px;overflow:auto;flex:1;min-height:0}
+  .field{margin-bottom:16px}
+  .field .k{font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:var(--faint);margin-bottom:5px}
+  .field .v{font-size:14px;color:var(--ink);opacity:.9}
+  .ol{list-style:none;counter-reset:s}
+  .ol li{counter-increment:s;display:flex;gap:11px;padding:9px 0;border-top:1px solid var(--line-soft);font-size:13.5px;color:var(--ink);opacity:.88}
+  .ol li:last-child{border-bottom:1px solid var(--line-soft)}
+  .ol li::before{content:counter(s);color:var(--accent);font-variant-numeric:tabular-nums;font-weight:600;min-width:14px}
+  .thumbs{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-top:6px}
+  .th{aspect-ratio:16/10;background:var(--surface);border:1px solid var(--line);border-radius:9px;padding:9px}
+  .th .b{height:6px;width:60%;background:var(--chip);border-radius:3px;margin-bottom:5px}
+  .th .b2{height:5px;width:80%;background:var(--chip2);border-radius:3px}
+</style>
+</head>
+<body>
+  <div class="switch">
+    <b>捏 themes</b>
+    <button data-t="arctic" class="on">Arctic · cool light</button>
+    <button data-t="graphite">Graphite · dark</button>
+    <button data-t="mono">Mono · B/W</button>
+    <button data-t="paper">Paper · warm</button>
+    <button data-t="evergreen">Evergreen · green</button>
+    <span class="meta">同一界面 · 切皮肤对比</span>
+  </div>
+
+  <div id="app" data-theme="arctic">
+    <div class="body">
+      <aside class="side">
+        <div class="brand"><span class="seal"></span> 捏 Knead</div>
+        <div class="sp"><button class="new">＋ New AI</button></div>
+        <div class="cap">Your AIs</div>
+        <nav class="nav">
+          <div class="ai on"><span class="ic"></span> Slide Designer</div>
+          <div class="ai"><span class="ic"></span> Pomodoro</div>
+          <div class="ai"><span class="ic"></span> General</div>
+          <div class="ai"><span class="ic"></span> Expenses</div>
+        </nav>
+        <div class="cap">Recent</div>
+        <div class="tasks">
+          <div class="task"><div class="tt">Q3 review deck</div><div class="tm">Slide Designer · 2h ago</div></div>
+          <div class="task"><div class="tt">June expenses</div><div class="tm">Expenses · yesterday</div></div>
+          <div class="task"><div class="tt">Reading list app</div><div class="tm">General · 3d ago</div></div>
+        </div>
+      </aside>
+
+      <main class="main">
+        <div class="chead">
+          <span class="crumb">Slide Designer</span>
+          <span class="chip">In use</span>
+          <span class="grow"></span>
+          <button class="ghost">Adjust</button>
+        </div>
+        <div class="msgs">
+          <div class="m user"><span class="av u"></span><div class="txt">A Q3 review deck for the leadership team, ~10 slides, calm and data-led.</div></div>
+          <div class="m"><span class="av a"></span><div><div class="lab">Slide Designer</div><div class="txt">I drafted a 10-slide outline focused on results, with speaker notes for the numbers. The workspace on the right has the structure — edit any line and I'll reflow.</div></div></div>
+          <div class="m user"><span class="av u"></span><div class="txt">Move the risks section before the roadmap.</div></div>
+          <div class="m"><span class="av a"></span><div><div class="lab">Slide Designer</div><div class="txt">Done — risks is now slide 7, roadmap 8. Speaker notes updated to match.</div></div></div>
+        </div>
+        <div class="composer">
+          <div class="well"><input placeholder="Reply, or tell it what to change…"/><button class="send" aria-label="Send">→</button></div>
+        </div>
+      </main>
+
+      <aside class="canvas">
+        <div class="ctool"><div><div class="cl">Workspace</div><div class="ct">Q3 review deck</div></div><span class="grow"></span><button class="ico">↻</button><button class="ico">⋯</button></div>
+        <div class="cbody">
+          <div class="field"><div class="k">Topic</div><div class="v">Q3 business review — results &amp; outlook</div></div>
+          <div class="field"><div class="k">Audience</div><div class="v">Leadership · 10 slides · calm, data-led</div></div>
+          <div class="field"><div class="k">Outline</div>
+            <ol class="ol"><li>Title &amp; quarter at a glance</li><li>Headline results</li><li>Revenue by segment</li><li>What drove the numbers</li><li>Customer &amp; retention</li><li>Risks &amp; watch-items</li><li>Roadmap next quarter</li></ol>
+          </div>
+          <div class="field"><div class="k">Slides</div>
+            <div class="thumbs"><div class="th"><div class="b"></div><div class="b2"></div></div><div class="th"><div class="b"></div><div class="b2"></div></div><div class="th"><div class="b"></div><div class="b2"></div></div><div class="th"><div class="b"></div><div class="b2"></div></div></div>
+          </div>
+        </div>
+      </aside>
+    </div>
+  </div>
+
+<script>
+  const app=document.getElementById('app');
+  document.querySelectorAll('.switch button').forEach(b=>{
+    b.onclick=()=>{
+      app.dataset.theme=b.dataset.t;
+      document.querySelectorAll('.switch button').forEach(x=>x.classList.toggle('on',x===b));
+    };
+  });
+</script>
+</body>
+</html>
