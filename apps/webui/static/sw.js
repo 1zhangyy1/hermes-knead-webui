@@ -34,6 +34,7 @@ const SHELL_ASSETS = [
   './static/workspace.js' + VQ,
   './static/terminal.js' + VQ,
   './static/onboarding.js' + VQ,
+  './static/knead-logo.svg',
   './static/favicon.svg',
   './static/favicon-32.png',
   './manifest.json',
