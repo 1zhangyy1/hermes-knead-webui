@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>捏 / Knead</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  :root{
+    --page:#EAE9E6; --frame:#FFFFFF; --ink:#191919; --muted:#6E6E6E; --faint:#9A9A9A;
+    --line:#ECEAE6; --line-2:#E4E1DB; --sidebar-1:#FCF4EE; --sidebar-2:#FBF7F3;
+    --send:#1A1A1A; --send-hover:#000; --chip-line:#D9D5CD;
+    --ui:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,"PingFang SC",sans-serif;
+  }
+  body{font-family:var(--ui);background:var(--page);color:var(--ink);-webkit-font-smoothing:antialiased;
+       letter-spacing:-.01em;display:grid;place-items:center;padding:22px}
+  button{font-family:inherit;cursor:pointer}
+
+  /* rounded app card floating on light gray */
+  .app{width:min(1280px,100%);height:min(820px,calc(100vh - 44px));background:var(--frame);
+       border:1px solid var(--line-2);border-radius:22px;overflow:hidden;display:grid;
+       grid-template-columns:264px 1fr;box-shadow:0 1px 0 rgba(0,0,0,.02),0 18px 50px rgba(40,30,20,.07)}
+
+  /* ── sidebar: soft warm tint ── */
+  .side{background:linear-gradient(170deg,var(--sidebar-1),var(--sidebar-2) 46%,#fff 100%);
+        border-right:1px solid var(--line);display:flex;flex-direction:column;padding:16px 12px;min-height:0}
+  .top{display:flex;align-items:center;justify-content:space-between;padding:4px 6px 16px}
+  .logo{display:flex;align-items:center;gap:9px;font-weight:650;font-size:16px}
+  .mark{width:26px;height:26px;border-radius:8px;background:#1A1A1A;position:relative}
+  .mark::before,.mark::after{content:"";position:absolute;top:50%;width:8px;height:8px;border-radius:50%;background:#fff;transform:translateY(-50%)}
+  .mark::before{left:5px}.mark::after{right:5px}
+  .icobtn{width:30px;height:30px;border-radius:8px;border:none;background:transparent;color:var(--muted);display:grid;place-items:center;font-size:15px}
+  .icobtn:hover{background:rgba(0,0,0,.05)}
+  .new{display:flex;align-items:center;gap:9px;width:100%;background:#fff;border:1px solid var(--line-2);
+       border-radius:11px;padding:10px 12px;font-size:13.5px;font-weight:500;color:var(--ink);justify-content:space-between}
+  .new:hover{border-color:#D6D2CA}
+  .new .kbd{font-size:11px;color:var(--faint)}
+  .grp{font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:var(--faint);padding:18px 8px 6px}
+  .nav{display:flex;flex-direction:column;gap:1px;overflow:auto;min-height:0}
+  .it{display:flex;align-items:center;gap:9px;padding:8px 9px;border-radius:8px;font-size:14px;color:#544f48;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .it:hover{background:rgba(120,80,40,.05)}
+  .it.on{background:rgba(255,255,255,.75);color:var(--ink);font-weight:500;box-shadow:inset 0 0 0 1px var(--line-2)}
+  .it .d{width:7px;height:7px;border-radius:50%;background:#CFC7B9;flex:0 0 auto}
+  .it.on .d{background:#1A1A1A}
+  .foot{margin-top:auto;padding-top:12px;display:flex;align-items:center;gap:9px}
+  .ava{width:26px;height:26px;border-radius:50%;background:#E0D8CC}
+  .foot .nm{font-size:13.5px;font-weight:500}
+
+  /* ── main: clean white + warm aura ── */
+  .main{position:relative;display:flex;flex-direction:column;min-height:0}
+  .mtop{display:flex;align-items:center;justify-content:flex-end;gap:8px;padding:16px 22px;position:relative;z-index:2}
+  .pill{display:flex;align-items:center;gap:7px;border:1px solid var(--line-2);background:#fff;border-radius:999px;padding:6px 12px;font-size:13px;color:#4a4a4a}
+  /* the aura */
+  .aura{position:absolute;left:50%;top:44%;transform:translate(-50%,-50%);width:820px;height:560px;
+        filter:blur(64px);opacity:.9;pointer-events:none;z-index:0;
+        background:
+          radial-gradient(42% 50% at 40% 38%, rgba(255,212,128,.62), transparent 72%),
+          radial-gradient(40% 48% at 62% 46%, rgba(255,168,134,.50), transparent 72%),
+          radial-gradient(38% 46% at 50% 66%, rgba(246,170,200,.42), transparent 72%),
+          radial-gradient(34% 40% at 30% 60%, rgba(255,224,150,.38), transparent 72%)}
+
+  .stage{position:relative;z-index:1;flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
+         padding:0 24px 60px;min-height:0}
+  h1{font-size:30px;font-weight:600;letter-spacing:-.02em;margin-bottom:26px}
+
+  .composer{width:min(720px,100%);background:#fff;border:1px solid var(--line-2);border-radius:18px;
+            padding:18px 18px 12px;box-shadow:0 2px 6px rgba(40,30,20,.04),0 16px 40px rgba(40,30,20,.07)}
+  .composer .ph{color:var(--faint);font-size:16px;min-height:46px}
+  .crow{display:flex;align-items:center;gap:8px;margin-top:8px}
+  .mini{display:flex;align-items:center;gap:7px;border:1px solid var(--line-2);border-radius:999px;padding:6px 11px;font-size:13px;color:#4a4a4a;background:#fff}
+  .mini .bot{width:16px;height:16px;border-radius:5px;background:#EAE5DC}
+  .mini.round{width:32px;height:32px;padding:0;justify-content:center;border-radius:50%;color:var(--muted)}
+  .crow .sp{flex:1}
+  .attach{width:34px;height:34px;border-radius:50%;border:none;background:#F2F1ED;color:#6a6a6a;display:grid;place-items:center;font-size:15px}
+  .send{width:34px;height:34px;border-radius:50%;border:none;background:var(--send);color:#fff;display:grid;place-items:center;font-size:16px;transition:background .15s,transform .1s}
+  .send:hover{background:var(--send-hover)} .send:active{transform:translateY(1px)}
+
+  .ex{width:min(720px,100%);margin-top:26px}
+  .ex .lab{font-size:13px;font-weight:600;color:#3a3a3a;margin-bottom:12px}
+  .chips{display:flex;flex-direction:column;gap:9px;align-items:flex-start}
+  .chip{display:inline-flex;align-items:center;gap:8px;border:1px dashed var(--chip-line);border-radius:999px;
+        padding:8px 14px;font-size:13.5px;color:#4d4d4d;background:rgba(255,255,255,.5)}
+  .chip:hover{background:#fff;border-color:#C9C4BA}
+  .chip .arr{color:var(--faint);font-size:12px}
+
+  @media(max-width:860px){.app{grid-template-columns:1fr}.side{display:none}}
+</style>
+</head>
+<body>
+  <div class="app">
+    <aside class="side">
+      <div class="top">
+        <div class="logo"><span class="mark"></span> Knead</div>
+        <button class="icobtn" title="Search">⌕</button>
+      </div>
+      <button class="new"><span>＋ New AI</span><span class="kbd">⌘K</span></button>
+
+      <div class="grp">Your AIs</div>
+      <nav class="nav" style="overflow:visible">
+        <div class="it on"><span class="d"></span> General</div>
+        <div class="it"><span class="d"></span> Slide Designer</div>
+        <div class="it"><span class="d"></span> Pomodoro</div>
+        <div class="it"><span class="d"></span> Expenses</div>
+      </nav>
+
+      <div class="grp">Recent</div>
+      <nav class="nav">
+        <div class="it"><span class="d" style="background:transparent"></span> Q3 review deck</div>
+        <div class="it"><span class="d" style="background:transparent"></span> June expenses</div>
+        <div class="it"><span class="d" style="background:transparent"></span> Reading list app</div>
+        <div class="it"><span class="d" style="background:transparent"></span> Explain RAG simply</div>
+      </nav>
+
+      <div class="foot"><span class="ava"></span><span class="nm">baha</span></div>
+    </aside>
+
+    <main class="main">
+      <div class="aura"></div>
+      <div class="mtop"><span class="pill">🇺🇸 ENG</span></div>
+
+      <div class="stage">
+        <h1>What do you want to make?</h1>
+
+        <div class="composer">
+          <div class="ph">Describe it in a sentence…</div>
+          <div class="crow">
+            <span class="mini"><span class="bot"></span> General <span style="color:#bbb">▾</span></span>
+            <span class="mini round">🌐</span>
+            <span class="sp"></span>
+            <button class="attach">⎘</button>
+            <button class="send" aria-label="Send">↑</button>
+          </div>
+        </div>
+
+        <div class="ex">
+          <div class="lab">Try one:</div>
+          <div class="chips">
+            <span class="chip">A 25-minute focus timer with a soft chime <span class="arr">›</span></span>
+            <span class="chip">A water-habit tracker I can tap each day <span class="arr">›</span></span>
+            <span class="chip">A deck for my Q3 review, ~10 slides <span class="arr">›</span></span>
+            <span class="chip">A flashcard set from my notes <span class="arr">›</span></span>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+</body>
+</html>

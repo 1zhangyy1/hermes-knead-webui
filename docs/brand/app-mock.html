@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>捏 / Knead — app</title>
+<style>
+  :root{
+    --porcelain:#FCFBF8;      /* 瓷 — chat / content */
+    --clay:#F1ECE3;           /* 陶 — sidebar / chrome */
+    --clay-2:#ECE6DB;
+    --canvas:#FAF6EF;         /* product canvas surface */
+    --line:#E7E0D3; --line-soft:#EFE9DE;
+    --ink:#262019; --muted:#867B6C; --faint:#A89E8E;
+    --terra:#B0532B; --terra-ink:#974825;
+    --terra-tint:rgba(176,83,43,.10); --terra-wash:#F5EDE4;
+    --ui:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC",system-ui,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{font-family:var(--ui);color:var(--ink);background:var(--clay-2);line-height:1.5;
+       letter-spacing:-.003em;-webkit-font-smoothing:antialiased;font-size:14px}
+  button{font-family:inherit;cursor:pointer}
+
+  .app{height:100vh;display:grid;grid-template-rows:38px 1fr;background:var(--clay-2)}
+  /* titlebar */
+  .bar{display:flex;align-items:center;gap:8px;padding:0 14px;background:var(--clay);border-bottom:1px solid var(--line)}
+  .dots{display:flex;gap:7px}.dots i{width:11px;height:11px;border-radius:50%;background:#DCD4C6;display:block}
+  .bar .wm{margin-left:8px;font-size:12.5px;color:var(--muted);font-weight:500}
+
+  .body{display:grid;grid-template-columns:250px 1fr 360px;min-height:0}
+
+  /* ── sidebar: 陶 ── */
+  .side{background:var(--clay);border-right:1px solid var(--line);display:flex;flex-direction:column;min-height:0}
+  .brand{display:flex;align-items:center;gap:10px;padding:18px 16px 14px;font-weight:600;font-size:16px}
+  .seal{width:24px;height:24px;border-radius:50%;background:var(--terra)}
+  .side-pad{padding:0 12px}
+  .new{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;background:var(--terra);color:#fff;
+       border:none;font-size:13.5px;font-weight:500;padding:10px;border-radius:10px;letter-spacing:-.003em;
+       transition:background .15s, transform .1s}
+  .new:hover{background:var(--terra-ink)} .new:active{transform:translateY(1px)}
+  .cap{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);padding:20px 18px 8px}
+  .nav{padding:0 12px;display:flex;flex-direction:column;gap:1px}
+  .ai{display:flex;align-items:center;gap:10px;padding:8px 9px;border-radius:8px;font-size:14px;color:#5f5648}
+  .ai .ic{width:18px;height:18px;border-radius:5px;background:#DED7C9;flex:0 0 auto}
+  .ai:hover{background:rgba(120,85,55,.05)}
+  .ai.on{background:var(--porcelain);color:var(--ink);font-weight:500;box-shadow:inset 0 0 0 1px var(--line)}
+  .ai.on .ic{background:var(--terra)}
+  .tasks{margin-top:6px;padding:0 12px;overflow:auto;flex:1;min-height:0}
+  .task{padding:8px 9px;border-radius:8px;cursor:pointer}
+  .task:hover{background:rgba(120,85,55,.05)}
+  .task .tt{font-size:13.5px;color:#4f483d;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .task .tm{font-size:11.5px;color:var(--faint);margin-top:1px}
+
+  /* ── main chat: 瓷 ── */
+  .main{background:var(--porcelain);display:flex;flex-direction:column;min-height:0}
+  .chead{display:flex;align-items:center;gap:12px;padding:12px 22px;border-bottom:1px solid var(--line-soft)}
+  .crumb{font-weight:600;font-size:14.5px}
+  .chip{font-size:12px;font-weight:500;color:var(--terra-ink);background:var(--terra-tint);padding:3px 10px;border-radius:999px}
+  .chead .sp{flex:1}
+  .ghost{font-size:13px;color:#5f5648;background:none;border:1px solid var(--line);padding:6px 13px;border-radius:8px;transition:background .15s}
+  .ghost:hover{background:var(--clay)}
+
+  .msgs{flex:1;overflow:auto;padding:26px 22px;display:flex;flex-direction:column;gap:22px;min-height:0}
+  .m{display:flex;gap:11px;max-width:660px}
+  .av{width:24px;height:24px;border-radius:50%;flex:0 0 auto;margin-top:1px}
+  .av.a{background:var(--terra)} .av.u{background:#D8CFBE}
+  .m .txt{font-size:14.5px;color:#322b22}
+  .m.user{align-self:flex-end;flex-direction:row-reverse}
+  .m.user .txt{background:var(--terra-wash);padding:10px 14px;border-radius:13px 13px 4px 13px}
+  .m .txt .lab{font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:var(--faint);margin-bottom:5px}
+
+  .composer{padding:14px 22px 20px}
+  .well{display:flex;align-items:center;gap:12px;background:var(--porcelain);border:1px solid var(--line);
+        border-radius:13px;padding:12px 12px 12px 16px;transition:border-color .15s, box-shadow .15s}
+  .well:focus-within{border-color:#DBD0BD;box-shadow:0 0 0 3px var(--terra-wash)}
+  .well input{flex:1;border:none;outline:none;background:none;font:inherit;font-size:14.5px;color:var(--ink)}
+  .well input::placeholder{color:var(--faint)}
+  .send{width:34px;height:34px;border-radius:9px;border:none;background:var(--terra);color:#fff;font-size:16px;
+        display:grid;place-items:center;transition:background .15s,transform .1s}
+  .send:hover{background:var(--terra-ink)} .send:active{transform:translateY(1px)}
+
+  /* ── product canvas: chat_left_canvas_right ── */
+  .canvas{background:var(--canvas);border-left:1px solid var(--line);display:flex;flex-direction:column;min-height:0}
+  .ctool{display:flex;align-items:center;gap:10px;padding:12px 18px;border-bottom:1px solid var(--line-soft)}
+  .ctool .ct{font-size:13px;font-weight:600}
+  .ctool .cl{font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:var(--faint)}
+  .ctool .sp{flex:1}
+  .ico{width:28px;height:28px;border-radius:7px;border:1px solid var(--line);background:var(--porcelain);color:var(--muted);
+       display:grid;place-items:center;font-size:14px}
+  .cbody{padding:20px 18px;overflow:auto;flex:1;min-height:0}
+  .field{margin-bottom:16px}
+  .field .k{font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:var(--faint);margin-bottom:5px}
+  .field .v{font-size:14px;color:#322b22}
+  .ol{list-style:none;counter-reset:s}
+  .ol li{counter-increment:s;display:flex;gap:11px;padding:9px 0;border-top:1px solid var(--line-soft);font-size:13.5px}
+  .ol li:last-child{border-bottom:1px solid var(--line-soft)}
+  .ol li::before{content:counter(s);color:var(--terra);font-variant-numeric:tabular-nums;font-weight:600;min-width:14px}
+  .thumbs{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-top:6px}
+  .th{aspect-ratio:16/10;background:var(--porcelain);border:1px solid var(--line);border-radius:9px;padding:9px}
+  .th .b{height:6px;width:60%;background:#E7DECF;border-radius:3px;margin-bottom:5px}
+  .th .b2{height:5px;width:80%;background:#EFE8DB;border-radius:3px}
+
+  @media(max-width:980px){.body{grid-template-columns:1fr}.side,.canvas{display:none}}
+</style>
+</head>
+<body>
+  <div class="app">
+    <div class="bar"><span class="dots"><i></i><i></i><i></i></span><span class="wm">捏 — Knead</span></div>
+
+    <div class="body">
+      <!-- 陶 sidebar -->
+      <aside class="side">
+        <div class="brand"><span class="seal"></span> 捏</div>
+        <div class="side-pad"><button class="new">＋ New AI</button></div>
+        <div class="cap">Your AIs</div>
+        <nav class="nav">
+          <div class="ai on"><span class="ic"></span> Slide Designer</div>
+          <div class="ai"><span class="ic"></span> Pomodoro</div>
+          <div class="ai"><span class="ic"></span> General</div>
+          <div class="ai"><span class="ic"></span> Expenses</div>
+        </nav>
+        <div class="cap">Recent</div>
+        <div class="tasks">
+          <div class="task"><div class="tt">Q3 review deck</div><div class="tm">Slide Designer · 2h ago</div></div>
+          <div class="task"><div class="tt">June expenses</div><div class="tm">Expenses · yesterday</div></div>
+          <div class="task"><div class="tt">Reading list app</div><div class="tm">General · 3d ago</div></div>
+        </div>
+      </aside>
+
+      <!-- 瓷 chat -->
+      <main class="main">
+        <div class="chead">
+          <span class="crumb">Slide Designer</span>
+          <span class="chip">In use</span>
+          <span class="sp"></span>
+          <button class="ghost">Adjust</button>
+        </div>
+
+        <div class="msgs">
+          <div class="m user"><span class="av u"></span><div class="txt">A Q3 review deck for the leadership team, ~10 slides, calm and data-led.</div></div>
+          <div class="m"><span class="av a"></span><div class="txt"><div class="lab">Slide Designer</div>Got it. I drafted a 10-slide outline focused on results, with speaker notes for the numbers. The workspace on the right has the structure — tweak any line and I'll reflow.</div></div>
+          <div class="m user"><span class="av u"></span><div class="txt">Move the risks section before the roadmap.</div></div>
+          <div class="m"><span class="av a"></span><div class="txt"><div class="lab">Slide Designer</div>Done — risks now sits at slide 7, roadmap at 8. Speaker notes updated to match.</div></div>
+        </div>
+
+        <div class="composer">
+          <div class="well">
+            <input placeholder="Reply, or tell it what to change…" />
+            <button class="send" aria-label="Send">→</button>
+          </div>
+        </div>
+      </main>
+
+      <!-- product canvas -->
+      <aside class="canvas">
+        <div class="ctool">
+          <div><div class="cl">Workspace</div><div class="ct">Q3 review deck</div></div>
+          <span class="sp"></span>
+          <button class="ico" title="Regenerate">↻</button>
+          <button class="ico" title="More">⋯</button>
+        </div>
+        <div class="cbody">
+          <div class="field"><div class="k">Topic</div><div class="v">Q3 business review — results &amp; outlook</div></div>
+          <div class="field"><div class="k">Audience</div><div class="v">Leadership team · 10 slides · calm, data-led</div></div>
+          <div class="field"><div class="k">Outline</div>
+            <ol class="ol">
+              <li>Title &amp; quarter at a glance</li>
+              <li>Headline results</li>
+              <li>Revenue by segment</li>
+              <li>What drove the numbers</li>
+              <li>Customer &amp; retention</li>
+              <li>Risks &amp; watch-items</li>
+              <li>Roadmap next quarter</li>
+            </ol>
+          </div>
+          <div class="field"><div class="k">Slides</div>
+            <div class="thumbs">
+              <div class="th"><div class="b"></div><div class="b2"></div></div>
+              <div class="th"><div class="b"></div><div class="b2"></div></div>
+              <div class="th"><div class="b"></div><div class="b2"></div></div>
+              <div class="th"><div class="b"></div><div class="b2"></div></div>
+            </div>
+          </div>
+        </div>
+      </aside>
+    </div>
+  </div>
+</body>
+</html>
