@@ -119,7 +119,7 @@
 | 2.2 | 造/用拆上下文线（用户目标:可见的用/调边界 + 用态不乱改产品） | ✅ **实际交付=单会话**：前端 `canAdjustProduct` 开关翻 scope(任何产品可调),达成用户目标。后端双会话机制(2.2a/b/c:product_line + 按线工作区守卫)**已写好、单测通过、单会话下休眠无害**,留作"记忆串味/误改文件成为实际问题时"再激活的备用项。**2.2d 双会话切换 superseded**(降级为可选未来项,非遗漏);其结构性硬隔离的临时替代是 2.1 的 prompt 软指令 |
 | 3 | 二次元游戏产品进左侧栏 + 角色走 bridge context（验证第三层） | ✅ 代码完成:3.1 产品入栏(API真验)；3.2 canvas 发 context.character → 宿主 _productCanvasBridgeInstruction 注入"扮演该角色" → messages 送达 agent,契约一致；运行观察需浏览器+LLM |
 | 4 | 黄金路径真人验证：5 句话造产品，≥3 个当场能用 | 🟡 机械链路已端到端验通(2026-06-06,本地 3.11 venv + 真实 gpt-5.5):一句话→创建→init会话→生成→真 index.html→清理。"一句话→可用画布"成立。剩真人验收(多句话、≥3"愿再用")需你浏览器走查。**跑法:`HERMES_WEBUI_PORT=8799 apps/webui/.venv311/bin/python apps/webui/server.py`**(勿用 3.14 的 `.venv`) |
-| 5 | 内债清理（模型证稳后机械 sweep）：删内部词副标题、砍 ui_mode、新建拆出列表、E1 命名统一、bridge origin 校验 | 缓做 |
+| 5 | 内债清理（模型证稳后机械 sweep）：删内部词副标题、砍 ui_mode、新建拆出列表、E1 命名统一、bridge origin 校验 | 🟡 部分:✅ bridge 安全边界(改 `event.source` 校验,因画布是 sandbox/null-origin)、✅ 删内部词(画布→界面,全量 sweep)。**HOLD:砍 ui_mode / E1 命名统一 / 巨型文件拆分**——均为铁律③点名的纯内部重构,且阶段 4 浏览器验证未做、无冒烟测试兜底,留到模型证稳后再碰 |
 | 6 | 工程健康（按需）：产品层补测试、并发竞态、巨型文件、i18n | 6.1 产品 scope/line 单测 ✅(24/24,tests/test_product_scope_lines.py);其余背景 |
 | 7 | **通用 AI 主动提议升格**：chat_only 用态聊到可复用工具时,回答末尾发 `[[NEXT_AI_SUGGEST_PRODUCT]]{title,prompt,type}[[/...]]` marker | ✅ 后端(product_ephemeral_prompt 注入协议 + 3 单测)+ 前端(ui.js 解析/抹除 marker、渲染「做成专属产品」按钮 → createProductFromPrompt;messages.js 流式不闪现;style.css 按钮样式)均完成。marker 只在该轮最终助手消息落定后变按钮 |
 
