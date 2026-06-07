@@ -143,10 +143,10 @@ function _assistantCanvasLabel(object) {
   if (explicit) return explicit;
   const productType = String(object && (object.productType || object.product_type) || '').trim();
   if (productType === 'ppt') return 'PPT 工作区';
-  if (productType === 'image') return '图片画布';
+  if (productType === 'image') return '图片界面';
   if (productType === 'research') return '研究工作区';
   if (productType === 'data') return '数据工作区';
-  return '产品画布';
+  return '产品界面';
 }
 
 function _assistantDateToMs(value) {
@@ -170,7 +170,7 @@ function _productToCustomAssistant(product) {
     kind: product.kind || `custom-${product.id}`,
     title,
     avatar: product.avatar || '',
-    desc: product.desc || '按照你描述的职责处理任务，需要时生成自己的产品画布。',
+    desc: product.desc || '按照你描述的职责处理任务，需要时生成自己的产品界面。',
     placeholder: product.placeholder || starterKit.placeholder,
     suggestions: Array.isArray(product.suggestions) && product.suggestions.length ? product.suggestions : starterKit.suggestions,
     sourcePrompt,

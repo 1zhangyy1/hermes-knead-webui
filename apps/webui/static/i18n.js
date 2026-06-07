@@ -573,7 +573,7 @@ const LOCALES = {
     project_name_prompt: '项目名称：',
     // Sidebar & Tabs
     tab_chat: '任务入口',
-    product_ui_title: '产品画布',
+    product_ui_title: '产品界面',
     tab_settings: '设置',
     new_conversation: '新任务',
     filter_conversations: '搜索任务…',
@@ -6712,7 +6712,7 @@ const LOCALES = {
     login_conn_failed: '连接失败',
     // sidebar & navigation
     tab_chat: '任务入口',
-    product_ui_title: '产品画布',
+    product_ui_title: '产品界面',
     tab_settings: '设置',
 
     logs_file: '文件',
@@ -6767,7 +6767,7 @@ const LOCALES = {
     clear_conversation_btn_tooltip: '清空当前任务的所有消息',
     editing: '编辑中',
     empty_title: '我们今天要做什么？',
-    empty_subtitle: '先选一个 AI 产品开始任务；反复出现的工作，会逐步沉淀成它自己的产品画布。',
+    empty_subtitle: '先选一个 AI 产品开始任务；反复出现的工作，会逐步沉淀成它自己的产品界面。',
     cancel: '取消',
     loading: '加载中…',
     create_job: '创建任务',

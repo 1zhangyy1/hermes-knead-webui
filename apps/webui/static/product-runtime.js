@@ -45,12 +45,12 @@ function _shouldInitializeProductUiForMessage(object) {
 
 function _assistantProductInitTaskTitle(object = _assistantObject()) {
   const title = object && object.title ? String(object.title).trim() : '这个 AI 产品';
-  return `生成${title}产品画布`.slice(0, 64);
+  return `生成${title}产品界面`.slice(0, 64);
 }
 
 function _assistantProductInitUserMessage(object = _assistantObject()) {
   const title = object && object.title ? String(object.title).trim() : '这个 AI 产品';
-  return `开始生成「${title}」的第一版产品画布，先做一个简单可用的版本。`;
+  return `开始生成「${title}」的第一版产品界面，先做一个简单可用的版本。`;
 }
 
 function _currentSessionMatchesProduct(object) {
@@ -424,7 +424,7 @@ async function _startProductInitializationTask(assistant, sourcePrompt) {
     await _setProductUiStatus(assistant, 'failed', {persist: true});
     openAssistantHome(assistant.kind);
     await refreshCurrentProductPreview({silent:true, reason:'product-init-error'});
-    if (typeof showToast === 'function') showToast(`首次生成产品画布失败：${err && err.message || err}`, 3600, 'error');
+    if (typeof showToast === 'function') showToast(`首次生成产品界面失败：${err && err.message || err}`, 3600, 'error');
     return false;
   }
 }
@@ -523,32 +523,32 @@ function _syncProductPreviewState(statusData = {}, object = _assistantObject()) 
   state.hidden = false;
   if (uiStatus === 'generating') {
     state.classList.add('is-generating');
-    if (kicker) kicker.textContent = '产品画布';
-    if (title) title.textContent = '正在生成第一版产品画布';
+    if (kicker) kicker.textContent = '产品界面';
+    if (title) title.textContent = '正在生成第一版产品界面';
     if (desc) desc.textContent = 'Agent 正在写这个产品的 index.html、style.css 和 app.js；完成后右侧会自动刷新。';
     if (action) action.hidden = true;
     return false;
   }
   if (uiStatus === 'failed') {
     state.classList.add('is-failed');
-    if (kicker) kicker.textContent = '产品画布';
-    if (title) title.textContent = '产品画布生成失败';
+    if (kicker) kicker.textContent = '产品界面';
+    if (title) title.textContent = '产品界面生成失败';
     if (desc) desc.textContent = failureMessage
-      ? `${failureMessage} 可以直接重试，或继续说明你想让这个产品画布怎么工作。`
-      : '可以继续对话让它重试，或直接说明你想让这个产品画布长什么样。';
+      ? `${failureMessage} 可以直接重试，或继续说明你想让这个产品界面怎么工作。`
+      : '可以继续对话让它重试，或直接说明你想让这个产品界面长什么样。';
     if (action) {
       action.hidden = false;
-      action.textContent = '重新生成产品画布';
+      action.textContent = '重新生成产品界面';
     }
     return false;
   }
   state.classList.add('is-empty');
-  if (kicker) kicker.textContent = '产品画布';
-  if (title) title.textContent = '这个 AI 产品还没有产品画布';
-  if (desc) desc.textContent = '继续对话，让它生成第一版产品画布。对话仍然是主入口。';
+  if (kicker) kicker.textContent = '产品界面';
+  if (title) title.textContent = '这个 AI 产品还没有产品界面';
+  if (desc) desc.textContent = '继续对话，让它生成第一版产品界面。对话仍然是主入口。';
   if (action) {
     action.hidden = false;
-    action.textContent = '生成产品画布';
+    action.textContent = '生成产品界面';
   }
   return false;
 }
@@ -557,12 +557,12 @@ async function requestCurrentProductUiGeneration() {
   const object = _assistantObject();
   if (!object || !object.productId) return false;
   if (typeof S !== 'undefined' && (S.busy || S.activeStreamId)) {
-    if (typeof showToast === 'function') showToast('当前任务还在运行，完成后再生成产品画布');
+    if (typeof showToast === 'function') showToast('当前任务还在运行，完成后再生成产品界面');
     return false;
   }
   const prompt = object.sourcePrompt
-    ? `请重新生成「${object.title || '这个 AI 产品'}」的产品画布。原始需求：${object.sourcePrompt}`
-    : `请为「${object.title || '这个 AI 产品'}」生成第一版产品画布。产品画布要服务它的真实任务，不要写成介绍页。`;
+    ? `请重新生成「${object.title || '这个 AI 产品'}」的产品界面。原始需求：${object.sourcePrompt}`
+    : `请为「${object.title || '这个 AI 产品'}」生成第一版产品界面。产品界面要服务它的真实任务，不要写成介绍页。`;
   try {
     const generationScope = _productUiGenerationScopeForObject(object);
     await _setProductUiStatus(object, 'generating', {persist: true});
@@ -600,7 +600,7 @@ async function requestCurrentProductUiGeneration() {
   } catch (err) {
     await _setProductUiStatus(object, 'failed', {persist: true});
     await refreshCurrentProductPreview({silent:true, reason:'manual-product-generation-error'});
-    if (typeof showToast === 'function') showToast(`生成产品画布失败：${err && err.message || err}`, 3600, 'error');
+    if (typeof showToast === 'function') showToast(`生成产品界面失败：${err && err.message || err}`, 3600, 'error');
     return false;
   }
 }
@@ -689,7 +689,7 @@ async function refreshCurrentProductPreview(options = {}) {
   const canvasLabel = typeof _assistantCanvasLabel === 'function' ? _assistantCanvasLabel(object) : '';
   _activeProductPreview = {
     id: `product:${productId}`,
-    name: canvasLabel || (object.title || '产品画布'),
+    name: canvasLabel || (object.title || '产品界面'),
     preview_url: nextPreviewUrl,
     product_preview: true,
     product_id: productId,

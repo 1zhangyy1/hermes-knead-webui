@@ -82,29 +82,29 @@ function _productUiStatusCard(phase, context = {}, options = {}) {
     {
       label:'状态',
       value:phase === 'running'
-        ? (isInit ? '正在生成第一版产品画布' : '正在改产品画布')
+        ? (isInit ? '正在生成第一版产品界面' : '正在改产品界面')
         : phase === 'failed'
           ? '生成失败'
-          : (isInit ? '第一版产品画布已生成' : '新版产品画布已生成')
+          : (isInit ? '第一版产品界面已生成' : '新版产品界面已生成')
     }
   ];
   if (phase === 'failed' && failureReason) rows.push({label:'原因', value:failureReason});
   const actions = [];
-  if (phase === 'failed') actions.push({id:'product-regenerate', label:'重新生成产品画布'});
+  if (phase === 'failed') actions.push({id:'product-regenerate', label:'重新生成产品界面'});
   if (!isInit && phase === 'done' && options.canRollback) actions.push({id:'product-rollback', label:'恢复上一版'});
   return {
     title: phase === 'running'
-      ? (isInit ? '正在生成这个 AI 产品的第一版产品画布' : '正在改这个 AI 产品的产品画布')
+      ? (isInit ? '正在生成这个 AI 产品的第一版产品界面' : '正在改这个 AI 产品的产品界面')
       : phase === 'failed'
-        ? (isInit ? '第一版产品画布生成失败' : '产品画布改造失败')
-        : (isInit ? '第一版产品画布已生成' : '已生成新版产品画布'),
+        ? (isInit ? '第一版产品界面生成失败' : '产品界面改造失败')
+        : (isInit ? '第一版产品界面已生成' : '已生成新版产品界面'),
     subtitle: phase === 'running'
-      ? (isInit ? '继续在这里聊天，右侧会自动出现这个产品的产品画布。' : '继续在这里聊天，右侧产品画布会更新。')
+      ? (isInit ? '继续在这里聊天，右侧会自动出现这个产品的产品界面。' : '继续在这里聊天，右侧产品界面会更新。')
       : phase === 'failed'
         ? (failureReason
-          ? `${failureReason} 可以重新生成产品画布，或继续说明你想让这个产品怎么工作。`
-          : (isInit ? '可以重新生成产品画布，或继续说明你想让这个产品怎么工作。' : '可以重新生成产品画布，或直接说想让它怎么改。'))
-        : (isInit ? '右侧已刷新，可以继续用普通聊天让它完成任务或调整产品画布。' : (options.canRollback ? '右侧已刷新，可恢复上一版。' : '右侧已刷新，可以继续聊天调整。')),
+          ? `${failureReason} 可以重新生成产品界面，或继续说明你想让这个产品怎么工作。`
+          : (isInit ? '可以重新生成产品界面，或继续说明你想让这个产品怎么工作。' : '可以重新生成产品界面，或直接说想让它怎么改。'))
+        : (isInit ? '右侧已刷新，可以继续用普通聊天让它完成任务或调整产品界面。' : (options.canRollback ? '右侧已刷新，可恢复上一版。' : '右侧已刷新，可以继续聊天调整。')),
     rows,
     actions
   };
@@ -138,7 +138,7 @@ function _appendProductUiStatusCard(phase, context = {}, options = {}) {
 
 function _productFailureInfoFromAppError(payload = {}, label = '') {
   const type = String(payload && payload.type || '').trim();
-  const rawMessage = String(payload && payload.message || label || '产品画布生成失败').trim();
+  const rawMessage = String(payload && payload.message || label || '产品界面生成失败').trim();
   if (type === 'no_response' || type === 'silent_failure') {
     return {
       type: 'no_response',
@@ -155,7 +155,7 @@ function _productFailureInfoFromAppError(payload = {}, label = '') {
     return {type, message: '当前模型服务暂时不可用或额度不足，请稍后重试。'};
   }
   if (type === 'cancelled' || type === 'interrupted') {
-    return {type, message: '这次生成被中断，还没有完成产品画布。'};
+    return {type, message: '这次生成被中断，还没有完成产品界面。'};
   }
   return {type: type || 'generation_failed', message: rawMessage};
 }
@@ -2144,7 +2144,7 @@ function attachLiveStream(activeSid, streamId, uploaded=[], options={}){
             window.notifyProductCanvasAgentError({sessionId:activeSid,error:d.message||label});
           }
         }catch(_){
-          productUiFailureInfo={type:'generation_failed',message:'产品画布生成失败，可以重试。'};
+          productUiFailureInfo={type:'generation_failed',message:'产品界面生成失败，可以重试。'};
           S.messages.push({role:'assistant',content:'**Error:** An error occurred. Check server logs.'});
           if(typeof window.notifyProductCanvasAgentError==='function'){
             window.notifyProductCanvasAgentError({sessionId:activeSid,error:'An error occurred. Check server logs.'});
