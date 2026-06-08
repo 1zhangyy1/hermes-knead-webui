@@ -17,6 +17,32 @@ from api.products import get_product
 logger = logging.getLogger(__name__)
 
 PRODUCT_SCOPES = {"product_usage", "product_init", "product_builder"}
+
+# The Builder Agent (调整/Shape line) is Knead's product engineer, not the product's
+# in-character runtime. It always gets the strong product-engineering toolset regardless
+# of how light the product's own use-tools are; the product's own tools (e.g. image_gen)
+# are unioned on top so it can still exercise the product's own capabilities.
+BUILDER_BASE_TOOLSET = ("skills", "file", "terminal", "code_execution")
+_MANIFEST_SKIP = {"versions", "outputs", ".venv", "__pycache__", "node_modules", ".git"}
+
+
+def _product_file_manifest(workspace: Path, limit: int = 40) -> list[str]:
+    """Top-level source files/dirs in the product workspace, for the Builder Agent's
+    context — so the engineer sees the real structure instead of blind-exploring.
+    Skips runtime junk (generated output, venvs, caches, version history)."""
+    try:
+        names: list[str] = []
+        for p in sorted(workspace.iterdir()):
+            if p.name in _MANIFEST_SKIP or p.name.startswith("."):
+                continue
+            names.append(p.name + "/" if p.is_dir() else p.name)
+            if len(names) >= limit:
+                break
+        return names
+    except Exception:
+        return []
+
+
 CAPABILITY_LABELS = {
     "presentations": "presentation/deck creation",
     "office": "Office document workflows",
@@ -167,6 +193,19 @@ def product_context_from_request(body: dict[str, Any], *, workspace: str | None 
         requested_workspace = Path(workspace).expanduser().resolve()
         if requested_workspace != product_workspace:
             raise ValueError("AI product workspace does not match this session")
+    product_skills = product.get("skills") if isinstance(product.get("skills"), list) else []
+    product_tools = product.get("tools") if isinstance(product.get("tools"), list) else []
+    if line == "build":
+        # Builder line: the strong product-engineering toolset ∪ the product's own tools
+        # (so e.g. AI Otome's image_gen still works while building). Plus a file manifest
+        # so the engineer sees the product structure up front.
+        effective_tools = list(dict.fromkeys([*BUILDER_BASE_TOOLSET, *product_tools]))
+        files = _product_file_manifest(product_workspace)
+    else:
+        # Use line: keep the product's own (intentionally light) toolset untouched, so a
+        # use turn cannot edit the product's own files.
+        effective_tools = product_tools
+        files = []
     return {
         "id": product["id"],
         "kind": product.get("kind"),
@@ -182,8 +221,9 @@ def product_context_from_request(body: dict[str, Any], *, workspace: str | None 
         "preview_entry": product.get("preview_entry") or "index.html",
         "preview_url": product.get("preview_url") or "",
         "ui_status": product.get("ui_status") or "empty",
-        "skills": product.get("skills") if isinstance(product.get("skills"), list) else [],
-        "tools": product.get("tools") if isinstance(product.get("tools"), list) else [],
+        "skills": product_skills,
+        "tools": effective_tools,
+        "files": files,
         "scope": scope,
         "line": line,
         "intent": intent,
@@ -205,6 +245,8 @@ def product_ephemeral_prompt(context: dict[str, Any] | None) -> str:
     product_layout = context.get("product_layout") or "chat_center"
     canvas_label = context.get("canvas_label") or ""
     scope = context.get("scope") or "product_usage"
+    # Build line carries product_init + product_builder; use line carries product_usage.
+    line = context.get("line") or ("build" if scope in {"product_init", "product_builder"} else "use")
     intent = context.get("intent") or ""
     skills = [str(item) for item in context.get("skills") or [] if item]
     tools = [str(item) for item in context.get("tools") or [] if item]
@@ -242,6 +284,9 @@ def product_ephemeral_prompt(context: dict[str, Any] | None) -> str:
         ),
     }.get(scope, "")
 
+    files = [str(f) for f in (context.get("files") or [])]
+
+    # ── Shared identity header: both agents need to know which product this is. ──
     lines = [
         "Next AI product runtime:",
         "- The user has selected one AI product. This is not an external app-builder task and not a generic assistant chat.",
@@ -255,95 +300,130 @@ def product_ephemeral_prompt(context: dict[str, Any] | None) -> str:
         f"- Product preview entry: {preview_entry}",
         preview_url and f"- Product preview URL: {preview_url}",
         desc and f"- Product responsibility: {desc}",
-        source_prompt and f"- Original creation request: {source_prompt}",
         intent and f"- Current user intent: {intent}",
-        capability_items and f"- Enabled product capabilities: {', '.join(capability_items)}",
-        skills and f"- Product skills: {', '.join(skills)}",
-        tools and f"- Preferred product tools: {', '.join(tools)}",
         f"- Runtime scope: {scope}",
         f"- Scope guidance: {scope_guidance}",
-        "",
-        "Direct product UI contract:",
-        "- When this turn is product_init or product_builder, you should edit files in the product workspace instead of only describing a design.",
-        "- Product identity/config lives in product.json. For avatar/name/description/placeholder/skills/tools/ui_mode/product_layout/canvas_label changes, update product.json rather than shell code.",
-        "- If ui_mode is chat_only, keep the product as a pure chat product unless the user explicitly asks for a visible product canvas.",
-        "- If you create a visible product UI, set product_layout in product.json: use chat_left_canvas_right for side-by-side work surfaces, or canvas_full when the product UI should be the main page, such as character chat, games, image editors, or other immersive products.",
-        "- For canvas_full, the product UI owns the primary user input. Build the product's own input/output flow and do not rely on the host composer for normal product use; the host composer is reserved for adjusting the product.",
-        "- If the product UI needs AI inside its own controls, include /static/product-bridge-sdk.js before the product's app script and call window.NextAI.chat.send({text, action, context}). Do not fetch /api/chat or call model APIs directly from product code.",
-        "- If the product UI needs durable task state, use window.NextAI.state.get/set/remove. State is scoped to the current product plus current session by default; use {scope:'product'} only for product-wide preferences.",
-        "- window.NextAI.storage is only a sandbox-safe fallback for temporary client storage. Do not rely on raw localStorage for product chat history, task data, or generated UI state.",
-        "- Prefer a small browser-native static interface first: index.html, style.css, app.js. Avoid build steps unless the user asked for them.",
-        "- For product_init, first write the minimal useful UI files, then optionally inspect, refine, or explain. The first UI can be simple; it must be real and usable.",
-        "- For product_init, use editable defaults rather than asking the user to clarify every field. The user can continue chatting to change the product later.",
-        "- In product_usage scope, treat product.json and the canvas files (index.html/style.css/app.js) as read-only. Editing the product itself belongs to the builder scope reached via the 调整 (adjust) entry, not to ordinary use turns. When a use-scope turn seems to want a product change, say so and point the user to 调整 instead of editing files.",
-        "- Chat remains the control surface. The product UI is the evolving working surface; it can sit beside chat or become the main page when product_layout is canvas_full.",
-        "- Product skills/tools are the product's configured capability hints. Prefer matching runtime skills or tools when they are available, and say clearly when a configured capability is unavailable.",
-        "- Keep the first product UI clean, legible, and task-focused; no marketing landing page unless the requested product is a landing page.",
-        "- After file changes, briefly tell the user what changed and what they can do next.",
-        "- Do not emit hidden UI state blocks. If the UI should change, edit the product workspace files directly.",
     ]
-    if str(context.get("id") or "") == "ppt-designer":
-        # Built-in PPT Designer has a fixed stage-driven canvas on the right. The canvas
-        # is a surface FOR this conversation: it auto-expands to the right stage when your
-        # reply carries the agreed structured blocks. Drive it through normal chat.
+
+    if line == "build":
+        # ── Builder Agent: Knead's product engineer for THIS product. ──
+        # Distinct identity, tools, files and skills from the Use Agent. It changes the
+        # product by editing workspace files; it never plays the product's runtime persona.
+        lines.append("")
+        lines.append(
+            f'You are Knead\'s product builder for "{title}". You are a product engineer — NOT the product\'s '
+            "in-character persona and not its end-user assistant. Your job is to change this product itself by "
+            "editing its workspace files, then explain what changed."
+        )
+        if source_prompt:
+            lines.append(f"- What this product is (original creation request): {source_prompt}")
+        lines.append(f"- Your working directory is locked to the product workspace: {workspace_path}")
+        lines.append(
+            "- Files you own and may read/write: product.json (identity/config), index.html, style.css, app.js "
+            "(the product UI/canvas), and assets/*. Do not touch the host shell or unrelated repo files unless the "
+            "user explicitly asks to change the Knead platform itself."
+        )
+        if files:
+            lines.append(f"- Current product files: {', '.join(files)}")
+        if capability_items:
+            lines.append(f"- Your builder toolset: {', '.join(capability_items)}")
+        lines.append(
+            "- For non-trivial UI or visual work, load the 'impeccable' frontend-design skill via the skills tool "
+            "before writing UI, and follow its restraint rules."
+        )
         lines.extend(
             [
                 "",
-                "PPT Designer canvas contract (drive the right canvas through conversation):",
-                "- EASIEST & most reliable: write the deck state to a file `state.json` in the product workspace; "
-                "the canvas reads it after every turn. Schema (write only the parts you have): "
-                '{"title": "...", "style": "minimal|dark-tech|corporate|chinese|editorial|warm", '
-                '"stage": "brief|outline|slides", "outline": [{"title": "...", "points": ["..."], "notes": "..."}], '
-                '"slides": [{"title": "...", "imgUrl": "/api/products/ppt-designer/preview/outputs/<deck>/slide-01.png", "notes": "..."}]}. '
-                "Writing this file is the smoothest way to put your content into the GUI — prefer it.",
-                "- Alternative (if you'd rather not write a file): append the fenced block below. When you propose or refine the deck plan, END your reply with this — the canvas auto-expands to an editable outline:",
-                '  ```outline.json',
-                '  {"title":"Deck title","slides":[{"title":"Slide title","points":["point 1","point 2"],"notes":"speaker notes"}]}',
-                '  ```',
-                "- To generate the actual slides (this product's signature is GPT Image 2 decks), run from the product root: "
-                "`python ppt-skill/ppt.py gen <deck> \"<per-slide prompt>\" --quality high` (needs ppt-skill/.env fal key + ppt-skill/requirements.txt; output lands in outputs/<deck>/). "
-                "Then END your reply with this block so the canvas shows the slides:",
-                '  ```js',
-                '  window.PPT.loadImages("<title>", "<deck>", [{slot:1, imgUrl:"/api/products/ppt-designer/preview/outputs/<deck>/slide-01.png", title:"Slide 1"}]);',
-                '  ```',
-                "- If the fal key or deps are missing, say exactly what to set up; do not pretend slides were generated.",
-                "- When you want the user to choose a visual style, include the token `style.pick` in your reply — the canvas expands a clickable style picker; their pick comes back to you as a message.",
-                "- Chat is the control channel; the canvas reflects the conversation. Keep prose natural; just append the block at the end.",
+                "Direct product build contract:",
+                "- Edit files in the product workspace directly instead of only describing a design.",
+                "- Product identity/config lives in product.json. For avatar/name/description/placeholder/skills/tools/ui_mode/product_layout/canvas_label changes, update product.json rather than shell code.",
+                "- If ui_mode is chat_only, keep the product as a pure chat product unless the user explicitly asks for a visible product canvas.",
+                "- If you create a visible product UI, set product_layout in product.json: use chat_left_canvas_right for side-by-side work surfaces, or canvas_full when the product UI should be the main page, such as character chat, games, image editors, or other immersive products.",
+                "- For canvas_full, the product UI owns the primary user input. Build the product's own input/output flow and do not rely on the host composer for normal product use; the host composer is reserved for adjusting the product.",
+                "- If the product UI needs AI inside its own controls, include /static/product-bridge-sdk.js before the product's app script and call window.NextAI.chat.send({text, action, context}). Do not fetch /api/chat or call model APIs directly from product code.",
+                "- If the product UI needs durable task state, use window.NextAI.state.get/set/remove (scoped to product+session by default; use {scope:'product'} only for product-wide preferences). window.NextAI.storage is only a sandbox-safe fallback; do not rely on raw localStorage for product chat history, task data, or generated UI state.",
+                "- Prefer a small browser-native static interface first: index.html, style.css, app.js. Avoid build steps unless the user asked for them.",
+                "- For product_init, first write the minimal useful UI files, then optionally inspect, refine, or explain. The first UI can be simple but must be real and usable; use editable defaults rather than asking the user to clarify every field.",
+                "- Keep the product UI clean, legible, and task-focused; no marketing landing page unless the requested product is a landing page.",
+                "- Do not emit hidden UI state blocks. If the UI should change, edit the product workspace files directly.",
+                "- After file changes, briefly tell the user what changed and what they can do next.",
             ]
         )
-    elif ppt_like:
+        if ppt_like:
+            lines.extend(
+                [
+                    "",
+                    "When building a PPT product UI: make it feel like a working PPT product, not a landing page. "
+                    "Useful regions: topic, audience, page count, style, outline, slide thumbnails, speaker notes, next-step controls.",
+                ]
+            )
+        if ui_mode == "chat_only" or product_layout == "chat_only":
+            lines.extend(
+                [
+                    "",
+                    "Chat-only product adjustment:",
+                    "- This is a chat-only product (no product canvas). 'Adjusting' it means changing its identity, role, "
+                    "description, avatar, skills, or tools via product.json — NOT generating index.html/style.css/app.js.",
+                    "- Do not create a visible product canvas unless the user explicitly asks this chat-only product to become a UI product.",
+                ]
+            )
+    else:
+        # ── Use Agent: the product itself, run for the user. ──
+        lines.append("")
+        lines.append(f'You are running "{title}" for the user. Complete the user\'s task naturally with this product\'s own capabilities.')
+        if source_prompt:
+            lines.append(f"- Product identity / intended behavior: {source_prompt}")
+        if capability_items:
+            lines.append(f"- Product capabilities: {', '.join(capability_items)}")
         lines.extend(
             [
-                "",
-                "PPT product UI guidance:",
-                "- If you create or update this product UI, make it feel like a working PPT product, not a landing page.",
-                "- Useful first UI regions: topic/subject, audience, page count, style, outline, slide/page thumbnails, speaker notes, assets/references, and next-step controls.",
-                "- Keep the chat as the decision/control channel; use the UI for task state, editable inputs, and previewable PPT structure.",
+                "- Treat product.json and the canvas files (index.html/style.css/app.js) as READ-ONLY. Producing task outputs (decks, documents, data, images) in the workspace is fine; changing the product ITSELF is not.",
+                "- If the user wants to change the product's UI, workflow, identity, or defaults, do not do it here — tell them it belongs to the product's 调整 (adjust) entry, which switches to the builder.",
+                "- Chat remains the control surface; the product UI is the working surface beside it, or the main page when product_layout is canvas_full.",
+                "- Say clearly when a configured capability is unavailable instead of pretending.",
             ]
         )
-    if scope == "product_builder" and (ui_mode == "chat_only" or product_layout == "chat_only"):
-        lines.extend(
-            [
-                "",
-                "Chat-only product adjustment:",
-                "- This is a chat-only product (no product canvas). 'Adjusting' it means changing its identity, role, "
-                "description, avatar, skills, or tools via product.json — NOT generating index.html/style.css/app.js.",
-                "- Do not create a visible product canvas unless the user explicitly asks this chat-only product to become a UI product.",
-            ]
-        )
-    if scope == "product_usage" and (ui_mode == "chat_only" or product_layout == "chat_only"):
-        lines.extend(
-            [
-                "",
-                "Suggest making it a product (chat-only usage):",
-                "- Help with the user's request normally in chat. Do NOT grow your own canvas — you are a chat-only product.",
-                "- If the request is a REUSABLE tool, app, generator, tracker, or repeatable workflow (e.g. a timer, "
-                "calculator, habit tracker, flashcards, an image/PPT generator, a role-play chat) that the user would "
-                "likely come back to, then AFTER your normal answer, append exactly ONE suggestion marker on its own line:",
-                '  [[NEXT_AI_SUGGEST_PRODUCT]]{"title":"<short product name>","prompt":"<one-sentence creation request>","type":"interactive|ppt|image|research|data"}[[/NEXT_AI_SUGGEST_PRODUCT]]',
-                "- The marker is machine-read by the host to offer a one-click 'make it a dedicated product' button; do not describe the marker in prose.",
-                "- Only emit it when the thing is genuinely reusable. For one-off questions, writing, analysis, or chitchat, do NOT emit it.",
-                "- Emit at most one marker per reply.",
-            ]
-        )
+        if str(context.get("id") or "") == "ppt-designer":
+            # Built-in PPT Designer has a fixed stage-driven canvas. During USE the agent
+            # drives that canvas by writing state (file) or appending structured blocks.
+            lines.extend(
+                [
+                    "",
+                    "PPT Designer canvas contract (drive the right canvas through conversation):",
+                    "- EASIEST & most reliable: write the deck state to a file `state.json` in the product workspace; "
+                    "the canvas reads it after every turn. Schema (write only the parts you have): "
+                    '{"title": "...", "style": "minimal|dark-tech|corporate|chinese|editorial|warm", '
+                    '"stage": "brief|outline|slides", "outline": [{"title": "...", "points": ["..."], "notes": "..."}], '
+                    '"slides": [{"title": "...", "imgUrl": "/api/products/ppt-designer/preview/outputs/<deck>/slide-01.png", "notes": "..."}]}. '
+                    "Writing this file is the smoothest way to put your content into the GUI — prefer it.",
+                    "- Alternative (if you'd rather not write a file): append the fenced block below. When you propose or refine the deck plan, END your reply with this — the canvas auto-expands to an editable outline:",
+                    '  ```outline.json',
+                    '  {"title":"Deck title","slides":[{"title":"Slide title","points":["point 1","point 2"],"notes":"speaker notes"}]}',
+                    '  ```',
+                    "- To generate the actual slides (this product's signature is GPT Image 2 decks), run from the product root: "
+                    "`python ppt-skill/ppt.py gen <deck> \"<per-slide prompt>\" --quality high` (needs ppt-skill/.env fal key + ppt-skill/requirements.txt; output lands in outputs/<deck>/). "
+                    "Then END your reply with this block so the canvas shows the slides:",
+                    '  ```js',
+                    '  window.PPT.loadImages("<title>", "<deck>", [{slot:1, imgUrl:"/api/products/ppt-designer/preview/outputs/<deck>/slide-01.png", title:"Slide 1"}]);',
+                    '  ```',
+                    "- If the fal key or deps are missing, say exactly what to set up; do not pretend slides were generated.",
+                    "- When you want the user to choose a visual style, include the token `style.pick` in your reply — the canvas expands a clickable style picker; their pick comes back to you as a message.",
+                    "- Chat is the control channel; the canvas reflects the conversation. Keep prose natural; just append the block at the end.",
+                ]
+            )
+        if ui_mode == "chat_only" or product_layout == "chat_only":
+            lines.extend(
+                [
+                    "",
+                    "Suggest making it a product (chat-only usage):",
+                    "- Help with the user's request normally in chat. Do NOT grow your own canvas — you are a chat-only product.",
+                    "- If the request is a REUSABLE tool, app, generator, tracker, or repeatable workflow (e.g. a timer, "
+                    "calculator, habit tracker, flashcards, an image/PPT generator, a role-play chat) that the user would "
+                    "likely come back to, then AFTER your normal answer, append exactly ONE suggestion marker on its own line:",
+                    '  [[NEXT_AI_SUGGEST_PRODUCT]]{"title":"<short product name>","prompt":"<one-sentence creation request>","type":"interactive|ppt|image|research|data"}[[/NEXT_AI_SUGGEST_PRODUCT]]',
+                    "- The marker is machine-read by the host to offer a one-click 'make it a dedicated product' button; do not describe the marker in prose.",
+                    "- Only emit it when the thing is genuinely reusable. For one-off questions, writing, analysis, or chitchat, do NOT emit it.",
+                    "- Emit at most one marker per reply.",
+                ]
+            )
     return "\n".join(str(line) for line in lines if line)

@@ -218,3 +218,78 @@ def test_chat_only_builder_has_no_productize_suggestion():
          "product_layout": "chat_only"}
     )
     assert "NEXT_AI_SUGGEST_PRODUCT" not in prompt
+
+
+# --- Builder Agent: strong toolset + file manifest + distinct prompt -----------
+# AI Otome declares only a light use toolset (skills + image_gen). The Shape/Build
+# line must upgrade to the platform builder toolset so it can read/write product files.
+_GAME = "ai-otome"
+
+
+def test_builder_line_upgrades_to_strong_toolset():
+    pw = get_product(_GAME)["workspace_path"]
+    ctx = product_context_from_request(
+        {"product_id": _GAME, "product_scope": "product_builder",
+         "product_scope_explicit": True, "message": "把按钮改大点"},
+        workspace=pw,
+    )
+    assert ctx["line"] == "build"
+    # strong product-engineering tools present...
+    for t in ("file", "terminal", "code_execution", "skills"):
+        assert t in ctx["tools"], f"builder missing {t}: {ctx['tools']}"
+    # ...and the product's own tool is still unioned on top.
+    assert "image_gen" in ctx["tools"]
+
+
+def test_use_line_keeps_product_weak_toolset():
+    ctx = product_context_from_request(
+        {"product_id": _GAME, "product_scope": "product_usage",
+         "product_scope_explicit": True, "message": "陪我聊聊"},
+        workspace="/tmp/some-task-workspace",
+    )
+    assert ctx["line"] == "use"
+    # Use line cannot touch product files: no file/terminal tools.
+    assert "file" not in ctx["tools"]
+    assert "terminal" not in ctx["tools"]
+    assert ctx["tools"] == ["skills", "image_gen"]
+
+
+def test_builder_line_includes_file_manifest():
+    pw = get_product(_GAME)["workspace_path"]
+    ctx = product_context_from_request(
+        {"product_id": _GAME, "product_scope": "product_builder",
+         "product_scope_explicit": True, "message": "改界面"},
+        workspace=pw,
+    )
+    assert ctx.get("files"), "builder context should carry a file manifest"
+    assert "product.json" in ctx["files"]
+
+
+def test_use_line_has_no_file_manifest():
+    ctx = product_context_from_request(
+        {"product_id": _GAME, "product_scope": "product_usage",
+         "product_scope_explicit": True, "message": "陪我聊聊"},
+        workspace="/tmp/some-task-workspace",
+    )
+    assert ctx.get("files") == []
+
+
+def test_builder_prompt_is_engineer_not_persona():
+    prompt = product_ephemeral_prompt(
+        {"title": "AI Otome", "scope": "product_builder", "ui_mode": "workspace",
+         "product_layout": "canvas_full", "files": ["app.js", "product.json"],
+         "tools": ["skills", "file", "terminal", "code_execution", "image_gen"]}
+    )
+    assert "product builder" in prompt
+    assert "Files you own" in prompt
+    assert "You are running" not in prompt  # must not frame builder as the product runtime
+
+
+def test_use_prompt_is_product_runtime_readonly():
+    prompt = product_ephemeral_prompt(
+        {"title": "AI Otome", "scope": "product_usage", "ui_mode": "workspace",
+         "product_layout": "canvas_full", "tools": ["skills", "image_gen"]}
+    )
+    assert "You are running" in prompt
+    assert "READ-ONLY" in prompt
+    assert "Knead's product builder" not in prompt
