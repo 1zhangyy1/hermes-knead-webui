@@ -1936,6 +1936,12 @@ function attachLiveStream(activeSid, streamId, uploaded=[], options={}){
               if(typeof window.broadcastAgentMessageToCanvas==='function') window.broadcastAgentMessageToCanvas(_bridgeContent);
             }
           }
+          // A build/adjust (Shape it) turn just edited the product's files — hot-reload the
+          // canvas in place so the change shows immediately. No server restart needed; the
+          // chat/session stays connected. (Use-line turns leave the canvas untouched.)
+          if(document.body.dataset.nextAiProductAdjust==='open' && typeof window.reloadActiveProductPreview==='function'){
+            window.reloadActiveProductPreview();
+          }
           if(isSessionViewed) _markSessionViewed(completedSid, completedSession.message_count ?? S.messages.length);
           syncTopbar();renderMessages({preserveScroll:true});
           if((shouldFollowOnDone||bridgeReplySent)&&typeof scrollToBottom==='function') scrollToBottom();

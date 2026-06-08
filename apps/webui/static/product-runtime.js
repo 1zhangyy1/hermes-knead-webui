@@ -757,3 +757,15 @@ async function refreshCurrentProductPreview(options = {}) {
 }
 
 window.refreshCurrentProductPreview = refreshCurrentProductPreview;
+
+// Hot-reload the active product canvas in place (NO server restart). Product files are
+// served no-store and the iframe URL is timestamp-busted, so re-setting src always
+// fetches the freshly-edited files while the rest of the app/session stays connected.
+function reloadActiveProductPreview() {
+  const frame = $('activeProductFrame');
+  const url = _activeProductPreview && _activeProductPreview.preview_url;
+  if (!frame || !url) return false;
+  frame.src = _withPreviewTimestamp(url);
+  return true;
+}
+window.reloadActiveProductPreview = reloadActiveProductPreview;
