@@ -40,8 +40,11 @@ products/custom-*/
 products/**/versions/
 experiments/generated/
 
-# Vendored third-party skill drops inside products (large, not source of truth)
-products/**/maxgpt_ppt_skill-main/
+# Product runtime junk: generated decks, secrets, venvs, caches (engine code itself IS tracked)
+products/**/outputs/
+products/**/.env
+products/**/.venv/
+products/**/__pycache__/
 
 # Generated demo/test artifacts from running products (not source)
 products/**/hermes_intro.*

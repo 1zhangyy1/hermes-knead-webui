@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AI Otome</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="otome-app" data-mood="curious" data-scene="rain">
+    <section class="stage" aria-label="Mira">
+      <div class="scene-glow" aria-hidden="true"></div>
+      <header class="topbar">
+        <div class="identity">
+          <img class="portrait-small" src="assets/mira.svg" alt="Mira">
+          <div>
+            <h1>Mira</h1>
+            <p>AI otome companion</p>
+          </div>
+        </div>
+        <div class="scene-chip" id="sceneChip">Rainy station</div>
+      </header>
+
+      <div class="character-wrap">
+        <img class="portrait" id="portrait" src="assets/mira.svg" alt="Mira character art">
+        <div class="mood-card">
+          <span>Mood</span>
+          <strong id="moodLabel">Curious</strong>
+        </div>
+      </div>
+
+      <section class="relationship" aria-label="Relationship">
+        <div>
+          <span>Bond</span>
+          <strong id="bondValue">18%</strong>
+        </div>
+        <div class="bond-track"><i id="bondBar"></i></div>
+        <button id="resetBtn" type="button">Reset story</button>
+      </section>
+    </section>
+
+    <section class="conversation" aria-label="Conversation">
+      <div class="conversation-head">
+        <div>
+          <h2>Tonight with Mira</h2>
+          <p id="sceneLine">Rain taps the glass roof. She notices you before you speak.</p>
+        </div>
+        <button id="imageBtn" type="button" title="Prepare a GPT Image 2 character prompt">Image prompt</button>
+      </div>
+
+      <div class="messages" id="messages" aria-live="polite"></div>
+      <div class="choices" id="choices"></div>
+
+      <form class="composer" id="composer">
+        <textarea id="input" rows="1" placeholder="Talk to Mira..." autocomplete="off"></textarea>
+        <button id="sendBtn" type="submit" aria-label="Send">↑</button>
+      </form>
+    </section>
+
+    <aside class="memory-panel" aria-label="Memory and state">
+      <section>
+        <h2>Memory</h2>
+        <ul id="memoryList"></ul>
+      </section>
+      <section>
+        <h2>Scenes</h2>
+        <div class="scene-list" id="sceneList"></div>
+      </section>
+      <section class="director-note">
+        <h2>AI loop</h2>
+        <p>Mira replies, updates mood, saves one memory when it matters, and offers the next gentle move.</p>
+      </section>
+    </aside>
+  </main>
+
+  <dialog id="imageDialog">
+    <form method="dialog" class="image-dialog">
+      <header>
+        <h2>GPT Image 2 prompt</h2>
+        <button type="submit" aria-label="Close">×</button>
+      </header>
+      <p>Use this to generate Mira’s first real character image, then replace <code>assets/mira.svg</code>.</p>
+      <textarea id="imagePrompt" rows="8" readonly></textarea>
+      <button id="copyPromptBtn" type="button">Copy prompt</button>
+    </form>
+  </dialog>
+
+  <script src="/static/product-bridge-sdk.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,22 @@
+{
+  "id": "ai-otome",
+  "kind": "ai-otome",
+  "title": "AI Otome",
+  "avatar": "♡",
+  "desc": "A single-character AI otome companion with memory, mood, affection, and choice-driven scenes.",
+  "source_prompt": "Built-in AI product: AI Otome. It is a single-character companion experience. The product UI owns the use flow. AI drives dialogue, mood, affection, memories, choices, and scene changes.",
+  "product_type": "interactive",
+  "ui_mode": "workspace",
+  "product_layout": "canvas_full",
+  "canvas_label": "Otome companion",
+  "preview_entry": "index.html",
+  "ui_status": "ready",
+  "skills": [
+    "imagegen"
+  ],
+  "tools": [
+    "skills",
+    "image_gen"
+  ],
+  "updated_at": "2026-06-08T04:04:59Z"
+}
