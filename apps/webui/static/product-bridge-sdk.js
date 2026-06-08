@@ -204,6 +204,12 @@
       window.dispatchEvent(new CustomEvent('nextai:ready', {detail: data}));
       return;
     }
+    // Live agent message from the conversation (not a reply to a canvas request).
+    // The canvas listens to this to react to the chat (auto-expand the right surface).
+    if (data.type === 'nextai:host:agent_message') {
+      window.dispatchEvent(new CustomEvent('nextai:agent', {detail: data}));
+      return;
+    }
     settlePending(data);
   });
 

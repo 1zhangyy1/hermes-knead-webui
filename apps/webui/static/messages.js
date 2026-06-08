@@ -1925,11 +1925,15 @@ function attachLiveStream(activeSid, streamId, uploaded=[], options={}){
           if(typeof window.notifyProductCanvasAgentReply==='function'){
             const bridgeAsst=[...S.messages].reverse().find(m=>m&&m.role==='assistant'&&String(typeof msgContent==='function'?msgContent(m):(m.content||'')).trim());
             if(bridgeAsst){
+              const _bridgeContent=String(typeof msgContent==='function'?msgContent(bridgeAsst):(bridgeAsst.content||''));
               bridgeReplySent = !!window.notifyProductCanvasAgentReply({
                 sessionId:completedSid,
-                content:String(typeof msgContent==='function'?msgContent(bridgeAsst):(bridgeAsst.content||'')),
+                content:_bridgeContent,
                 message:bridgeAsst
               });
+              // Always broadcast to the canvas too, so it reacts to the live conversation
+              // (auto-expand the right stage), not just to canvas-initiated requests.
+              if(typeof window.broadcastAgentMessageToCanvas==='function') window.broadcastAgentMessageToCanvas(_bridgeContent);
             }
           }
           if(isSessionViewed) _markSessionViewed(completedSid, completedSession.message_count ?? S.messages.length);
