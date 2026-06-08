@@ -5850,27 +5850,25 @@ textarea#msg::placeholder{
     display:none!important;
   }
 
+  /* Two-pane: chat docked left, canvas fills the rest — both visible, no overlay. */
   body[data-next-ai-view="task"][data-next-ai-product-layout="chat_left_canvas_right"][data-next-ai-canvas="open"][data-next-ai-chat-panel="open"] .product-chat-body.has-active-product .messages-shell,
   body[data-next-ai-view="task"][data-next-ai-product-layout="chat_left_canvas_right"][data-next-ai-canvas="open"][data-next-ai-product-adjust="open"] .product-chat-body.has-active-product .messages-shell{
     display:flex!important;
-    position:absolute;
-    top:0;
-    bottom:0;
-    left:0;
-    flex:0 0 auto;
-    width:min(380px,52vw);
-    min-width:320px;
+    position:relative;
+    flex:0 0 min(400px,40%);
+    width:auto;
+    min-width:300px;
     height:auto;
     border-right:1px solid var(--border);
     background:var(--surface);
-    box-shadow:8px 0 16px rgba(15,17,21,.06);
-    z-index:4;
+    z-index:auto;
   }
 
   body[data-next-ai-view="task"][data-next-ai-product-layout="chat_left_canvas_right"][data-next-ai-canvas="open"][data-next-ai-chat-panel="open"] .active-product-surface,
   body[data-next-ai-view="task"][data-next-ai-product-layout="chat_left_canvas_right"][data-next-ai-canvas="open"][data-next-ai-product-adjust="open"] .active-product-surface{
-    width:100%;
-    flex:1 1 100%;
+    flex:1 1 auto;
+    width:auto;
+    min-width:0;
   }
 
   body[data-next-ai-view="task"][data-next-ai-product-layout="chat_left_canvas_right"][data-next-ai-canvas="open"][data-next-ai-chat-panel="open"] .product-chat-body.has-active-product .messages,

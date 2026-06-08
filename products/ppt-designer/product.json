@@ -1,16 +1,16 @@
 {
   "id": "ppt-designer",
   "kind": "ppt",
-  "title": "PPT 设计师",
+  "title": "PPT Designer",
   "avatar": "P",
-  "desc": "和我说主题、受众和用途。我会先确认方向，再打开大纲、页面和讲稿。",
-  "source_prompt": "内置 AI 产品：PPT 设计师。它应该能通过聊天生成、调整和沉淀自己的 PPT 产品画布。",
+  "desc": "Tell me the topic, audience, and goal. I will shape the outline, slides, and speaker notes.",
+  "source_prompt": "Built-in AI product: PPT Designer. It helps users create and refine presentations through chat, then opens a PPT workspace when structure is useful.",
   "product_type": "ppt",
   "ui_mode": "workspace",
   "product_layout": "chat_left_canvas_right",
-  "canvas_label": "PPT 工作区",
+  "canvas_label": "PPT workspace",
   "preview_entry": "index.html",
-  "ui_status": "empty",
+  "ui_status": "ready",
   "skills": [
     "presentations",
     "office"
@@ -21,5 +21,5 @@
     "terminal",
     "code_execution"
   ],
-  "updated_at": "2026-06-07T08:34:30Z"
+  "updated_at": "2026-06-08T04:07:12Z"
 }

@@ -3,171 +3,117 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>PPT 设计师</title>
+  <title>PPT Designer</title>
   <link rel="stylesheet" href="./style.css">
 </head>
-<body>
+<body data-stage="brief">
   <div class="app" id="app">
 
-    <!-- 顶栏 -->
+    <!-- 顶栏:品牌 + 阶段步骤器 + 导出 -->
     <header class="topbar">
       <div class="topbar-left">
         <div class="brand-mark">P</div>
-        <span class="deck-title" id="deckTitle">未命名演示文稿</span>
+        <span class="deck-title" id="deckTitle">Untitled deck</span>
       </div>
-      <div class="topbar-center">
-        <button class="tab active" data-tab="edit" id="tabEdit">编辑</button>
-        <button class="tab" data-tab="outline" id="tabOutline">大纲</button>
-        <button class="tab" data-tab="notes" id="tabNotes">讲稿</button>
-      </div>
+      <nav class="stepper" id="stepper" aria-label="PPT stages">
+        <button class="step" data-go="brief"><span class="step-n">1</span><span class="step-t">Brief &amp; Style</span></button>
+        <span class="step-sep">›</span>
+        <button class="step" data-go="outline"><span class="step-n">2</span><span class="step-t">Outline</span></button>
+        <span class="step-sep">›</span>
+        <button class="step" data-go="slides"><span class="step-n">3</span><span class="step-t">Slides</span></button>
+      </nav>
       <div class="topbar-right">
-        <span class="deck-meta" id="deckMeta">0 页</span>
-        <button class="btn-secondary" id="exportBtn">导出 PPTX</button>
+        <span class="deck-meta" id="deckMeta">0 slides</span>
+        <button class="btn-primary sm" id="exportBtn">Export PPTX</button>
       </div>
     </header>
 
-    <!-- 主体 -->
-    <div class="body">
+    <!-- 阶段宿主:同一时刻只显示一个 stage -->
+    <main class="stage-host">
 
-      <!-- 左侧幻灯片列表 -->
-      <aside class="slides-panel" id="slidesPanel">
-        <div class="slides-header">
-          <span class="slides-label">幻灯片</span>
-          <button class="icon-btn" id="addSlideBtn" title="新增页面">＋</button>
-        </div>
-        <ol class="slides-list" id="slidesList"></ol>
-      </aside>
+      <!-- ① BRIEF & STYLE -->
+      <section class="stage stage-brief" data-stage="brief">
+        <div class="stage-inner">
+          <h2 class="stage-h">What's this deck about?</h2>
+          <p class="stage-sub">Set the basics and pick a look. The AI shapes the outline next.</p>
 
-      <!-- 中间画布 -->
-      <main class="canvas-area" id="canvasArea">
-        <div class="empty-state" id="emptyState">
-          <div class="empty-icon">🎞</div>
-          <p class="empty-title">还没有内容</p>
-          <p class="empty-sub">继续在聊天里说主题、受众和用途<br>我会把大纲、页面和讲稿整理到这里</p>
-        </div>
-        <div class="slide-canvas" id="slideCanvas" style="display:none">
-          <!-- 图片模式 -->
-          <div class="slide-frame slide-frame-img" id="slideFrameImg" style="display:none">
-            <img id="slideImg" alt="">
-            <div class="slide-img-badge" id="slideImgBadge"></div>
+          <div class="field">
+            <label for="topicInput">Topic</label>
+            <input type="text" id="topicInput" placeholder="e.g. Q2 AI tooling — results & next steps">
           </div>
-          <!-- HTML 预览模式 -->
-          <div class="slide-frame" id="slideFrame"></div>
-        </div>
-        <div class="canvas-nav" id="canvasNav" style="display:none">
-          <button class="nav-btn" id="prevBtn">‹</button>
-          <span class="nav-label" id="navLabel">1 / 1</span>
-          <button class="nav-btn" id="nextBtn">›</button>
-          <button class="nav-mode-btn" id="viewModeBtn" title="切换预览模式">🖼</button>
-        </div>
-      </main>
-
-      <!-- 右侧属性/讲稿面板 -->
-      <aside class="info-panel" id="infoPanel">
-
-        <!-- 任务信息 -->
-        <section class="info-section" id="taskSection">
-          <div class="info-section-title">本次 PPT</div>
-          <div class="info-field">
-            <label>主题</label>
-            <input type="text" id="topicInput" placeholder="例：Q2 AI 工具落地汇报">
+          <div class="field">
+            <label for="audienceInput">Audience</label>
+            <input type="text" id="audienceInput" placeholder="e.g. engineering leadership">
           </div>
-          <div class="info-field">
-            <label>受众</label>
-            <input type="text" id="audienceInput" placeholder="例：研发团队、产品经理">
-          </div>
-          <div class="info-row">
-            <div class="info-field">
-              <label>页数</label>
-              <select id="pageCountInput">
-                <option value="6">6 页</option>
-                <option value="8" selected>8 页</option>
-                <option value="10">10 页</option>
-                <option value="12">12 页</option>
-                <option value="15">15 页</option>
-              </select>
-            </div>
-            <div class="info-field">
-              <label>风格</label>
-              <select id="styleInput">
-                <option value="minimal">极简白</option>
-                <option value="tech">科技深色</option>
-                <option value="consulting">咨询蓝</option>
-                <option value="warm">温暖橙</option>
-              </select>
+          <div class="field">
+            <label>Slides</label>
+            <div class="chips" id="countChips">
+              <button class="chip" data-count="6">6</button>
+              <button class="chip is-on" data-count="8">8</button>
+              <button class="chip" data-count="10">10</button>
+              <button class="chip" data-count="12">12</button>
+              <button class="chip" data-count="15">15</button>
             </div>
           </div>
-        </section>
 
-        <!-- 生成服务状态 -->
-        <div class="fal-status-bar" id="falStatusBar">
-          <span class="fal-status-dot" id="falStatusDot"></span>
-          <span class="fal-status-text" id="falStatusText">FAL_KEY 未配置</span>
-          <button class="text-btn" id="falConfigBtn">配置</button>
+          <div class="field">
+            <label>Style</label>
+            <div class="style-grid" id="styleGrid"></div>
+          </div>
+
+          <div class="stage-actions">
+            <button class="btn-primary" id="shapeOutlineBtn">Shape outline →</button>
+          </div>
         </div>
+      </section>
 
-        <section class="info-section skill-section" id="skillSection">
-          <div class="info-section-title">
-            <span>生成流程</span>
-            <span class="status-pill" id="workflowStagePill">Brief</span>
+      <!-- ② OUTLINE -->
+      <section class="stage stage-outline" data-stage="outline">
+        <div class="stage-head">
+          <div>
+            <h2 class="stage-h sm">Outline</h2>
+            <p class="stage-sub" id="outlineSub">Edit any title or point. The AI keeps it in sync.</p>
           </div>
-          <div class="workflow-steps" id="workflowSteps">
-            <div class="workflow-step active" data-stage="brief"><span>1</span>补齐信息</div>
-            <div class="workflow-step" data-stage="spec"><span>2</span>确认方案</div>
-            <div class="workflow-step" data-stage="prompts"><span>3</span>细化画面</div>
-            <div class="workflow-step" data-stage="generate"><span>4</span>生成图片</div>
-            <div class="workflow-step" data-stage="pack"><span>5</span>导出文件</div>
+          <div class="stage-head-actions">
+            <button class="btn-ghost" id="addSlideBtn">＋ Slide</button>
+            <button class="btn-primary" id="generateBtn">Generate slides →</button>
           </div>
-          <div class="info-field">
-            <label>Deck 名称</label>
-            <input type="text" id="deckNameInput" placeholder="q2-ai-tools">
-          </div>
-          <div class="info-row">
-            <div class="info-field">
-              <label>尺寸</label>
-              <select id="deckSizeInput">
-                <option value="1280x720">1280×720 预览</option>
-                <option value="2048x1152" selected>2048×1152 高清</option>
-                <option value="3840x2160">3840×2160 4K</option>
-              </select>
-            </div>
-            <div class="info-field">
-              <label>质量</label>
-              <select id="qualityInput">
-                <option value="medium">medium</option>
-                <option value="high" selected>high</option>
-                <option value="low">low</option>
-              </select>
-            </div>
-          </div>
-          <div class="deck-spec-box">
-            <label for="deckSpecInput">方案备忘</label>
-            <textarea id="deckSpecInput" rows="7" placeholder="AI 生成的页面方案会同步到这里。你也可以直接改，再继续生成。"></textarea>
-          </div>
-          <div class="action-grid">
-            <button class="btn-primary" id="requestSpecBtn">生成页面方案</button>
-            <button class="btn-secondary" id="confirmSpecBtn">确认并生成</button>
-            <button class="btn-secondary" id="packDeckBtn">打包导出</button>
-          </div>
-          <p class="workflow-hint" id="workflowHint">先让 AI 生成页面方案，确认后再生成图片和导出。</p>
-        </section>
+        </div>
+        <div class="outline-empty" id="outlineEmpty">
+          <p>No outline yet.</p>
+          <p class="dim">Go to <b>Brief &amp; Style</b> and shape one, or ask in chat.</p>
+        </div>
+        <ol class="outline" id="outlineList"></ol>
+      </section>
 
-        <!-- 讲稿区（选中页后显示） -->
-        <section class="info-section notes-section" id="notesSection" style="display:none">
-          <div class="info-section-title">
-            <span id="notesSectionLabel">讲稿 — 第 1 页</span>
-            <button class="text-btn" id="copyNotesBtn">复制</button>
+      <!-- ③ SLIDES -->
+      <section class="stage stage-slides" data-stage="slides">
+        <div class="slides-viewer" id="slidesViewer">
+          <div class="viewer-empty" id="viewerEmpty">
+            <div class="viewer-empty-icon">🎞</div>
+            <p>No slides generated yet.</p>
+            <p class="dim">Confirm the outline, then <b>Generate slides</b>.</p>
           </div>
-          <textarea id="notesEditor" placeholder="这一页的讲稿……" rows="10"></textarea>
-        </section>
+          <figure class="viewer-stage" id="viewerStage" hidden>
+            <img id="viewerImg" alt="" hidden>
+            <div class="viewer-html" id="viewerHtml" hidden></div>
+          </figure>
+          <div class="viewer-bar" id="viewerBar" hidden>
+            <button class="nav-btn" id="prevBtn" aria-label="Previous">‹</button>
+            <span class="nav-label" id="navLabel">1 / 1</span>
+            <button class="nav-btn" id="nextBtn" aria-label="Next">›</button>
+          </div>
+        </div>
+        <div class="thumb-strip" id="thumbStrip" hidden></div>
+      </section>
 
-        <!-- 大纲区（大纲 tab 激活时显示） -->
-        <section class="info-section outline-section" id="outlineSection" style="display:none">
-          <div class="info-section-title">大纲</div>
-          <ol class="outline-list" id="outlineList"></ol>
-        </section>
+    </main>
 
-      </aside>
+    <!-- 图片服务状态(仅 brief/slides 阶段需要时露出) -->
+    <div class="fal-bar" id="falBar" hidden>
+      <span class="fal-dot" id="falDot"></span>
+      <span id="falText">Image service not set</span>
+      <button class="text-btn" id="falConfigBtn">Set up</button>
     </div>
   </div>
 

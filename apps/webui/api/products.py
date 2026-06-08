@@ -83,6 +83,28 @@ BUILTIN_PRODUCTS: tuple[dict[str, Any], ...] = (
         "tools": ["skills", "file", "terminal", "code_execution"],
         "builtin": True,
     },
+    {
+        "id": "ai-otome",
+        "kind": "ai-otome",
+        "title": "AI Otome",
+        "avatar": "♡",
+        "desc": "A single-character AI otome companion with memory, mood, affection, and choice-driven scenes.",
+        "placeholder": "Say something to Mira...",
+        "suggestions": [
+            ["Tell Mira you came to see her and let her choose the next scene.", "Start with Mira"],
+            ["Ask Mira what she remembers about you.", "Check memory"],
+            ["Make the mood warmer and more romantic.", "Shape the mood"],
+        ],
+        "source_prompt": "Built-in AI product: AI Otome. It is a single-character companion experience. The product UI owns the use flow. AI drives dialogue, mood, affection, memories, choices, and scene changes.",
+        "product_type": "interactive",
+        "ui_mode": "workspace",
+        "product_layout": "canvas_full",
+        "canvas_label": "Otome companion",
+        "ui_status": "ready",
+        "skills": ["imagegen"],
+        "tools": ["skills", "image_gen"],
+        "builtin": True,
+    },
 )
 PRODUCT_TOOLSET_ALIASES = {
     "officecli": ("skills", "file", "terminal", "code_execution"),

@@ -1664,6 +1664,18 @@ async function openOrFocusTaskProductPreviewFromHeader() {
   if (typeof showToast === 'function') showToast('This task does not have a workspace yet.');
 }
 
+async function toggleTaskProductPreviewFromHeader() {
+  if (_activeProductPreview) {
+    if (typeof _hideProductPreviewIfActive === 'function') {
+      _hideProductPreviewIfActive();
+    } else {
+      deactivateProductPreviewInChat();
+    }
+    return;
+  }
+  await openOrFocusTaskProductPreviewFromHeader();
+}
+
 function _currentProductLayoutForTaskHeader(object = _assistantObject()) {
   if (typeof _assistantEffectiveProductLayout === 'function') return _assistantEffectiveProductLayout(object);
   if (typeof _assistantProductLayout === 'function') return _assistantProductLayout(object);
@@ -1737,12 +1749,12 @@ function _syncTaskHeaderProductPreviewChipAction({ isCreate, hasTask, canOpenPro
   if (actionable) {
     productPreviewStatus.setAttribute('role', 'button');
     productPreviewStatus.setAttribute('tabindex', '0');
-    productPreviewStatus.setAttribute('aria-label', _activeProductPreview ? `Jump to workspace: ${label}` : `Open workspace: ${label}`);
-    productPreviewStatus.onclick = () => openOrFocusTaskProductPreviewFromHeader();
+    productPreviewStatus.setAttribute('aria-label', _activeProductPreview ? `Hide workspace: ${label}` : `Show workspace: ${label}`);
+    productPreviewStatus.onclick = () => toggleTaskProductPreviewFromHeader();
     productPreviewStatus.onkeydown = event => {
       if (event.key !== 'Enter' && event.key !== ' ') return;
       event.preventDefault();
-      openOrFocusTaskProductPreviewFromHeader();
+      toggleTaskProductPreviewFromHeader();
     };
   } else {
     productPreviewStatus.removeAttribute('role');
@@ -1777,6 +1789,10 @@ function _syncTaskHeaderStatus(hasTask = _assistantTaskHasActiveTask()) {
   const chatPanelOpen = document.body.dataset.nextAiChatPanel === 'open';
   const canvasOpen = usesProductCanvas && !!_activeProductPreview;
   const canToggleChatPanel = !isCreate && hasTask && canvasOpen && _currentProductLayoutForTaskHeader(object) === 'chat_left_canvas_right';
+  const canOpenProductPreview = usesProductCanvas && !!(
+    _activeProductPreview ||
+    typeof _assistantHasGeneratedProductCanvas === 'function' && _assistantHasGeneratedProductCanvas(object)
+  );
   // 用/调是产品级入口:不依赖是否已经长出画布。
   const adjustToggle = $('taskHeaderAdjustToggle');
   if (adjustToggle) {
@@ -1811,22 +1827,19 @@ function _syncTaskHeaderStatus(hasTask = _assistantTaskHasActiveTask()) {
     if (isCreate) {
       productPreviewText.textContent = 'Make workspace';
     } else if (_activeProductPreview) {
-      productPreviewText.textContent = isProductPreview ? 'Workspace open' : activeProductPreviewName;
+      productPreviewText.textContent = isProductPreview ? 'Hide workspace' : activeProductPreviewName;
     } else {
-      productPreviewText.textContent = 'Workspace on demand';
+      productPreviewText.textContent = canOpenProductPreview ? 'Show workspace' : 'Workspace on demand';
     }
   }
   if (productPreviewStatus) {
     productPreviewStatus.classList.toggle('is-active-product', !isCreate && !!_activeProductPreview);
     const label = productPreviewText ? productPreviewText.textContent : '';
-    const canOpenProductPreview = usesProductCanvas && !!(
-      _activeProductPreview ||
-      typeof _assistantHasGeneratedProductCanvas === 'function' && _assistantHasGeneratedProductCanvas(object)
-    );
+    const workspaceName = activeProductPreviewName || (typeof _assistantCanvasLabel === 'function' ? _assistantCanvasLabel(object) : '') || 'workspace';
     productPreviewStatus.title = usesProductCanvas && !isCreate && hasTask && canOpenProductPreview
-      ? (_activeProductPreview ? `Jump to workspace: ${label}` : `Open workspace: ${label}`)
+      ? (_activeProductPreview ? `Hide ${workspaceName}` : `Show ${workspaceName}`)
       : label;
-    _syncTaskHeaderProductPreviewChipAction({ isCreate, hasTask, canOpenProductPreview, label });
+    _syncTaskHeaderProductPreviewChipAction({ isCreate, hasTask, canOpenProductPreview, label: workspaceName });
   }
   if (chatStatus) {
     chatStatus.classList.toggle('is-actionable', canToggleChatPanel);

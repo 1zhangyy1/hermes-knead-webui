@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 520 720" role="img" aria-label="Mira placeholder character art">
+  <defs>
+    <linearGradient id="bg" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#ffe9f0"/>
+      <stop offset="1" stop-color="#dce8ff"/>
+    </linearGradient>
+    <linearGradient id="hair" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#5d3344"/>
+      <stop offset="1" stop-color="#b05a72"/>
+    </linearGradient>
+    <linearGradient id="dress" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#f0d7e2"/>
+    </linearGradient>
+  </defs>
+  <rect width="520" height="720" rx="44" fill="url(#bg)"/>
+  <circle cx="382" cy="150" r="86" fill="#fff" opacity=".36"/>
+  <circle cx="122" cy="248" r="54" fill="#fff" opacity=".34"/>
+  <path d="M167 639c19-106 56-166 111-166s93 60 112 166z" fill="#8c4968"/>
+  <path d="M191 641c13-84 45-127 87-127s74 43 87 127z" fill="url(#dress)"/>
+  <path d="M156 300c2-98 50-165 130-165 74 0 124 61 128 153 3 67-23 121-43 158-19 34-14 74 18 117-67 13-136 11-197-3 30-38 35-79 14-118-20-39-48-80-50-142z" fill="url(#hair)"/>
+  <path d="M178 304c0-76 37-128 91-128 61 0 100 55 100 129 0 84-44 146-95 146-48 0-96-61-96-147z" fill="#ffd8ca"/>
+  <path d="M177 292c60 2 113-28 143-80 23 34 42 69 70 80-9-88-51-147-118-147-60 0-101 43-95 147z" fill="url(#hair)"/>
+  <path d="M203 332c16 11 33 11 50 0" fill="none" stroke="#503142" stroke-width="7" stroke-linecap="round"/>
+  <path d="M303 332c16 11 33 11 50 0" fill="none" stroke="#503142" stroke-width="7" stroke-linecap="round"/>
+  <path d="M263 385c17 12 36 12 55 0" fill="none" stroke="#c96e7d" stroke-width="7" stroke-linecap="round"/>
+  <circle cx="197" cy="365" r="12" fill="#f5a6aa" opacity=".55"/>
+  <circle cx="356" cy="365" r="12" fill="#f5a6aa" opacity=".55"/>
+  <path d="M243 493l35 51 35-51" fill="#fff" opacity=".9"/>
+  <path d="M114 628c64-34 123-48 174-42 44 5 84 20 124 42" fill="none" stroke="#ffffff" stroke-width="12" stroke-linecap="round" opacity=".8"/>
+  <path d="M122 141c31-32 81-53 137-53 67 0 122 29 148 71" fill="none" stroke="#fff" stroke-width="10" stroke-linecap="round" opacity=".5"/>
+</svg>
