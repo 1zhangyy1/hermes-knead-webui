@@ -338,6 +338,17 @@ function notifyProductCanvasAgentReply(payload = {}) {
   });
 }
 
+// Broadcast EVERY finished agent reply to the active product canvas, so the canvas
+// can react to the live conversation (auto-expand the right stage / surface) — even
+// when the user typed in the host chat (not via a canvas-initiated request). The canvas
+// is a rich surface FOR the AI conversation, not a standalone tool.
+function broadcastAgentMessageToCanvas(content) {
+  const text = String(content || '').trim();
+  if (!text) return false;
+  if (!_activeProductFrameWindow()) return false;
+  return _postProductCanvasBridgeMessage({ type: 'nextai:host:agent_message', content: text });
+}
+
 function notifyProductCanvasAgentError(payload = {}) {
   const resolved = _resolveProductCanvasBridgePending(payload.sessionId || payload.session_id || '');
   if (!resolved) return false;
@@ -373,6 +384,7 @@ window.currentAssistantPreviewUrl = currentAssistantPreviewUrl;
 window.currentAssistantProductContextForMessage = currentAssistantProductContextForMessage;
 window.withCurrentProductContext = withCurrentProductContext;
 window.notifyProductCanvasAgentReply = notifyProductCanvasAgentReply;
+window.broadcastAgentMessageToCanvas = broadcastAgentMessageToCanvas;
 window.notifyProductCanvasAgentError = notifyProductCanvasAgentError;
 
 async function _startProductInitializationTask(assistant, sourcePrompt) {

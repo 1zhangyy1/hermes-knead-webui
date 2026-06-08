@@ -95,6 +95,10 @@ function renderBrief() {
     </button>`).join('');
   grid.querySelectorAll('.style-card').forEach((b) => b.onclick = () => {
     state.brief.style = b.dataset.style; renderBrief(); persist();
+    // Picking a style is part of the conversation: tell the AI.
+    const name = (STYLES.find((s) => s.id === b.dataset.style) || {}).name || b.dataset.style;
+    if (hasBridge()) send('style', `把这个 PPT 的视觉风格定为「${name}」。据此继续(已有大纲就更新视觉风格)。`);
+    else toast(`Style: ${name}`);
   });
 }
 
@@ -185,8 +189,9 @@ async function send(kind, prompt, btn) {
   if (!hasBridge()) { try { await navigator.clipboard.writeText(prompt); } catch (_) {} toast('Prompt copied — paste into chat'); return; }
   const old = btn && btn.textContent; if (btn) { btn.disabled = true; btn.textContent = 'Sent…'; }
   try {
-    const r = await window.NextAI.chat.send({ text: prompt, action: `ppt:${kind}`, context: { ppt: state.brief } });
-    applyReply(kind, (r && r.content) || '');
+    // The reply is handled uniformly via the broadcast → onAgentMessage (one path,
+    // whether the turn came from a canvas button or the user typing in chat).
+    await window.NextAI.chat.send({ text: prompt, action: `ppt:${kind}`, context: { ppt: state.brief } });
   } catch (e) { toast((e && e.message) || 'Send failed'); }
   finally { if (btn) { btn.disabled = false; btn.textContent = old; } }
 }
@@ -219,6 +224,19 @@ function parseLoadImages(text) {
   while ((m = re.exec(s))) entries.push({ slot: +m[1], imgUrl: m[2], title: m[3] || '' });
   return entries.length ? { title: head[1], deckName: head[2], entries } : null;
 }
+
+// ── React to the live conversation: the canvas is a surface FOR the chat ──
+// When the agent (in the host chat) produces an outline or generated slides,
+// the right canvas auto-expands to that stage. No buttons required.
+function onAgentMessage(content) {
+  const o = parseOutlineReply(content);
+  if (o) { state.title = o.title || state.title; state.outline = o.slides || []; setStage('outline'); toast('Outline updated'); return; }
+  const d = parseLoadImages(content);
+  if (d) { window.PPT.loadImages(d.title, d.deckName, d.entries); return; }
+  // Agent signals it's time to pick a visual style → expand the style picker.
+  if (/style\.pick|\[\[pick[_-]?style\]\]/i.test(String(content || ''))) { setStage('brief'); toast('Pick a style →'); }
+}
+window.addEventListener('nextai:agent', (e) => { try { onAgentMessage(e.detail && e.detail.content); } catch (_) {} });
 
 // ── window.PPT API (agent callbacks) ──
 window.PPT = {

@@ -282,7 +282,30 @@ def product_ephemeral_prompt(context: dict[str, Any] | None) -> str:
         "- After file changes, briefly tell the user what changed and what they can do next.",
         "- Do not emit hidden UI state blocks. If the UI should change, edit the product workspace files directly.",
     ]
-    if ppt_like:
+    if str(context.get("id") or "") == "ppt-designer":
+        # Built-in PPT Designer has a fixed stage-driven canvas on the right. The canvas
+        # is a surface FOR this conversation: it auto-expands to the right stage when your
+        # reply carries the agreed structured blocks. Drive it through normal chat.
+        lines.extend(
+            [
+                "",
+                "PPT Designer canvas contract (drive the right canvas through conversation):",
+                "- When you propose or refine the deck plan, END your reply with this fenced block — the canvas auto-expands to an editable outline:",
+                '  ```outline.json',
+                '  {"title":"Deck title","slides":[{"title":"Slide title","points":["point 1","point 2"],"notes":"speaker notes"}]}',
+                '  ```',
+                "- To generate the actual slides (this product's signature is GPT Image 2 decks), run from the product root: "
+                "`python ppt-skill/ppt.py gen <deck> \"<per-slide prompt>\" --quality high` (needs ppt-skill/.env fal key + ppt-skill/requirements.txt; output lands in outputs/<deck>/). "
+                "Then END your reply with this block so the canvas shows the slides:",
+                '  ```js',
+                '  window.PPT.loadImages("<title>", "<deck>", [{slot:1, imgUrl:"/api/products/ppt-designer/preview/outputs/<deck>/slide-01.png", title:"Slide 1"}]);',
+                '  ```',
+                "- If the fal key or deps are missing, say exactly what to set up; do not pretend slides were generated.",
+                "- When you want the user to choose a visual style, include the token `style.pick` in your reply — the canvas expands a clickable style picker; their pick comes back to you as a message.",
+                "- Chat is the control channel; the canvas reflects the conversation. Keep prose natural; just append the block at the end.",
+            ]
+        )
+    elif ppt_like:
         lines.extend(
             [
                 "",
@@ -290,7 +313,6 @@ def product_ephemeral_prompt(context: dict[str, Any] | None) -> str:
                 "- If you create or update this product UI, make it feel like a working PPT product, not a landing page.",
                 "- Useful first UI regions: topic/subject, audience, page count, style, outline, slide/page thumbnails, speaker notes, assets/references, and next-step controls.",
                 "- Keep the chat as the decision/control channel; use the UI for task state, editable inputs, and previewable PPT structure.",
-                "- For a normal PPT request while the UI is empty, both help with the requested PPT and create the first reusable PPT product interface.",
             ]
         )
     if scope == "product_builder" and (ui_mode == "chat_only" or product_layout == "chat_only"):
