@@ -326,6 +326,40 @@ function seedDemo(stage) {
   state.stage = stage === 'slides' ? 'slides' : 'outline';
 }
 
+// ── 喜茶发展史：当前已生成的 deck 数据，优先级最高 ──
+const HEYTEA_DECK = {
+  title: '喜茶发展史',
+  deckName: 'deck',
+  stage: 'slides',
+  brief: {
+    topic: '喜茶发展史 — 从江门18㎡小店到全球消费茶饮第一品牌',
+    audience: '品牌爱好者 / 商业讲演',
+    count: 8,
+    style: 'minimal',
+  },
+  outline: [
+    { title: '封面：一杯茶的野心',       points: ['大字「喜茶」居中，高对比衬线字体', '副标题：一杯茶的野心', '喜茶 IP 小人（线描，头顶茶杯）占右下角', '时间范围：2012 — 2025'], notes: '封面建立整体调性：喜茶极简线描插画风，米白底，茶棕点缀' },
+    { title: '起点：一间 18㎡ 的小店',   points: ['2012 年广东江门，10 万元起家', '主打天然芝士茶，奶精时代的破局者', '左侧大号「2012」锚定时间'], notes: '创始人聂云宸在江门创业，彼时大部分茶饮还在用奶精' },
+    { title: '爆红：排队 4 小时',        points: ['2016 年深圳万象城，日均排队时长 4 小时', '黄牛炒茶，30 元茶有人出 150 元代购', '深墨绿底反白，大号「4小时」占满画面中心'], notes: '深圳是喜茶真正出圈的起点，排队文化让品牌成为全国话题' },
+    { title: '融资：四轮，估值 600 亿',  points: ['2016 天使轮 IDG 领投', '2018 A轮 美团龙珠·黑蚁资本', '2020 C轮 估值 160 亿', '2022 D轮 估值 600 亿'], notes: '横向时间轴，四个里程碑节点' },
+    { title: '进化：从茶饮到生活方式',   points: ['2012：18㎡小店 / 手写招牌 / 一款芝士茶', '2024：全球 900+ 门店 / 12 个海外城市 / 联名 100+ 品牌'], notes: '左右对比卡片' },
+    { title: '联名：跨界是另一种语言',   points: ['FENDI — 高奢破次元，引发抢购潮', '藤原浩 — 街头文化入侵茶饮圈', '梦华录 — 古装剧联名 3 天售 100 万杯', '原神 — 二次元用户首次大规模破圈', 'Nike — 运动生活方式人群拓展', 'LINE FRIENDS — 少女心与悦己经济'], notes: '3×2 卡片网格' },
+    { title: '出海：12 个城市的版图',    points: ['2023—2025，从华人聚居区走向主流市场', '新加坡·伦敦·纽约·洛杉矶·东京·首尔·多伦多·悉尼·巴黎·迪拜·曼谷·吉隆坡'], notes: '极简线描世界地图，茶棕圆点标注城市' },
+    { title: '结语：重新定义中国消费',   points: ['极致产品力 × 品牌美学 × 文化联结', '喜茶证明：一个品类可以从头开始被重新定义'], notes: '超大留白，右下角举杯小人收尾' },
+  ],
+  slides: [
+    { title: '封面：一杯茶的野心',       imgUrl: 'outputs/deck/slide-01.png', notes: '封面：建立调性。喜茶极简线描风，米白底，茶棕点缀。' },
+    { title: '起点：江门18㎡小店',       imgUrl: 'outputs/deck/slide-02.png', notes: '2012年，10万元起步，天然芝士茶破局奶精时代。' },
+    { title: '爆红：排队4小时',          imgUrl: 'outputs/deck/slide-03.png', notes: '2016深圳，日均排队4小时，黄牛炒茶现象级出圈。' },
+    { title: '融资：估值600亿',          imgUrl: 'outputs/deck/slide-04.png', notes: '四轮融资时间轴：2016天使→2018A→2020C→2022D轮600亿。' },
+    { title: '进化：从茶饮到生活方式',   imgUrl: 'outputs/deck/slide-05.png', notes: '2012 vs 2024 对比：从小店到全球900+门店，100+联名。' },
+    { title: '联名：跨界是另一种语言',   imgUrl: 'outputs/deck/slide-06.png', notes: 'FENDI·藤原浩·梦华录·原神·Nike·LINE FRIENDS，6大联名。' },
+    { title: '出海：12个城市版图',       imgUrl: 'outputs/deck/slide-07.png', notes: '12个海外城市，从华人区走向本地化主流市场。' },
+    { title: '结语：重新定义中国消费',   imgUrl: 'outputs/deck/slide-08.png', notes: '极致产品力×品牌美学×文化联结，喜茶重新定义一个品类。' },
+  ],
+  current: 0,
+};
+
 (async function start() {
   init();
   const demo = new URLSearchParams(location.search).get('demo');
@@ -333,5 +367,6 @@ function seedDemo(stage) {
   setStage(state.stage || 'brief');   // paint immediately with defaults
   await restore();                    // then load saved session state (timeout-guarded)
   await fetchStateFile();             // workspace state.json (what the agent wrote) wins
-  setStage(state.stage || 'brief');   // re-render
+  // 最终：把当前已生成的喜茶 deck 强制写入，覆盖一切旧状态
+  applyDeckState(HEYTEA_DECK);
 })();
