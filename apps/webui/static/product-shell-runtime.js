@@ -1749,7 +1749,7 @@ function _syncTaskHeaderProductPreviewChipAction({ isCreate, hasTask, canOpenPro
   if (actionable) {
     productPreviewStatus.setAttribute('role', 'button');
     productPreviewStatus.setAttribute('tabindex', '0');
-    productPreviewStatus.setAttribute('aria-label', _activeProductPreview ? `Hide workspace: ${label}` : `Show workspace: ${label}`);
+    productPreviewStatus.setAttribute('aria-label', _activeProductPreview ? `Close workspace: ${label}` : `Open workspace: ${label}`);
     productPreviewStatus.onclick = () => toggleTaskProductPreviewFromHeader();
     productPreviewStatus.onkeydown = event => {
       if (event.key !== 'Enter' && event.key !== ' ') return;
@@ -1784,7 +1784,6 @@ function _syncTaskHeaderStatus(hasTask = _assistantTaskHasActiveTask()) {
   const activeProductPreviewName = _activeProductPreview
     ? (_activeProductPreview.name || _activeProductPreview.id || 'Workspace')
     : '';
-  const isProductPreview = !!(_activeProductPreview && _activeProductPreview.product_preview);
   const adjustOpen = document.body.dataset.nextAiProductAdjust === 'open';
   const chatPanelOpen = document.body.dataset.nextAiChatPanel === 'open';
   const canvasOpen = usesProductCanvas && !!_activeProductPreview;
@@ -1827,9 +1826,9 @@ function _syncTaskHeaderStatus(hasTask = _assistantTaskHasActiveTask()) {
     if (isCreate) {
       productPreviewText.textContent = 'Make workspace';
     } else if (_activeProductPreview) {
-      productPreviewText.textContent = isProductPreview ? 'Hide workspace' : activeProductPreviewName;
+      productPreviewText.textContent = 'Close workspace';
     } else {
-      productPreviewText.textContent = canOpenProductPreview ? 'Show workspace' : 'Workspace on demand';
+      productPreviewText.textContent = canOpenProductPreview ? 'Open workspace' : 'Workspace off';
     }
   }
   if (productPreviewStatus) {
@@ -1837,7 +1836,7 @@ function _syncTaskHeaderStatus(hasTask = _assistantTaskHasActiveTask()) {
     const label = productPreviewText ? productPreviewText.textContent : '';
     const workspaceName = activeProductPreviewName || (typeof _assistantCanvasLabel === 'function' ? _assistantCanvasLabel(object) : '') || 'workspace';
     productPreviewStatus.title = usesProductCanvas && !isCreate && hasTask && canOpenProductPreview
-      ? (_activeProductPreview ? `Hide ${workspaceName}` : `Show ${workspaceName}`)
+      ? (_activeProductPreview ? `Close ${workspaceName}` : `Open ${workspaceName}`)
       : label;
     _syncTaskHeaderProductPreviewChipAction({ isCreate, hasTask, canOpenProductPreview, label: workspaceName });
   }

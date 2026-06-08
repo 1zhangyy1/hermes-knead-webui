@@ -1,3 +1,4 @@
+from __future__ import annotations
 """fal.ai GPT Image 2 wrappers: gen (text-to-image) and edit (image-to-image).
 
 Both calls go through `_with_retries`, which handles transient network errors

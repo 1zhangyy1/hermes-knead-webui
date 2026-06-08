@@ -1,3 +1,4 @@
+from __future__ import annotations
 #!/usr/bin/env python3
 """
 GPT Image 2 PPT — deck-oriented CLI.

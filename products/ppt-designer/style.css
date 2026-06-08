@@ -97,32 +97,65 @@ body[data-stage="slides"] .stage-slides{display:flex;flex-direction:column}
 .ol-del:hover{background:var(--surface-2);color:var(--ink)}
 
 /* ── ③ slides ── */
-.slides-viewer{flex:1;min-height:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
-               gap:16px;padding:28px;background:var(--bg)}
+.slides-viewer{
+  flex:1;min-height:0;
+  display:flex;flex-direction:column;
+  align-items:center;justify-content:center;
+  gap:12px;
+  padding:16px 14px;   /* 收紧边距，给幻灯片更多空间 */
+  background:var(--bg);
+  overflow:hidden;
+}
 .viewer-empty{text-align:center;color:var(--muted)}
 .viewer-empty-icon{font-size:40px;margin-bottom:10px}
 .viewer-empty .dim{color:var(--faint);font-size:13px;margin-top:4px}
-.viewer-stage{width:100%;max-width:880px;aspect-ratio:16/9;background:var(--surface);border:1px solid var(--border);
-              border-radius:var(--radius);overflow:hidden;display:flex;align-items:center;justify-content:center;box-shadow:var(--shadow)}
+
+/* 幻灯片主体：由 JS 动态写入精确 width/height，确保不溢出 */
+.viewer-stage{
+  flex:0 0 auto;           /* 不参与 flex 伸缩，尺寸由 JS 控制 */
+  background:var(--surface);
+  border:1px solid var(--border);
+  border-radius:var(--radius);
+  overflow:hidden;
+  display:flex;align-items:center;justify-content:center;
+  box-shadow:var(--shadow);
+}
 .viewer-stage img{width:100%;height:100%;object-fit:contain;display:block}
 .viewer-html{width:100%;height:100%;display:flex;flex-direction:column;align-items:flex-start;justify-content:center;padding:7% 9%}
 .viewer-html .slide-render{width:100%;max-width:680px;text-align:left}
-.slide-render h3{font-size:28px;font-weight:650;letter-spacing:-.01em;margin-bottom:16px}
+.slide-render h3{font-size:clamp(16px,3.5vw,28px);font-weight:650;letter-spacing:-.01em;margin-bottom:16px}
 .slide-render ul{padding-left:20px;display:flex;flex-direction:column;gap:8px}
-.slide-render li{font-size:16px;color:#403a33;line-height:1.5}
-.viewer-bar{display:flex;align-items:center;gap:14px}
+.slide-render li{font-size:clamp(12px,2vw,16px);color:#403a33;line-height:1.5}
+
+.viewer-bar{display:flex;align-items:center;gap:14px;flex-shrink:0}
 .nav-btn{width:34px;height:34px;border-radius:50%;border:1px solid var(--border-2);background:var(--surface);
          color:var(--muted);font-size:18px;display:grid;place-items:center;transition:all .12s}
 .nav-btn:hover{border-color:#D9D3C9;color:var(--ink)}
 .nav-label{font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums;min-width:54px;text-align:center}
-.thumb-strip{flex:0 0 auto;display:flex;gap:8px;overflow-x:auto;padding:12px 18px;border-top:1px solid var(--border);background:var(--surface)}
-.thumb{position:relative;flex:0 0 auto;width:96px;aspect-ratio:16/9;border:1px solid var(--border-2);border-radius:7px;
-       overflow:hidden;background:var(--surface-2);padding:0;display:grid;place-items:center}
+
+/* 缩略图条：固定高度，横向滚动 */
+.thumb-strip{
+  flex:0 0 auto;
+  display:flex;gap:6px;
+  overflow-x:auto;overflow-y:hidden;
+  padding:8px 14px;
+  border-top:1px solid var(--border);
+  background:var(--surface);
+  max-width:100%;
+  scrollbar-width:thin;
+}
+.thumb{
+  position:relative;flex:0 0 auto;
+  width:80px;aspect-ratio:16/9;
+  border:1.5px solid var(--border-2);border-radius:6px;
+  overflow:hidden;background:var(--surface-2);
+  padding:0;display:grid;place-items:center;
+}
 .thumb.is-on{border-color:var(--ink);box-shadow:0 0 0 2px var(--ink)}
 .thumb img{width:100%;height:100%;object-fit:cover}
-.thumb-html{font-size:10px;color:var(--muted);padding:4px;text-align:center;overflow:hidden}
-.thumb-n{position:absolute;left:4px;top:3px;font-size:9px;font-weight:600;color:#fff;background:rgba(0,0,0,.5);
-         border-radius:4px;padding:0 4px;font-variant-numeric:tabular-nums}
+.thumb-html{font-size:9px;color:var(--muted);padding:4px;text-align:center;overflow:hidden}
+.thumb-n{position:absolute;left:3px;top:2px;font-size:8px;font-weight:600;color:#fff;background:rgba(0,0,0,.5);
+         border-radius:3px;padding:0 3px;font-variant-numeric:tabular-nums}
 
 /* ── buttons ── */
 .btn-primary{background:var(--ink);color:#fff;border:none;border-radius:var(--radius-sm);padding:11px 18px;

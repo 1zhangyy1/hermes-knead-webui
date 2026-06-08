@@ -5868,6 +5868,13 @@ _STATIC_MIME = {
     "webp": "image/webp",
     "woff": "font/woff",
     "woff2": "font/woff2",
+    # Office / download formats
+    "pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    "ppt":  "application/vnd.ms-powerpoint",
+    "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "pdf":  "application/pdf",
+    "zip":  "application/zip",
 }
 # MIME types that are text-based and should carry charset=utf-8
 _TEXT_MIME_TYPES = {"text/css", "application/javascript", "text/html", "image/svg+xml", "text/plain"}

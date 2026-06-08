@@ -64,6 +64,7 @@ function setStage(stage) {
     b.classList.toggle('is-done', i < STAGES.indexOf(stage));
   });
   $('falBar').hidden = stage !== 'slides';
+  if (stage === 'slides') startStageFit();
   render();
   persist();
 }
@@ -125,6 +126,42 @@ function renderOutline() {
   list.querySelectorAll('.ol-del').forEach((el) => el.onclick = () => { state.outline.splice(+el.dataset.i, 1); renderOutline(); render(); persist(); });
 }
 
+// ── 自适应幻灯片尺寸：在 viewer 容器内算出最大 16:9 矩形 ──
+function fitSlideStage() {
+  const viewer = $('slidesViewer');
+  const stage  = $('viewerStage');
+  if (!viewer || !stage || stage.hidden) return;
+
+  const bar  = $('viewerBar');
+  const barH = (bar && !bar.hidden) ? bar.offsetHeight + 12 : 0; // 12 = flex gap
+
+  // 用 getBoundingClientRect 拿到真实可用区域，不靠手算 padding
+  const vr     = viewer.getBoundingClientRect();
+  const availW = vr.width  - 32;
+  const availH = vr.height - 40 - barH;
+
+  if (availW <= 0 || availH <= 0) return;
+
+  const RATIO = 16 / 9;
+  let w = availW;
+  let h = w / RATIO;
+  if (h > availH) { h = availH; w = h * RATIO; }
+
+  stage.style.width  = Math.floor(w) + 'px';
+  stage.style.height = Math.floor(h) + 'px';
+}
+
+// ResizeObserver 监听画布宽高变化，自动重算
+let _stageRO;
+function startStageFit() {
+  const viewer = $('slidesViewer');
+  if (!viewer) return;
+  if (_stageRO) _stageRO.disconnect();
+  _stageRO = new ResizeObserver(() => fitSlideStage());
+  _stageRO.observe(viewer);
+  fitSlideStage();
+}
+
 function renderSlides() {
   const has = state.slides.length > 0;
   $('viewerEmpty').hidden = has;
@@ -144,6 +181,8 @@ function renderSlides() {
       <span class="thumb-n">${i + 1}</span>
     </button>`).join('');
   $('thumbStrip').querySelectorAll('.thumb').forEach((b) => b.onclick = () => { state.current = +b.dataset.i; renderSlides(); });
+  // 每次渲染后重新拟合尺寸
+  requestAnimationFrame(() => fitSlideStage());
 }
 
 function slideHtml(s) {
@@ -151,7 +190,32 @@ function slideHtml(s) {
   return `<div class="slide-render"><h3>${esc(s.title || '')}</h3>${pts ? `<ul>${pts}</ul>` : ''}</div>`;
 }
 
-// ── Agent round-trip ──
+// ── 导出 PPTX：用 window.open 打开文件 URL，绕过 iframe sandbox 的 fetch 限制 ──
+function exportPptx() {
+  const deck = state.deckName || 'deck';
+  const btn  = $('exportBtn');
+
+  // 通过 postMessage 让父窗口打开下载链接（iframe sandbox 无 allow-popups 时的保险）
+  const apiUrl = `/api/products/ppt-designer/preview/outputs/${deck}/deck.pptx`;
+
+  // 方案 A：postMessage 给父页面，让父页面触发下载
+  try {
+    window.parent.postMessage({
+      source: 'nextai-product-canvas',
+      type: 'nextai:product:download',
+      url: apiUrl,
+      filename: (state.title || deck) + '.pptx',
+    }, '*');
+    toast('✅ 正在下载…');
+  } catch (_) {}
+
+  // 方案 B（兜底）：直接 window.open，部分 sandbox 配置允许
+  try {
+    window.open(apiUrl, '_blank');
+  } catch (_) {}
+}
+
+
 function agentSpecPrompt() {
   const b = state.brief;
   return [
@@ -304,7 +368,7 @@ function init() {
   // actions
   $('shapeOutlineBtn').onclick = (e) => { collectBriefFromInputs(); send('spec', agentSpecPrompt(), e.currentTarget); };
   $('generateBtn').onclick = (e) => send('generate', agentGeneratePrompt(), e.currentTarget);
-  $('exportBtn').onclick = (e) => send('pack', `用 ppt-skill 打包 deck ${state.deckName || 'deck'}：python ppt-skill/ppt.py pack ${state.deckName || 'deck'}，完成后给我 deck.pptx 路径。`, e.currentTarget);
+  $('exportBtn').onclick = exportPptx;
   $('addSlideBtn').onclick = () => { state.outline.push({ title: '', points: [], notes: '' }); renderOutline(); render(); persist(); };
   $('prevBtn').onclick = () => { state.current = Math.max(0, state.current - 1); renderSlides(); };
   $('nextBtn').onclick = () => { state.current = Math.min(state.slides.length - 1, state.current + 1); renderSlides(); };

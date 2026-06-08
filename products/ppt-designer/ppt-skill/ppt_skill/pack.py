@@ -1,3 +1,4 @@
+from __future__ import annotations
 """Local packaging: assemble a deck's images into .pptx and into an HTML viewer."""
 
 import json
