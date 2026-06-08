@@ -1,3 +1,4 @@
+from __future__ import annotations
 """Deck: a directory of slides with metadata and auto-numbering.
 
 Metadata reads/writes are protected by an advisory file lock so parallel gen/edit

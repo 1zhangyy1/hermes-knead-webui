@@ -1,10 +1,10 @@
 {
   "id": "general",
   "kind": "general",
-  "title": "通用 AI",
+  "title": "General AI",
   "avatar": "G",
-  "desc": "普通聊天，适合临时问题、写作、分析和文件处理。",
-  "source_prompt": "内置 AI 产品：通用 AI。它默认保持普通 Chat；身份、默认流程、技能和工具属于它自己。",
+  "desc": "Open-ended chat for quick questions, writing, analysis, and files.",
+  "source_prompt": "Built-in AI product: General AI. It stays as normal chat by default. Its identity, flow, skills, and tools belong to itself.",
   "product_type": "general",
   "ui_mode": "chat_only",
   "product_layout": "chat_only",
@@ -18,5 +18,5 @@
     "terminal",
     "code_execution"
   ],
-  "updated_at": "2026-06-06T12:33:53Z"
+  "updated_at": "2026-06-08T07:32:59Z"
 }

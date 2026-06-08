@@ -377,6 +377,25 @@ window.addEventListener('message', event => {
   if (data.type === 'nextai:product:send') {
     void _sendProductCanvasAgentMessage(data, event);
   }
+  // 画布请求父页面触发文件下载（绕过 iframe sandbox fetch 限制）
+  if (data.type === 'nextai:product:download' && data.url) {
+    try {
+      fetch(String(data.url)).then(r => r.blob()).then(blob => {
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = String(data.filename || 'download');
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+      }).catch(() => {
+        // fallback: 直接打开链接
+        window.open(String(data.url), '_blank');
+      });
+    } catch (_) {
+      window.open(String(data.url), '_blank');
+    }
+    return;
+  }
 });
 
 window.currentAssistantWorkspacePath = currentAssistantWorkspacePath;

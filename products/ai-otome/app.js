@@ -27,6 +27,14 @@ const DEFAULT_STATE = {
   scene: 'rain',
   mood: 'curious',
   bond: 18,
+  chapter: 'Chapter 1',
+  chapterTitle: 'A rain-soaked promise',
+  objective: 'Make Mira feel that this meeting was not an accident.',
+  portraitUrl: '',
+  beats: [
+    'Mira waited at the station longer than she admits.',
+    'The rain gives both of you an excuse to stay close.',
+  ],
   memories: [
     'You met Mira on a rainy evening.',
     'She likes when you answer honestly.',
@@ -60,11 +68,108 @@ const memoryList = document.getElementById('memoryList');
 const sceneChip = document.getElementById('sceneChip');
 const sceneLine = document.getElementById('sceneLine');
 const sceneList = document.getElementById('sceneList');
+const beatList = document.getElementById('beatList');
+const chapterLabel = document.getElementById('chapterLabel');
+const chapterTitle = document.getElementById('chapterTitle');
+const objectiveText = document.getElementById('objectiveText');
+const bondBurst = document.getElementById('bondBurst');
 const resetBtn = document.getElementById('resetBtn');
 const imageBtn = document.getElementById('imageBtn');
 const imageDialog = document.getElementById('imageDialog');
 const imagePrompt = document.getElementById('imagePrompt');
 const copyPromptBtn = document.getElementById('copyPromptBtn');
+const generatePortraitBtn = document.getElementById('generatePortraitBtn');
+const imageResult = document.getElementById('imageResult');
+const portraitEls = Array.from(document.querySelectorAll('.portrait, .portrait-small'));
+// Mood → portrait file. Add more entries as new assets are added.
+// Each key is a lowercase English mood word the AI might return.
+const PORTRAITS = {
+  default:    'assets/mira-happy.png',
+  // ── happy / warm family
+  happy:      'assets/mira-happy.png',
+  warm:       'assets/mira-happy.png',
+  joyful:     'assets/mira-happy.png',
+  excited:    'assets/mira-happy.png',
+  pleased:    'assets/mira-happy.png',
+  fond:       'assets/mira-happy.png',
+  relieved:   'assets/mira-happy.png',
+  // ── curious / neutral
+  curious:    'assets/mira-happy.png',
+  neutral:    'assets/mira-happy.png',
+  calm:       'assets/mira-happy.png',
+  attentive:  'assets/mira-happy.png',
+  pensive:    'assets/mira-happy.png',
+  // ── shy / tender family
+  tender:     'assets/mira-shy.png',
+  shy:        'assets/mira-shy.png',
+  flushed:    'assets/mira-shy.png',
+  bashful:    'assets/mira-shy.png',
+  embarrassed:'assets/mira-shy.png',
+  touched:    'assets/mira-shy.png',
+  moved:      'assets/mira-shy.png',
+  // ── sad / hurt family
+  sad:        'assets/mira-sad.png',
+  hurt:       'assets/mira-sad.png',
+  lonely:     'assets/mira-sad.png',
+  wistful:    'assets/mira-sad.png',
+  melancholy: 'assets/mira-sad.png',
+  // ── serious / focused family
+  serious:    'assets/mira-serious.png',
+  focused:    'assets/mira-serious.png',
+  determined: 'assets/mira-serious.png',
+  worried:    'assets/mira-serious.png',
+  conflicted: 'assets/mira-serious.png',
+  // ── surprised / alert family
+  surprised:  'assets/mira-surprise.png',
+  surprise:   'assets/mira-surprise.png',
+  startled:   'assets/mira-surprise.png',
+  stunned:    'assets/mira-surprise.png',
+  // ── blink / amused
+  blink:      'assets/mira-blink.png',
+  amused:     'assets/mira-blink.png',
+  teasing:    'assets/mira-blink.png',
+  playful:    'assets/mira-blink.png',
+};
+
+// Mood → Chinese display label shown on the mood-card
+const MOOD_LABELS = {
+  happy:      '😊 开心',
+  warm:       '🌿 温柔',
+  joyful:     '✨ 雀跃',
+  excited:    '🌟 期待',
+  pleased:    '😌 满足',
+  fond:       '💚 喜欢',
+  relieved:   '😮‍💨 安心',
+  curious:    '🍃 好奇',
+  neutral:    '🌸 平静',
+  calm:       '🌿 平静',
+  attentive:  '👀 专注',
+  pensive:    '💭 若有所思',
+  tender:     '💚 心动',
+  shy:        '🌱 害羞',
+  flushed:    '🍃 脸红了',
+  bashful:    '🌱 有点不好意思',
+  embarrassed:'😳 慌了',
+  touched:    '🥹 感动',
+  moved:      '💚 触动',
+  sad:        '🌧 有点难过',
+  hurt:       '💔 受伤了',
+  lonely:     '🌑 有点孤单',
+  wistful:    '🍂 惆怅',
+  melancholy: '🌧 伤感',
+  serious:    '🌿 认真',
+  focused:    '🎯 专注',
+  determined: '💪 下定决心',
+  worried:    '😟 担心',
+  conflicted: '🌀 纠结',
+  surprised:  '😲 吃惊',
+  startled:   '！ 被吓到了',
+  stunned:    '😳 呆住了',
+  blink:      '😏 有点坏坏的',
+  amused:     '😄 被逗笑了',
+  teasing:    '😉 在捉弄你',
+  playful:    '🌿 活泼',
+};
 
 function cloneDefaultState() {
   return JSON.parse(JSON.stringify(DEFAULT_STATE));
@@ -96,6 +201,11 @@ function normalizeState(raw) {
     scene: SCENES[raw.scene] ? raw.scene : 'rain',
     mood: String(raw.mood || 'curious').slice(0, 32),
     bond: clamp(Number(raw.bond ?? 18), 0, 100),
+    chapter: String(raw.chapter || 'Chapter 1').slice(0, 40),
+    chapterTitle: String(raw.chapterTitle || 'A rain-soaked promise').slice(0, 80),
+    objective: String(raw.objective || 'Make Mira feel that this meeting was not an accident.').slice(0, 160),
+    portraitUrl: normalizePortraitUrl(raw.portraitUrl),
+    beats: Array.isArray(raw.beats) ? raw.beats.slice(-5).map(String) : cloneDefaultState().beats,
     memories: Array.isArray(raw.memories) ? raw.memories.slice(-8).map(String) : [],
     messages: Array.isArray(raw.messages)
       ? raw.messages.filter(item => item && item.content).slice(-40).map(item => ({
@@ -111,21 +221,41 @@ function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
 
+function normalizePortraitUrl(value) {
+  const url = String(value || '').trim();
+  return url && !url.endsWith('assets/mira.svg') ? url : '';
+}
+
+function portraitForMood(mood) {
+  const key = String(mood || '').toLowerCase().trim();
+  if (PORTRAITS[key]) return PORTRAITS[key];
+  // Fuzzy: find first portrait key that appears inside the mood string
+  const fuzzy = Object.keys(PORTRAITS).find(k => k !== 'default' && key.includes(k));
+  return fuzzy ? PORTRAITS[fuzzy] : PORTRAITS.default;
+}
+
 function render() {
   const scene = SCENES[state.scene] || SCENES.rain;
   app.dataset.mood = state.mood.toLowerCase();
   app.dataset.scene = state.scene;
   app.style.setProperty('--scene-color', scene.color);
-  moodLabel.textContent = titleCase(state.mood);
+  const moodKey = String(state.mood || '').toLowerCase().trim();
+  moodLabel.textContent = MOOD_LABELS[moodKey] || titleCase(state.mood);
   bondValue.textContent = `${Math.round(state.bond)}%`;
   bondBar.style.width = `${clamp(state.bond, 0, 100)}%`;
   sceneChip.textContent = scene.label;
   sceneLine.textContent = scene.line;
+  chapterLabel.textContent = state.chapter;
+  chapterTitle.textContent = state.chapterTitle;
+  objectiveText.textContent = state.objective;
+  const portraitUrl = state.portraitUrl || portraitForMood(state.mood);
+  portraitEls.forEach(img => { img.src = portraitUrl; });
 
   renderMessages();
   renderChoices();
   renderMemories();
   renderScenes();
+  renderBeats();
 }
 
 function renderMessages() {
@@ -171,12 +301,28 @@ function parseSegments(text) {
 
 function renderChoices() {
   choicesEl.innerHTML = '';
-  state.choices.forEach(choice => {
+  state.choices.forEach((choice, index) => {
     const btn = document.createElement('button');
     btn.type = 'button';
-    btn.textContent = choice;
+    const tag = document.createElement('span');
+    tag.className = 'choice-tag';
+    tag.textContent = ['Heart', 'Courage', 'Trust', 'Spark'][index] || 'Choice';
+    const label = document.createElement('strong');
+    label.textContent = choice;
+    btn.append(tag, label);
     btn.addEventListener('click', () => send(choice));
     choicesEl.appendChild(btn);
+  });
+}
+
+function renderBeats() {
+  beatList.innerHTML = '';
+  const beats = state.beats.length ? state.beats : ['The story has just begun.'];
+  beats.slice(-5).forEach((beat, index) => {
+    const item = document.createElement('li');
+    item.innerHTML = `<span>${String(index + 1).padStart(2, '0')}</span><p></p>`;
+    item.querySelector('p').textContent = beat;
+    beatList.appendChild(item);
   });
 }
 
@@ -281,16 +427,22 @@ async function callMira(text) {
         scene: SCENES[state.scene].label,
         mood: state.mood,
         bond: state.bond,
+        chapter: state.chapter,
+        objective: state.objective,
+        beats: state.beats,
         memories: state.memories,
       },
       recent_messages: state.messages.slice(-12),
       response_contract: {
         text: 'Natural Chinese dialogue. Include short action lines in *asterisks*. Keep it emotionally vivid but concise.',
         json_last_line: {
-          mood: 'one short English mood word',
+          mood: 'one English mood word from: happy, warm, joyful, excited, pleased, fond, relieved, curious, calm, attentive, pensive, tender, shy, flushed, bashful, embarrassed, touched, moved, sad, hurt, lonely, wistful, melancholy, serious, focused, determined, worried, conflicted, surprised, startled, stunned, blink, amused, teasing, playful',
           bond_delta: 'number from -3 to 6',
           scene: 'rain | cafe | library | rooftop',
           memory: 'one durable memory or empty string',
+          beat: 'one short story beat that just happened',
+          chapter_title: 'current chapter title if it should change',
+          objective: 'next emotional objective for the player',
           choices: '2 or 3 Chinese next-step choices',
         },
         required_format: 'Put a single JSON object on the last line after the prose. No markdown fence.',
@@ -324,24 +476,37 @@ function localMiraReply(text) {
       bond_delta: 2,
       scene,
       memory: text.length > 10 ? `You told Mira: ${text.slice(0, 72)}` : '',
-      choices: ['Ask what she noticed about you.', 'Move a little closer.', 'Invite her somewhere quieter.'],
+      beat: 'Mira reacted to your honesty instead of treating it like a normal chat message.',
+      chapter_title: state.chapterTitle,
+      objective: 'Decide whether to tease her gently or say something sincere.',
+      choices: ['问她刚才注意到了什么', '靠近一点，陪她听雨', '邀请她去更安静的地方'],
     }),
   ].join('\n');
 }
 
 function applyAIReply(raw) {
   const parsed = parseStructuredReply(raw);
+  const prevBond = state.bond;
   state.messages.push({ role: 'assistant', content: parsed.text || raw || 'Mira smiles softly.' });
   state.mood = parsed.mood || state.mood;
   state.bond = clamp(state.bond + Number(parsed.bond_delta || 0), 0, 100);
   if (SCENES[parsed.scene]) state.scene = parsed.scene;
+  if (parsed.chapter_title) state.chapterTitle = parsed.chapter_title;
+  if (parsed.objective) state.objective = parsed.objective;
+  if (parsed.beat && !state.beats.includes(parsed.beat)) {
+    state.beats.push(parsed.beat);
+    state.beats = state.beats.slice(-5);
+  }
   if (parsed.memory && !state.memories.includes(parsed.memory)) {
     state.memories.push(parsed.memory);
     state.memories = state.memories.slice(-8);
   }
+  if (state.bond !== prevBond) {
+    showBondBurst(state.bond - prevBond);
+  }
   state.choices = Array.isArray(parsed.choices) && parsed.choices.length
     ? parsed.choices.slice(0, 3)
-    : ['Stay with her a little longer.', 'Ask what she is feeling.', 'Change the scene.'];
+    : ['陪她多待一会儿', '问她现在的心情', '换一个更适合说真话的场景'];
 }
 
 function parseStructuredReply(raw) {
@@ -356,11 +521,23 @@ function parseStructuredReply(raw) {
       bond_delta: Number(data.bond_delta || 0),
       scene: typeof data.scene === 'string' ? data.scene : '',
       memory: typeof data.memory === 'string' ? data.memory.trim().slice(0, 140) : '',
+      beat: typeof data.beat === 'string' ? data.beat.trim().slice(0, 140) : '',
+      chapter_title: typeof data.chapter_title === 'string' ? data.chapter_title.trim().slice(0, 80) : '',
+      objective: typeof data.objective === 'string' ? data.objective.trim().slice(0, 160) : '',
       choices: Array.isArray(data.choices) ? data.choices.map(String) : [],
     };
   } catch {
     return { text, choices: [] };
   }
+}
+
+function showBondBurst(delta) {
+  const value = Number(delta);
+  if (!value || !bondBurst) return;
+  bondBurst.textContent = value > 0 ? `Bond +${value}` : `Bond ${value}`;
+  bondBurst.classList.remove('show');
+  void bondBurst.offsetWidth;
+  bondBurst.classList.add('show');
 }
 
 resetBtn.addEventListener('click', async () => {
@@ -370,16 +547,69 @@ resetBtn.addEventListener('click', async () => {
 });
 
 imageBtn.addEventListener('click', () => {
-  imagePrompt.value = [
-    'Create a polished otome game character portrait of Mira.',
-    'Mira is a warm, perceptive young woman with soft expressive eyes, shoulder-length dark rose-brown hair, and a gentle modern romantic style.',
-    'Mood: emotionally present, curious, slightly shy, comforting.',
-    `Current scene: ${SCENES[state.scene].label}.`,
-    'Composition: half-body character art, clean visual novel asset, subtle transparent or simple atmospheric background, no text, no watermark.',
-    'Style: modern high-quality anime otome game key art, refined lighting, appealing but not explicit.',
-  ].join('\n');
+  imagePrompt.value = buildPortraitPrompt();
+  imageResult.textContent = 'Uses GPT Image 2 when opened inside Knead.';
+  imageResult.className = 'image-result';
   imageDialog.showModal();
 });
+
+function buildPortraitPrompt() {
+  return [
+    'Create a polished otome game character portrait of Mira.',
+    'Mira is a visually memorable AI otome heroine with soft expressive eyes, shoulder-length dark rose-brown hair, tiny rain-drop hairpin, and a warm modern romantic outfit.',
+    'Make her cute, emotionally attractive, and instantly recognizable as the main companion character of a premium AI romance game.',
+    'Mood: emotionally present, curious, slightly shy, comforting, with subtle playful confidence.',
+    `Current scene: ${SCENES[state.scene].label}.`,
+    'Composition: half-body character art, clean visual novel asset, generous padding, simple atmospheric background, no text, no watermark.',
+    'Style: modern high-quality anime otome game key art, refined lighting, appealing but not explicit, suitable for an in-app character sprite.',
+  ].join('\n');
+}
+
+generatePortraitBtn.addEventListener('click', generatePortrait);
+
+async function generatePortrait() {
+  if (!window.NextAI?.chat?.send || window.parent === window) {
+    imageResult.className = 'image-result error';
+    imageResult.textContent = 'Open this product inside Knead to generate with GPT Image 2. Direct preview can only copy the prompt.';
+    return;
+  }
+
+  generatePortraitBtn.disabled = true;
+  imageResult.className = 'image-result loading';
+  imageResult.textContent = 'Generating Mira with GPT Image 2...';
+
+  try {
+    const res = await window.NextAI.chat.send({
+      action: 'image_generate',
+      text: imagePrompt.value || buildPortraitPrompt(),
+      context: {
+        mode: 'otome_character_image_generation',
+        tool: 'image_generate',
+        provider: 'image two',
+        model: 'fal-ai/gpt-image-2',
+        preferred_image_model: 'fal-ai/gpt-image-2',
+        aspect_ratio: 'portrait',
+        character: { name: 'Mira', product: 'AI Otome' },
+      },
+    });
+    const content = res?.content || '';
+    const raw = res?.raw || {};
+    const imageUrl = raw.image || raw.url || raw.media || content.match(/https?:\/\/\S+/)?.[0];
+    if (!imageUrl) {
+      throw new Error('No image URL returned');
+    }
+    state.portraitUrl = imageUrl;
+    await saveState();
+    render();
+    imageResult.className = 'image-result';
+    imageResult.innerHTML = `<img src="${imageUrl}" alt="Generated Mira portrait"><p>Mira portrait updated.</p>`;
+  } catch (error) {
+    imageResult.className = 'image-result error';
+    imageResult.textContent = 'Image generation failed. Copy the prompt and try again from the host chat.';
+  } finally {
+    generatePortraitBtn.disabled = false;
+  }
+}
 
 copyPromptBtn.addEventListener('click', async () => {
   await navigator.clipboard?.writeText(imagePrompt.value);

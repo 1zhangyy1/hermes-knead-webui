@@ -10,9 +10,10 @@
   <main class="otome-app" data-mood="curious" data-scene="rain">
     <section class="stage" aria-label="Mira">
       <div class="scene-glow" aria-hidden="true"></div>
+      <div class="rain-lines" aria-hidden="true"></div>
       <header class="topbar">
         <div class="identity">
-          <img class="portrait-small" src="assets/mira.svg" alt="Mira">
+          <img class="portrait-small" src="assets/mira-happy.png" alt="Mira">
           <div>
             <h1>Mira</h1>
             <p>AI otome companion</p>
@@ -21,12 +22,19 @@
         <div class="scene-chip" id="sceneChip">Rainy station</div>
       </header>
 
+      <section class="story-card" aria-label="Current chapter">
+        <span id="chapterLabel">Chapter 1</span>
+        <h2 id="chapterTitle">A rain-soaked promise</h2>
+        <p id="objectiveText">Make Mira feel that this meeting was not an accident.</p>
+      </section>
+
       <div class="character-wrap">
-        <img class="portrait" id="portrait" src="assets/mira.svg" alt="Mira character art">
+        <img class="portrait" id="portrait" src="assets/mira-happy.png" alt="Mira character art">
         <div class="mood-card">
           <span>Mood</span>
           <strong id="moodLabel">Curious</strong>
         </div>
+        <div class="bond-burst" id="bondBurst" aria-live="polite"></div>
       </div>
 
       <section class="relationship" aria-label="Relationship">
@@ -59,6 +67,10 @@
 
     <aside class="memory-panel" aria-label="Memory and state">
       <section>
+        <h2>Story beats</h2>
+        <ol class="beat-list" id="beatList"></ol>
+      </section>
+      <section>
         <h2>Memory</h2>
         <ul id="memoryList"></ul>
       </section>
@@ -79,9 +91,13 @@
         <h2>GPT Image 2 prompt</h2>
         <button type="submit" aria-label="Close">×</button>
       </header>
-      <p>Use this to generate Mira’s first real character image, then replace <code>assets/mira.svg</code>.</p>
+      <p>Use this to generate Mira’s polished character image. Until then, the product uses CC0 expression sprites.</p>
       <textarea id="imagePrompt" rows="8" readonly></textarea>
-      <button id="copyPromptBtn" type="button">Copy prompt</button>
+      <div class="image-actions">
+        <button id="generatePortraitBtn" type="button">Generate portrait</button>
+        <button id="copyPromptBtn" type="button">Copy prompt</button>
+      </div>
+      <div class="image-result" id="imageResult">Uses GPT Image 2 when opened inside Knead.</div>
     </form>
   </dialog>
 
