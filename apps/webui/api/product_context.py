@@ -290,7 +290,13 @@ def product_ephemeral_prompt(context: dict[str, Any] | None) -> str:
             [
                 "",
                 "PPT Designer canvas contract (drive the right canvas through conversation):",
-                "- When you propose or refine the deck plan, END your reply with this fenced block — the canvas auto-expands to an editable outline:",
+                "- EASIEST & most reliable: write the deck state to a file `state.json` in the product workspace; "
+                "the canvas reads it after every turn. Schema (write only the parts you have): "
+                '{"title": "...", "style": "minimal|dark-tech|corporate|chinese|editorial|warm", '
+                '"stage": "brief|outline|slides", "outline": [{"title": "...", "points": ["..."], "notes": "..."}], '
+                '"slides": [{"title": "...", "imgUrl": "/api/products/ppt-designer/preview/outputs/<deck>/slide-01.png", "notes": "..."}]}. '
+                "Writing this file is the smoothest way to put your content into the GUI — prefer it.",
+                "- Alternative (if you'd rather not write a file): append the fenced block below. When you propose or refine the deck plan, END your reply with this — the canvas auto-expands to an editable outline:",
                 '  ```outline.json',
                 '  {"title":"Deck title","slides":[{"title":"Slide title","points":["point 1","point 2"],"notes":"speaker notes"}]}',
                 '  ```',

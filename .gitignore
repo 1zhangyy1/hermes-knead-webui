@@ -48,3 +48,6 @@ products/**/__pycache__/
 
 # Generated demo/test artifacts from running products (not source)
 products/**/hermes_intro.*
+
+# Runtime per-deck canvas state (agent-written, not source)
+products/**/state.json
