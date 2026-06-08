@@ -228,15 +228,41 @@ function parseLoadImages(text) {
 // ── React to the live conversation: the canvas is a surface FOR the chat ──
 // When the agent (in the host chat) produces an outline or generated slides,
 // the right canvas auto-expands to that stage. No buttons required.
+// Easiest, most reliable AI→GUI channel: the agent writes deck state to a workspace
+// file (state.json); the canvas reads it. The canvas is served from the workspace,
+// so a relative fetch hits that file. Chat-block parsing stays as a fallback.
+function applyDeckState(d) {
+  if (!d || typeof d !== 'object') return false;
+  if (d.title) state.title = d.title;
+  if (d.deckName) state.deckName = d.deckName;
+  if (d.style) state.brief.style = d.style;
+  if (d.brief && typeof d.brief === 'object') Object.assign(state.brief, d.brief);
+  if (Array.isArray(d.outline)) state.outline = d.outline.map((s) => ({ title: s.title || '', points: s.points || s.bullets || [], notes: s.notes || '' }));
+  if (Array.isArray(d.slides)) state.slides = d.slides.map((s, i) => ({ title: s.title || `Slide ${i + 1}`, imgUrl: s.imgUrl || s.img || '', notes: s.notes || '' }));
+  const stage = d.stage || (state.slides.length ? 'slides' : state.outline.length ? 'outline' : state.stage);
+  setStage(stage);
+  return true;
+}
+async function fetchStateFile() {
+  try {
+    const r = await fetch('state.json?cb=' + Date.now(), { cache: 'no-store' });
+    if (!r.ok) return false;
+    return applyDeckState(await r.json());
+  } catch (_) { return false; }
+}
+
 function onAgentMessage(content) {
   const o = parseOutlineReply(content);
   if (o) { state.title = o.title || state.title; state.outline = o.slides || []; setStage('outline'); toast('Outline updated'); return; }
   const d = parseLoadImages(content);
   if (d) { window.PPT.loadImages(d.title, d.deckName, d.entries); return; }
-  // Agent signals it's time to pick a visual style → expand the style picker.
   if (/style\.pick|\[\[pick[_-]?style\]\]/i.test(String(content || ''))) { setStage('brief'); toast('Pick a style →'); }
 }
-window.addEventListener('nextai:agent', (e) => { try { onAgentMessage(e.detail && e.detail.content); } catch (_) {} });
+window.addEventListener('nextai:agent', async (e) => {
+  // Prefer the file the agent wrote this turn; fall back to parsing the chat reply.
+  const got = await fetchStateFile();
+  if (!got) { try { onAgentMessage(e.detail && e.detail.content); } catch (_) {} }
+});
 
 // ── window.PPT API (agent callbacks) ──
 window.PPT = {
@@ -305,6 +331,7 @@ function seedDemo(stage) {
   const demo = new URLSearchParams(location.search).get('demo');
   if (demo) { seedDemo(demo); setStage(state.stage); return; }
   setStage(state.stage || 'brief');   // paint immediately with defaults
-  await restore();                    // then load saved state (timeout-guarded)
-  setStage(state.stage || 'brief');   // re-render with restored state
+  await restore();                    // then load saved session state (timeout-guarded)
+  await fetchStateFile();             // workspace state.json (what the agent wrote) wins
+  setStage(state.stage || 'brief');   // re-render
 })();
