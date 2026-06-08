@@ -994,6 +994,10 @@
   @media(min-width:1800px){.messages-inner{max-width:1200px;}}
   .active-product-surface{width:min(48vw,720px);min-width:400px;border-left:1px solid var(--border);background:var(--surface);display:flex;flex-direction:column;min-height:0;}
   .active-product-surface:focus{outline:none;}
+  /* Chat/canvas splitter (shown only in two-pane via the rule below). */
+  .pane-resizer{display:none;}
+  .pane-resizer::before{content:"";position:absolute;top:0;bottom:0;left:50%;transform:translateX(-50%);width:1px;background:var(--border);transition:background .12s ease,width .12s ease;}
+  .pane-resizer:hover::before,.pane-resizer.is-dragging::before{background:var(--accent);width:3px;}
   .active-product-surface[hidden]{display:none!important;}
   body[data-next-ai-view="assistant"] .active-product-surface{display:none!important;}
   .active-product-toolbar{min-height:50px;display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:9px 12px;border-bottom:1px solid var(--border);background:var(--surface);}
@@ -5855,7 +5859,7 @@ textarea#msg::placeholder{
   body[data-next-ai-view="task"][data-next-ai-product-layout="chat_left_canvas_right"][data-next-ai-canvas="open"][data-next-ai-product-adjust="open"] .product-chat-body.has-active-product .messages-shell{
     display:flex!important;
     position:relative;
-    flex:0 0 min(400px,40%);
+    flex:0 0 var(--chat-pane-w, min(400px,40%));
     width:auto;
     min-width:300px;
     height:auto;
@@ -5869,6 +5873,18 @@ textarea#msg::placeholder{
     flex:1 1 auto;
     width:auto;
     min-width:0;
+  }
+
+  /* Draggable splitter between chat (left) and canvas (right) — only in two-pane. */
+  body[data-next-ai-view="task"][data-next-ai-product-layout="chat_left_canvas_right"][data-next-ai-canvas="open"][data-next-ai-chat-panel="open"] .pane-resizer,
+  body[data-next-ai-view="task"][data-next-ai-product-layout="chat_left_canvas_right"][data-next-ai-canvas="open"][data-next-ai-product-adjust="open"] .pane-resizer{
+    display:block;
+    flex:0 0 8px;
+    align-self:stretch;
+    position:relative;
+    z-index:6;
+    cursor:col-resize;
+    -webkit-user-select:none;user-select:none;
   }
 
   body[data-next-ai-view="task"][data-next-ai-product-layout="chat_left_canvas_right"][data-next-ai-canvas="open"][data-next-ai-chat-panel="open"] .product-chat-body.has-active-product .messages,

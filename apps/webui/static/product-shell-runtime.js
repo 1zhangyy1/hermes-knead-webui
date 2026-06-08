@@ -2059,3 +2059,38 @@ if (document.readyState === 'loading') {
 } else {
   initNextAiAssistants();
 }
+
+// ── Draggable chat/canvas splitter (two-pane chat_left_canvas_right) ──
+(function wirePaneResizer() {
+  function init() {
+    const r = document.getElementById('paneResizer');
+    const body = document.getElementById('productChatBody');
+    if (!r || !body) return;
+    try { const w = localStorage.getItem('nextai-chat-pane-w'); if (w) body.style.setProperty('--chat-pane-w', w); } catch (_) {}
+    let dragging = false;
+    const onMove = (e) => {
+      if (!dragging) return;
+      const rect = body.getBoundingClientRect();
+      const min = 300, max = Math.max(min, rect.width - 360);
+      let w = Math.max(min, Math.min(max, e.clientX - rect.left));
+      body.style.setProperty('--chat-pane-w', w + 'px');
+    };
+    const stop = () => {
+      if (!dragging) return;
+      dragging = false; r.classList.remove('is-dragging');
+      document.body.style.userSelect = ''; document.body.style.cursor = '';
+      try { localStorage.setItem('nextai-chat-pane-w', body.style.getPropertyValue('--chat-pane-w')); } catch (_) {}
+    };
+    r.addEventListener('mousedown', (e) => {
+      dragging = true; r.classList.add('is-dragging');
+      document.body.style.userSelect = 'none'; document.body.style.cursor = 'col-resize';
+      e.preventDefault();
+    });
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', stop);
+    // Double-click resets to the default ratio.
+    r.addEventListener('dblclick', () => { body.style.removeProperty('--chat-pane-w'); try { localStorage.removeItem('nextai-chat-pane-w'); } catch (_) {} });
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init, { once: true });
+  else init();
+})();
