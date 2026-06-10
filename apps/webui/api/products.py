@@ -287,12 +287,12 @@ def _normalize_product(item: dict[str, Any]) -> dict[str, Any]:
         product_layout = "chat_only"
     elif product_layout == "chat_only":
         ui_mode = "chat_only"
+    # Storage normalization only — keep the RAW stored status. Display-grade status is
+    # always DERIVED via _resolve_ui_status (list_products / product_file_status), and
+    # persistence of healed values happens only in finalize/reconcile. If normalize
+    # derived here too, get_product would self-heal in memory and reconcile could never
+    # detect (and persist) the drift.
     ui_status = str(item.get("ui_status") or item.get("status") or "empty").strip() or "empty"
-    # Normalize runs without touching the disk: entry_generated is unknown here.
-    ui_status = _resolve_ui_status(
-        {**item, "ui_mode": ui_mode, "ui_status": ui_status},
-        entry_generated=None,
-    )
     canvas_label = str(item.get("canvas_label") or item.get("canvasLabel") or "").strip()
     if not canvas_label and product_layout != "chat_only":
         canvas_label = "Workspace"
@@ -313,6 +313,7 @@ def _normalize_product(item: dict[str, Any]) -> dict[str, Any]:
         "preview_entry": str(item.get("preview_entry") or "index.html"),
         "preview_url": preview_url,
         "ui_status": ui_status,
+        "generation_started_at": str(item.get("generation_started_at") or "").strip(),
         "ui_error_type": str(item.get("ui_error_type") or "").strip(),
         "ui_error_message": str(item.get("ui_error_message") or "").strip(),
         "last_session_id": str(item.get("last_session_id") or "").strip(),
@@ -991,6 +992,10 @@ def record_product_session(product_id_or_kind: str, session_id: str, *, ui_statu
     }
     if ui_status:
         patch["ui_status"] = ui_status
+        if ui_status == "generating":
+            # Stamp the generation start: _resolve_ui_status derives a timeout from it,
+            # so a dead finalizer can never strand the product in "generating".
+            patch["generation_started_at"] = _now()
     update_product(product["id"], patch)
 
 
@@ -1000,6 +1005,24 @@ def _entry_is_seed(entry: Path) -> bool:
         return content == _seed_index_html().strip() or content == _chat_only_seed_index_html().strip()
     except Exception:
         return False
+
+
+def _layout_promotion_patch(
+    *,
+    ui_mode: str,
+    product_layout: str,
+    entry_generated: bool,
+    current_canvas_label: str,
+) -> dict[str, Any]:
+    """The ONE place that decides 'a real UI now exists on a chat_center product, so
+    promote it to chat_left_canvas_right'. Never overrides an explicit layout choice
+    (anything other than the chat_center default) or an explicit canvas_label."""
+    if not entry_generated or ui_mode == "chat_only" or product_layout != "chat_center":
+        return {}
+    patch: dict[str, Any] = {"product_layout": "chat_left_canvas_right"}
+    if not current_canvas_label:
+        patch["canvas_label"] = "Workspace"
+    return patch
 
 
 def finalize_product_generation(
@@ -1016,21 +1039,26 @@ def finalize_product_generation(
         status = product_file_status(product["id"])
     except Exception:
         status = {"entry_generated": False}
+    entry_generated = bool(status.get("entry_generated"))
     manifest_patch = _product_manifest_patch_from_workspace(product)
     next_ui_mode = str(manifest_patch.get("ui_mode") or product.get("ui_mode") or "workspace").strip() or "workspace"
     next_product_layout = str(manifest_patch.get("product_layout") or product.get("product_layout") or "chat_center").strip() or "chat_center"
     # The generation turn is OVER here: either a real UI exists or it failed.
     next_status = _resolve_ui_status(
         {**product, "ui_mode": next_ui_mode},
-        entry_generated=bool(status.get("entry_generated")),
+        entry_generated=entry_generated,
         explicit_failed=failed,
         generation_over=True,
     )
     patch: dict[str, Any] = {**manifest_patch, "ui_status": next_status}
-    if next_status == "ready" and next_ui_mode != "chat_only" and status.get("entry_generated") and next_product_layout == "chat_center":
-        patch["product_layout"] = "chat_left_canvas_right"
-        if not patch.get("canvas_label") and not product.get("canvas_label"):
-            patch["canvas_label"] = "Workspace"
+    patch.update(
+        _layout_promotion_patch(
+            ui_mode=next_ui_mode,
+            product_layout=next_product_layout,
+            entry_generated=entry_generated,
+            current_canvas_label=str(manifest_patch.get("canvas_label") or product.get("canvas_label") or "").strip(),
+        )
+    )
     if next_status == "failed":
         patch["ui_error_type"] = str(error_type or "generation_failed").strip()
         patch["ui_error_message"] = str(error_message or "Workspace generation did not finish. Try again.").strip()
@@ -1042,6 +1070,47 @@ def finalize_product_generation(
         return updated.get("product")
     except Exception:
         return None
+
+
+def reconcile_product_status(product_id_or_kind: str) -> dict[str, Any] | None:
+    """Explicitly reconcile the PERSISTED ui_status with reality on disk.
+
+    The only status writer besides finalize_product_generation(). Called from access
+    points (the /status endpoint, before starting a generation) — NOT from reads:
+    product_file_status()/list_products() are pure and derive without persisting.
+    Heals drift such as a timed-out 'generating' (dead finalizer) or files that
+    vanished after 'ready'. Idempotent."""
+    product = get_product(product_id_or_kind)
+    if not product:
+        return None
+    entry_generated = _product_entry_generated(product)
+    ui_mode = str(product.get("ui_mode") or "workspace").strip() or "workspace"
+    stored = str(product.get("ui_status") or "empty").strip() or "empty"
+    next_status = _resolve_ui_status(product, entry_generated=entry_generated)
+    patch: dict[str, Any] = {}
+    if next_status != stored:
+        patch["ui_status"] = next_status
+        if next_status == "failed":
+            patch["ui_error_type"] = product.get("ui_error_type") or "entry_missing"
+            patch["ui_error_message"] = (
+                product.get("ui_error_message")
+                or "Workspace files are missing or still placeholders. You can rebuild it."
+            )
+    patch.update(
+        _layout_promotion_patch(
+            ui_mode=ui_mode,
+            product_layout=str(product.get("product_layout") or "chat_center").strip() or "chat_center",
+            entry_generated=entry_generated,
+            current_canvas_label=str(product.get("canvas_label") or "").strip(),
+        )
+    )
+    if not patch:
+        return product
+    try:
+        updated = update_product(product["id"], patch)
+        return updated.get("product") or {**product, **patch}
+    except Exception:
+        return {**product, **patch}
 
 
 def product_file_status(product_id_or_kind: str) -> dict[str, Any]:
@@ -1076,33 +1145,10 @@ def product_file_status(product_id_or_kind: str) -> dict[str, Any]:
     entry_generated = bool(entry_stat) and not entry_is_seed
     ui_mode = str(product.get("ui_mode") or "workspace").strip() or "workspace"
     ui_status = str(product.get("ui_status") or "empty").strip() or "empty"
-    next_ui_status = _resolve_ui_status(product, entry_generated=entry_generated)
-    product_layout = str(product.get("product_layout") or "chat_center").strip() or "chat_center"
-    should_promote_layout = entry_generated and ui_mode != "chat_only" and product_layout == "chat_center"
-    if next_ui_status != ui_status:
-        try:
-            patch: dict[str, Any] = {"ui_status": next_ui_status}
-            if should_promote_layout:
-                patch["product_layout"] = "chat_left_canvas_right"
-                if not product.get("canvas_label"):
-                    patch["canvas_label"] = "Workspace"
-            if next_ui_status == "failed":
-                patch["ui_error_type"] = product.get("ui_error_type") or "entry_missing"
-                patch["ui_error_message"] = product.get("ui_error_message") or "Workspace files are missing or still placeholders. You can rebuild it."
-            updated = update_product(product["id"], patch)
-            product = updated.get("product") or {**product, "ui_status": next_ui_status}
-            ui_status = next_ui_status
-        except Exception:
-            ui_status = next_ui_status
-    elif should_promote_layout:
-        try:
-            patch = {"product_layout": "chat_left_canvas_right"}
-            if not product.get("canvas_label"):
-                patch["canvas_label"] = "Workspace"
-            updated = update_product(product["id"], patch)
-            product = updated.get("product") or {**product, **patch}
-        except Exception:
-            pass
+    # PURE READ: derive the status, never persist from here. Persistence happens only
+    # in finalize_product_generation() and the explicit reconcile_product_status().
+    ui_status = _resolve_ui_status(product, entry_generated=entry_generated)
+    product = {**product, "ui_status": ui_status}
     return {
         "ok": True,
         "product": product,

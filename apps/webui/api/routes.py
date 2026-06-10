@@ -3827,6 +3827,11 @@ def handle_get(handler, parsed) -> bool:
     if parsed.path.startswith("/api/products/") and parsed.path.endswith("/status"):
         product_id = unquote(parsed.path[len("/api/products/"):-len("/status")].strip("/"))
         try:
+            # Reconcile-on-access: persist any status drift (e.g. timed-out generating)
+            # here at the access point; the read below stays pure.
+            from api.products import reconcile_product_status
+
+            reconcile_product_status(product_id)
             return j(handler, product_file_status(product_id))
         except Exception:
             return j(handler, {"error": "not found"}, status=404)
