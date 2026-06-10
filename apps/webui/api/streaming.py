@@ -2804,13 +2804,15 @@ def _run_agent_streaming(
         nonlocal product_turn_finalized
         if product_turn_finalized:
             return
-        product_turn_finalized = True
         if not product_context:
+            product_turn_finalized = True
             return
         if str(product_context.get("scope") or "") not in {"product_init", "product_builder"}:
+            product_turn_finalized = True
             return
         product_id = str(product_context.get("id") or "").strip()
         if not product_id:
+            product_turn_finalized = True
             return
         try:
             from api.products import finalize_product_generation
@@ -2821,8 +2823,13 @@ def _run_agent_streaming(
                 error_type=error_type,
                 error_message=error_message,
             )
+            # Only mark done on success: a later call (e.g. the turn-done path after a
+            # cancel-path exception) can still retry instead of stranding "generating".
+            product_turn_finalized = True
         except Exception:
-            logger.debug("Failed to finalize product generation for %s", product_id, exc_info=True)
+            # Surface loudly — a swallowed failure here used to leave the product stuck
+            # in "generating" forever (now also healed by the resolver's timeout).
+            logger.warning("Failed to finalize product generation for %s", product_id, exc_info=True)
 
     def _put_cancel(message: str = "Cancelled by user") -> None:
         _finalize_product_turn(failed=True)
