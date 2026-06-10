@@ -327,26 +327,26 @@ def product_ephemeral_prompt(context: dict[str, Any] | None) -> str:
             lines.append(f"- Current product files: {', '.join(files)}")
         if capability_items:
             lines.append(f"- Your builder toolset: {', '.join(capability_items)}")
-        lines.append(
-            "- For non-trivial UI or visual work, load the 'impeccable' frontend-design skill via the skills tool "
-            "before writing UI, and follow its restraint rules."
-        )
         lines.extend(
             [
                 "",
-                "Direct product build contract:",
+                "Skills (load FIRST, before building):",
+                "- Load the 'knead-product' skill via the skills tool — it is the authoritative contract for "
+                "building/adjusting Knead products (the 4-slot model, product.json schema, the three layouts, "
+                "the NextAI bridge, worked examples to read, and a minimal canvas template).",
+                "- For non-trivial UI or visual work, also load the 'impeccable' frontend-design skill and follow "
+                "its setup and restraint rules.",
+                "",
+                "Core build contract (details live in the knead-product skill):",
                 "- Edit files in the product workspace directly instead of only describing a design.",
-                "- Product identity/config lives in product.json. For avatar/name/description/placeholder/skills/tools/ui_mode/product_layout/canvas_label changes, update product.json rather than shell code.",
-                "- If ui_mode is chat_only, keep the product as a pure chat product unless the user explicitly asks for a visible product canvas.",
-                "- If you create a visible product UI, set product_layout in product.json: use chat_left_canvas_right for side-by-side work surfaces, or canvas_full when the product UI should be the main page, such as character chat, games, image editors, or other immersive products.",
-                "- For canvas_full, the product UI owns the primary user input. Build the product's own input/output flow and do not rely on the host composer for normal product use; the host composer is reserved for adjusting the product.",
-                "- If the product UI needs AI inside its own controls, include /static/product-bridge-sdk.js before the product's app script and call window.NextAI.chat.send({text, action, context}). Do not fetch /api/chat or call model APIs directly from product code.",
-                "- If the product UI needs durable task state, use window.NextAI.state.get/set/remove (scoped to product+session by default; use {scope:'product'} only for product-wide preferences). window.NextAI.storage is only a sandbox-safe fallback; do not rely on raw localStorage for product chat history, task data, or generated UI state.",
-                "- Prefer a small browser-native static interface first: index.html, style.css, app.js. Avoid build steps unless the user asked for them.",
-                "- For product_init, first write the minimal useful UI files, then optionally inspect, refine, or explain. The first UI can be simple but must be real and usable; use editable defaults rather than asking the user to clarify every field.",
-                "- Keep the product UI clean, legible, and task-focused; no marketing landing page unless the requested product is a landing page.",
-                "- Do not emit hidden UI state blocks. If the UI should change, edit the product workspace files directly.",
-                "- After file changes, briefly tell the user what changed and what they can do next.",
+                "- Product identity/config lives in product.json; the canvas is browser-native static files "
+                "(index.html/style.css/app.js), no build steps.",
+                "- For product_init, write minimal-but-real UI files the user can immediately use; editable "
+                "defaults over clarifying questions. No marketing landing pages.",
+                "- AI inside the canvas goes through /static/product-bridge-sdk.js (window.NextAI), never direct "
+                "model/API calls from canvas code.",
+                "- After file changes, briefly tell the user what changed and what they can do next, in user "
+                "language (never internal words like canvas/version/scope on screen).",
             ]
         )
         if ppt_like:

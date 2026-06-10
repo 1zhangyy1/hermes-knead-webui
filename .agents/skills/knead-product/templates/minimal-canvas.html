@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PRODUCT_TITLE</title>
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+  <!--
+    Minimal Knead canvas skeleton. Replace structure per the product's task,
+    keep the contract:
+    - bridge SDK loads BEFORE app.js
+    - browser-native only (no build step)
+    - user-visible text uses user language (界面/调整), never internal words
+  -->
+  <main class="app" id="app">
+    <header class="topbar">
+      <span class="title" id="title">PRODUCT_TITLE</span>
+    </header>
+    <section class="surface" id="surface">
+      <!-- the product's working surface -->
+    </section>
+  </main>
+
+  <script src="/static/product-bridge-sdk.js"></script>
+  <script src="./app.js"></script>
+</body>
+</html>
