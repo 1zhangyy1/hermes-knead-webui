@@ -17,5 +17,27 @@ if [[ -z "${HERMES_WEBUI_PYTHON:-}" && -x "$ROOT/apps/webui/.venv311/bin/python"
   export HERMES_WEBUI_PYTHON="$ROOT/apps/webui/.venv311/bin/python"
 fi
 
+# Ensure the agent can discover the repo-tracked skills (.agents/skills: knead-product,
+# impeccable). config.yaml lives in the machine-local HERMES_HOME, so wire it here,
+# idempotently, for every checkout.
+"${HERMES_WEBUI_PYTHON:-python3}" - "$HERMES_HOME" "$ROOT" <<'PY'
+import sys
+from pathlib import Path
+
+home, root = Path(sys.argv[1]), Path(sys.argv[2])
+cfg = home / "config.yaml"
+skills_dir = str(root / ".agents" / "skills")
+text = cfg.read_text(encoding="utf-8") if cfg.exists() else ""
+if skills_dir not in text:
+    if "skills:" not in text:
+        text = text.rstrip("\n") + "\nskills:\n  external_dirs:\n"
+    elif "external_dirs:" not in text:
+        text = text.replace("skills:", "skills:\n  external_dirs:", 1)
+    text = text.replace("external_dirs:", f"external_dirs:\n    - {skills_dir}", 1)
+    cfg.parent.mkdir(parents=True, exist_ok=True)
+    cfg.write_text(text, encoding="utf-8")
+    print(f"[dev-webui] wired skills.external_dirs -> {skills_dir}")
+PY
+
 cd "$ROOT/apps/webui"
 exec "${HERMES_WEBUI_PYTHON:-python3}" bootstrap.py
