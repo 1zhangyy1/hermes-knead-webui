@@ -10,6 +10,7 @@ import json
 import os
 import shutil
 import threading
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -287,8 +288,11 @@ def _normalize_product(item: dict[str, Any]) -> dict[str, Any]:
     elif product_layout == "chat_only":
         ui_mode = "chat_only"
     ui_status = str(item.get("ui_status") or item.get("status") or "empty").strip() or "empty"
-    if ui_mode == "chat_only" and ui_status in {"empty", "failed"}:
-        ui_status = "ready"
+    # Normalize runs without touching the disk: entry_generated is unknown here.
+    ui_status = _resolve_ui_status(
+        {**item, "ui_mode": ui_mode, "ui_status": ui_status},
+        entry_generated=None,
+    )
     canvas_label = str(item.get("canvas_label") or item.get("canvasLabel") or "").strip()
     if not canvas_label and product_layout != "chat_only":
         canvas_label = "Workspace"
@@ -494,6 +498,87 @@ def _product_entry_generated(product: dict[str, Any]) -> bool:
     return not _entry_is_seed(entry)
 
 
+# How long a product may stay in "generating" before we consider the generation
+# turn dead (finalizer crashed, server restarted mid-turn, etc.). The timeout is
+# part of status DERIVATION, not a background cleanup job — so a product can never
+# be stuck in "generating" forever even if no finalizer ever runs.
+GENERATION_TIMEOUT_SECONDS = 15 * 60
+
+
+def _parse_iso_ts(raw: Any) -> float | None:
+    """Parse our ISO-Z timestamps ('2026-06-08T03:25:37Z') to epoch seconds."""
+    text = str(raw or "").strip()
+    if not text:
+        return None
+    try:
+        return datetime.fromisoformat(text.replace("Z", "+00:00")).timestamp()
+    except ValueError:
+        return None
+
+
+def _resolve_ui_status(
+    product: dict[str, Any],
+    *,
+    entry_generated: bool | None,
+    now: float | None = None,
+    explicit_failed: bool = False,
+    generation_over: bool = False,
+) -> str:
+    """Single source of truth for a product's ui_status. Pure — no I/O, no writes.
+
+    Status is DERIVED from facts (ui_mode, whether a real entry file exists, when
+    generation started) plus the stored status only as a tie-breaker.
+
+    ``entry_generated`` is tri-state: True/False when the caller checked the disk,
+    None when it didn't (e.g. normalize at load time) — file-based rules are then
+    skipped and the stored value is trusted.
+    ``generation_over`` means the generation turn has finished (finalizer running):
+    a product can no longer be "generating", so no entry means failed.
+
+    Rule table, first match wins:
+
+      1. explicit_failed                       -> failed   (finalizer reported failure)
+      2. ui_mode == chat_only                  -> ready    (chat products need no canvas)
+      3. entry_generated is True               -> ready    (a real UI exists on disk)
+      4. generation_over (and no entry)        -> failed   (turn ended without a UI)
+      5. stored generating, within timeout     -> generating
+      6. stored generating, timed out          -> failed   (dead finalizer can't strand us)
+      7. stored failed                         -> failed
+      8. stored ready + entry_generated False  -> failed   (was ready, files now missing)
+      9. stored ready + entry unknown          -> ready    (trust stored; nobody checked)
+     10. otherwise                             -> empty
+
+    Every caller (normalize/list/create/finalize/file_status) must use this instead
+    of hand-rolling its own variant.
+    """
+    if explicit_failed:
+        return "failed"
+    ui_mode = str(product.get("ui_mode") or "workspace").strip() or "workspace"
+    if ui_mode == "chat_only":
+        return "ready"
+    if entry_generated is True:
+        return "ready"
+    if generation_over:
+        # A generation turn just ended and produced no real UI: that is a failure,
+        # regardless of what the stored status claimed.
+        return "failed"
+    stored = str(product.get("ui_status") or "empty").strip() or "empty"
+    if stored == "generating":
+        started = _parse_iso_ts(product.get("generation_started_at")) or _parse_iso_ts(product.get("updated_at"))
+        current = time.time() if now is None else now
+        if started is not None and (current - started) > GENERATION_TIMEOUT_SECONDS:
+            return "failed"
+        return "generating"
+    if stored == "failed":
+        return "failed"
+    if stored == "ready":
+        if entry_generated is False:
+            # It claimed ready but the entry is missing or still the seed placeholder.
+            return "failed"
+        return "ready"
+    return "empty"
+
+
 def list_products() -> dict[str, Any]:
     with _LOCK:
         state = _ensure_builtin_products_locked()
@@ -502,9 +587,9 @@ def list_products() -> dict[str, Any]:
             item = dict(product)
             entry_generated = _product_entry_generated(item)
             item["entry_generated"] = entry_generated
-            item["product_canvas_available"] = entry_generated or str(item.get("ui_status") or "") == "generating"
-            if entry_generated and str(item.get("ui_status") or "") in {"empty", "generating"}:
-                item["ui_status"] = "ready"
+            # Derived view only — listing never persists status (see reconcile).
+            item["ui_status"] = _resolve_ui_status(item, entry_generated=entry_generated)
+            item["product_canvas_available"] = entry_generated or item["ui_status"] == "generating"
             products.append(item)
         return {"products": products}
 
@@ -533,7 +618,11 @@ def create_product(body: dict[str, Any]) -> dict[str, Any]:
         product["workspace_path"] = str(_product_dir(product_id).resolve())
         product["preview_url"] = f"/api/products/{product_id}/preview"
         requested_status = str(body.get("ui_status") or product.get("ui_status") or "empty").strip() or "empty"
-        product["ui_status"] = "ready" if product.get("ui_mode") == "chat_only" else requested_status
+        # Fresh product: only seed files exist on disk, nothing generated yet.
+        product["ui_status"] = _resolve_ui_status(
+            {**product, "ui_status": requested_status},
+            entry_generated=None,
+        )
         product["sessions"] = []
         capability_defaults = suggest_product_capabilities(
             title=product.get("title") or title,
@@ -930,12 +1019,13 @@ def finalize_product_generation(
     manifest_patch = _product_manifest_patch_from_workspace(product)
     next_ui_mode = str(manifest_patch.get("ui_mode") or product.get("ui_mode") or "workspace").strip() or "workspace"
     next_product_layout = str(manifest_patch.get("product_layout") or product.get("product_layout") or "chat_center").strip() or "chat_center"
-    if failed:
-        next_status = "failed"
-    elif next_ui_mode == "chat_only":
-        next_status = "ready"
-    else:
-        next_status = "ready" if status.get("entry_generated") else "failed"
+    # The generation turn is OVER here: either a real UI exists or it failed.
+    next_status = _resolve_ui_status(
+        {**product, "ui_mode": next_ui_mode},
+        entry_generated=bool(status.get("entry_generated")),
+        explicit_failed=failed,
+        generation_over=True,
+    )
     patch: dict[str, Any] = {**manifest_patch, "ui_status": next_status}
     if next_status == "ready" and next_ui_mode != "chat_only" and status.get("entry_generated") and next_product_layout == "chat_center":
         patch["product_layout"] = "chat_left_canvas_right"
@@ -986,13 +1076,7 @@ def product_file_status(product_id_or_kind: str) -> dict[str, Any]:
     entry_generated = bool(entry_stat) and not entry_is_seed
     ui_mode = str(product.get("ui_mode") or "workspace").strip() or "workspace"
     ui_status = str(product.get("ui_status") or "empty").strip() or "empty"
-    next_ui_status = ui_status
-    if ui_mode == "chat_only" and ui_status in {"empty", "failed"}:
-        next_ui_status = "ready"
-    elif entry_generated and ui_status in {"empty", "generating"}:
-        next_ui_status = "ready"
-    elif ui_mode != "chat_only" and not entry_generated and ui_status == "ready":
-        next_ui_status = "failed"
+    next_ui_status = _resolve_ui_status(product, entry_generated=entry_generated)
     product_layout = str(product.get("product_layout") or "chat_center").strip() or "chat_center"
     should_promote_layout = entry_generated and ui_mode != "chat_only" and product_layout == "chat_center"
     if next_ui_status != ui_status:
