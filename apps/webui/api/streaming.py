@@ -47,6 +47,7 @@ from api.streaming_errors import (
 from api.streaming_cancellation import (
     cleanup_ephemeral_cancelled_turn as _cleanup_ephemeral_cancelled_turn_impl,
     finalize_cancelled_turn as _finalize_cancelled_turn_impl,
+    persist_cancel_stream_writeback as _persist_cancel_stream_writeback_impl,
     persist_cancelled_turn as _persist_cancelled_turn_impl,
     session_has_cancel_marker as _session_has_cancel_marker_impl,
 )
@@ -2712,8 +2713,6 @@ def cancel_stream(stream_id: str) -> bool:
         with _get_session_agent_lock(_cancel_session_id):
             try:
                 _cs = get_session(_cancel_session_id)
-                if not isinstance(getattr(_cs, 'messages', None), list):
-                    _cs.messages = []
                 if not _stream_writeback_is_current(_cs, stream_id):
                     # The stream has rotated to a different stream id (newer
                     # turn started, or the worker already finalized this one).
@@ -2728,168 +2727,15 @@ def cancel_stream(stream_id: str) -> bool:
                     )
                     _emit_cancel_event = False
                     return True
-                # ── Preserve the user's typed message before clearing pending state (#1298) ──
-                # The agent's internal messages list (where the user message was appended at
-                # the start of run_conversation()) may not have been merged back into
-                # _cs.messages yet — cancel_stream() races with the streaming thread's final
-                # _merge_display_messages_after_agent_result() call. Without this guard, the
-                # user's message is lost: pending_user_message gets cleared below, and
-                # _cs.messages still only contains messages from prior turns. The reporter
-                # of #1298 sees their typed text vanish from chat after clicking Stop.
-                #
-                # Recovery rule: if pending_user_message is set AND the latest message in
-                # _cs.messages isn't already a matching user turn, synthesize one. The
-                # match check guards against double-append when the streaming thread DID
-                # reach its merge step before cancel_stream() got the session lock.
-                #
-                # Wrapped in its own try/except so an unexpected _cs.messages shape (e.g.
-                # in unit tests using Mock sessions) cannot escape and skip the rest of
-                # the cleanup.
-                try:
-                    _pending_user = getattr(_cs, 'pending_user_message', None)
-                    _pending_atts_raw = getattr(_cs, 'pending_attachments', None)
-                    _pending_atts = list(_pending_atts_raw) if isinstance(_pending_atts_raw, (list, tuple)) else []
-                    _pending_started = getattr(_cs, 'pending_started_at', None) or 0
-                    _msgs_for_recovery = _cs.messages if isinstance(_cs.messages, list) else None
-                    if _pending_user and _msgs_for_recovery is not None:
-                        _last_user = None
-                        for _m in reversed(_msgs_for_recovery):
-                            if isinstance(_m, dict) and _m.get('role') == 'user':
-                                _last_user = _m
-                                break
-                        _already_persisted = False
-                        if _last_user is not None:
-                            _last_content = _last_user.get('content')
-                            _last_ts = _last_user.get('timestamp') or 0
-                            # Only treat as already-persisted if the latest user turn
-                            # was created AT OR AFTER the current turn's pending_started_at.
-                            # An earlier turn whose content happens to be a substring
-                            # (e.g. prior reply was "ok", user now types "ok please continue")
-                            # must NOT short-circuit synthesis — that would re-introduce
-                            # the data-loss bug this guard is supposed to prevent.
-                            if isinstance(_last_content, str) and _last_ts >= _pending_started:
-                                # Tolerate the workspace prefix the streaming thread prepends.
-                                if _pending_user == _last_content or _pending_user in _last_content:
-                                    _already_persisted = True
-                        if not _already_persisted:
-                            _user_turn: dict = {
-                                'role': 'user',
-                                'content': _pending_user,
-                                'timestamp': int(time.time()),
-                            }
-                            if _pending_atts:
-                                _user_turn['attachments'] = _pending_atts
-                            _msgs_for_recovery.append(_user_turn)
-                except Exception:
-                    logger.debug(
-                        "Failed to recover pending user message on cancel for %s",
-                        _cancel_session_id,
-                    )
-                _cs.active_stream_id = None
-                _cs.pending_user_message = None
-                _cs.pending_attachments = []
-                _cs.pending_started_at = None
-                # Persist any partial assistant text that was streamed before cancel (#893).
-                # Preserving partial content means the user sees what the agent had
-                # produced rather than losing it entirely.  The marker is _partial=True
-                # (for session/UI identification only) — NOT _error=True — so the partial
-                # content IS kept in the history sent to the agent on the next user
-                # message, letting the model continue from where it was cut off.
-                # See the inner comment on the append call below for the rationale.
-                #
-                # #1361: Also persist reasoning trace and live tool calls that were
-                # accumulated in thread-local variables but invisible to the cancel path.
-                # This prevents paid-token data loss when cancelling mid-reasoning or
-                # mid-tool-execution.
-                partial_text = _cancel_partial_text.strip() if _cancel_partial_text else ''
-                _stripped = ''
-                if partial_text:
-                    import re as _re
-                    # Strip thinking/reasoning markup from partial content before saving.
-                    # First pass: remove complete <thinking>...</thinking> blocks.
-                    _stripped = _re.sub(r'<think(?:ing)?\b[^>]*>.*?</think(?:ing)?>',
-                                        '', partial_text,
-                                        flags=_re.DOTALL | _re.IGNORECASE).strip()
-                    # Second pass: strip trailing UNCLOSED think/thinking block (the common
-                    # cancel case — user stops mid-reasoning before the close tag appears).
-                    _stripped = _re.sub(r'<think(?:ing)?\b[^>]*>.*',
-                                        '', _stripped,
-                                        flags=_re.DOTALL | _re.IGNORECASE).strip()
-                # Determine whether there is anything to preserve beyond just the
-                # cancel marker.  Content text, reasoning trace, or tool calls all
-                # count (#1361 §C — previously only _stripped was checked, so a
-                # reasoning-only or tool-only stream produced NO partial message).
-                _has_reasoning = bool(_cancel_reasoning and _cancel_reasoning.strip())
-                _has_tools = bool(_cancel_tool_calls)
-                _cancel_marker_exists = _session_has_cancel_marker(_cs)
-                _cancel_marker_idx = len(_cs.messages)
-                if _cancel_marker_exists:
-                    for _idx in range(len(_cs.messages) - 1, -1, -1):
-                        _m = _cs.messages[_idx]
-                        if not isinstance(_m, dict) or _m.get('role') != 'assistant':
-                            continue
-                        _content = str(_m.get('content') or '').strip().lower()
-                        if any(pattern in _content for pattern in _CANCEL_MARKER_PATTERNS):
-                            _cancel_marker_idx = _idx
-                            break
-                _partial_already_present = False
-                if _stripped:
-                    for _m in _cs.messages:
-                        # Stage-350 Opus SHOULD-FIX (#2151): only dedup
-                        # against actual prior _partial markers from the
-                        # same stream, with exact content match. The original
-                        # substring check (`_stripped in _existing or
-                        # _existing in _stripped`) was too broad — any short
-                        # prior assistant reply (e.g. "OK", "Here is the
-                        # answer:") becomes a substring of many later partial
-                        # bodies and could silently drop the new partial,
-                        # resurrecting the #893 data-loss bug on long sessions.
-                        if not isinstance(_m, dict) or not _m.get('_partial'):
-                            continue
-                        if str(_m.get('content') or '').strip() == _stripped:
-                            _partial_already_present = True
-                            break
-                if (_stripped or _has_reasoning or _has_tools) and not _partial_already_present:
-                    _partial_msg: dict = {
-                        'role': 'assistant',
-                        'content': _stripped,  # may be empty for reasoning/tool-only turns
-                        '_partial': True,
-                        'timestamp': int(time.time()),
-                    }
-                    if _has_reasoning:
-                        _partial_msg['reasoning'] = _cancel_reasoning.strip()
-                    if _has_tools:
-                        # NOTE: store under the private '_partial_tool_calls' key
-                        # (NOT 'tool_calls'). The captured entries use the WebUI
-                        # internal shape {name, args, done, duration, is_error}
-                        # — they do NOT carry the OpenAI/Anthropic API id +
-                        # function: {name, arguments} envelope. If we put them
-                        # under 'tool_calls', `_sanitize_messages_for_api`
-                        # (which whitelists 'tool_calls' via _API_SAFE_MSG_KEYS)
-                        # would forward them to the next-turn LLM call and
-                        # strict providers (OpenAI, Anthropic, Z.AI/GLM) would
-                        # 400 on the malformed entries — turning a "data lost
-                        # on cancel" bug into a "next message returns 400"
-                        # bug, which is worse. The underscore-prefixed key is
-                        # not in the whitelist, so sanitize strips it. The UI
-                        # reads it via static/messages.js and renders it
-                        # alongside the regular tool_calls path.
-                        # (Opus pre-release review pass 2 of v0.50.251.)
-                        _partial_msg['_partial_tool_calls'] = list(_cancel_tool_calls)
-                    _cs.messages.insert(_cancel_marker_idx, _partial_msg)
-                # Cancel marker — flagged _error=True so it is stripped from conversation
-                # history on the next turn (prevents model from seeing "Task cancelled."
-                # as a prior assistant reply).
-                if not _cancel_marker_exists:
-                    _cs.messages.append({
-                        'role': 'assistant',
-                        'content': _cancelled_turn_content('Task cancelled.'),
-                        '_error': True,
-                        'provider_details': 'Task cancelled.',
-                        'provider_details_label': 'Cancellation details',
-                        'timestamp': int(time.time()),
-                    })
-                _cs.save()
+                _persist_cancel_stream_writeback_impl(
+                    _cs,
+                    partial_text=_cancel_partial_text,
+                    reasoning_text=_cancel_reasoning,
+                    tool_calls=_cancel_tool_calls,
+                    cancelled_turn_content_fn=_cancelled_turn_content,
+                    logger=logger,
+                    session_id=_cancel_session_id,
+                )
             except Exception:
                 logger.debug("Failed to clear session state on cancel for %s", _cancel_session_id)
 
