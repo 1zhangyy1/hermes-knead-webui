@@ -117,7 +117,10 @@ from api.streaming_agent_runtime import (
     refresh_cached_agent_primary_runtime_snapshot as _refresh_cached_agent_primary_runtime_snapshot,
     refresh_cached_agent_runtime as _refresh_cached_agent_runtime,
 )
-from api.streaming_agent_cache import refresh_cached_agent_for_turn as _refresh_cached_agent_for_turn
+from api.streaming_agent_cache import (
+    handle_evicted_agent_cache_items as _handle_evicted_agent_cache_items,
+    refresh_cached_agent_for_turn as _refresh_cached_agent_for_turn,
+)
 from api.streaming_agent_config import (
     build_agent_kwargs as _build_agent_kwargs_impl,
     resolve_fallback_config as _resolve_fallback_config_impl,
@@ -1208,30 +1211,7 @@ def _run_agent_streaming(
                             _evicted_items.append((evicted_sid, evicted_entry))
                     # Commit and close evicted agents outside the cache lock so
                     # concurrent cache users are not blocked by provider I/O.
-                    for _evicted_sid, _evicted_entry in _evicted_items:
-                        try:
-                            _evicted_agent = _evicted_entry[0] if isinstance(_evicted_entry, tuple) else None
-                            _should_close_evicted_agent = True
-                            if _evicted_agent is not None:
-                                try:
-                                    from api.session_lifecycle import (
-                                        commit_session_memory as _lifecycle_commit,
-                                        has_uncommitted_work as _lifecycle_has_uncommitted_work,
-                                        unregister_agent as _lifecycle_unregister_agent,
-                                    )
-                                    _lifecycle_commit(_evicted_sid, agent=_evicted_agent, wait=True)
-                                    if not _lifecycle_has_uncommitted_work(_evicted_sid):
-                                        _lifecycle_unregister_agent(_evicted_sid)
-                                    else:
-                                        _should_close_evicted_agent = False
-                                except Exception:
-                                    _should_close_evicted_agent = False
-                                    logger.debug("Lifecycle commit on eviction failed for %s", _evicted_sid, exc_info=True)
-                            if _should_close_evicted_agent and _evicted_agent is not None and getattr(_evicted_agent, '_session_db', None) is not None:
-                                _evicted_agent._session_db.close()
-                        except Exception:
-                            logger.debug("Failed to close evicted agent for session %s", _evicted_sid, exc_info=True)
-                        logger.debug('[webui] Evicted LRU agent from cache: %s', _evicted_sid)
+                    _handle_evicted_agent_cache_items(_evicted_items, logger=logger)
                     logger.debug('[webui] Created new agent for session %s', session_id)
 
             # Store agent instance for cancel/interrupt propagation

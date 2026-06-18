@@ -5,6 +5,41 @@ from __future__ import annotations
 from typing import Any
 
 
+def handle_evicted_agent_cache_items(evicted_items: list[tuple[str, Any]], *, logger: Any | None = None) -> None:
+    """Commit lifecycle state and close evicted cached agents outside the cache lock."""
+    for evicted_sid, evicted_entry in evicted_items:
+        try:
+            evicted_agent = evicted_entry[0] if isinstance(evicted_entry, tuple) else None
+            should_close_evicted_agent = True
+            if evicted_agent is not None:
+                try:
+                    from api.session_lifecycle import (
+                        commit_session_memory as _lifecycle_commit,
+                        has_uncommitted_work as _lifecycle_has_uncommitted_work,
+                        unregister_agent as _lifecycle_unregister_agent,
+                    )
+                    _lifecycle_commit(evicted_sid, agent=evicted_agent, wait=True)
+                    if not _lifecycle_has_uncommitted_work(evicted_sid):
+                        _lifecycle_unregister_agent(evicted_sid)
+                    else:
+                        should_close_evicted_agent = False
+                except Exception:
+                    should_close_evicted_agent = False
+                    if logger is not None:
+                        logger.debug("Lifecycle commit on eviction failed for %s", evicted_sid, exc_info=True)
+            if (
+                should_close_evicted_agent
+                and evicted_agent is not None
+                and getattr(evicted_agent, '_session_db', None) is not None
+            ):
+                evicted_agent._session_db.close()
+        except Exception:
+            if logger is not None:
+                logger.debug("Failed to close evicted agent for session %s", evicted_sid, exc_info=True)
+        if logger is not None:
+            logger.debug('[webui] Evicted LRU agent from cache: %s', evicted_sid)
+
+
 def refresh_cached_agent_for_turn(
     agent: Any,
     agent_kwargs: dict[str, Any],
