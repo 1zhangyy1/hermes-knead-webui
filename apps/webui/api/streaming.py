@@ -20,8 +20,8 @@ from api.config import (
     STREAM_GOAL_RELATED, PENDING_GOAL_CONTINUATION,
     STREAM_LAST_EVENT_ID,
     LOCK, SESSIONS, SESSION_DIR,
-    _get_session_agent_lock, _set_thread_env, _clear_thread_env,
-    register_active_run, update_active_run, unregister_active_run,
+    _get_session_agent_lock, _set_thread_env,
+    register_active_run, update_active_run,
     SESSION_AGENT_LOCKS, SESSION_AGENT_LOCKS_LOCK,
     resolve_model_provider,
     resolve_custom_provider_connection,
@@ -57,7 +57,7 @@ from api.streaming_chat_steer import (
     drain_pending_steer_leftover as _drain_pending_steer_leftover,
     handle_chat_steer as _handle_chat_steer_impl,
 )
-from api.streaming_cleanup import finalize_streaming_worker_exit as _finalize_streaming_worker_exit
+from api.streaming_cleanup import finalize_webui_streaming_worker_exit as _finalize_streaming_worker_exit
 from api.streaming_gateway import (
     GATEWAY_ROUTING_ATTEMPT_KEYS as _GATEWAY_ROUTING_ATTEMPT_KEYS,
     GATEWAY_ROUTING_CONTAINER_KEYS as _GATEWAY_ROUTING_CONTAINER_KEYS,
@@ -1318,21 +1318,9 @@ def _run_agent_streaming(
             agent_lock=_agent_lock,
             checkpoint_stop=_checkpoint_stop,
             checkpoint_thread=_ckpt_thread,
-            stop_checkpoint_thread=_stop_checkpoint_thread,
-            update_active_run=update_active_run,
             last_resort_sync_from_core=_last_resort_sync_from_core,
             finalize_product_turn=_finalize_product_turn,
-            clear_thread_env=_clear_thread_env,
-            streams=STREAMS,
-            cancel_flags=CANCEL_FLAGS,
-            agent_instances=AGENT_INSTANCES,
-            partial_text=STREAM_PARTIAL_TEXT,
-            reasoning_text=STREAM_REASONING_TEXT,
-            live_tool_calls=STREAM_LIVE_TOOL_CALLS,
             goal_related=STREAM_GOAL_RELATED,
-            last_event_ids=STREAM_LAST_EVENT_ID,
-            unregister_active_run=unregister_active_run,
-            streams_lock=STREAMS_LOCK,
         )
 
 # ============================================================
