@@ -156,7 +156,9 @@ from api.streaming_turn_journal import (
     append_interrupted_turn_event as _append_interrupted_turn_event,
     append_worker_started_turn_event as _append_worker_started_turn_event,
 )
-from api.streaming_terminal import emit_success_post_done_events as _emit_success_post_done_events
+from api.streaming_terminal import (
+    emit_completed_turn_done as _emit_completed_turn_done,
+)
 from api.streaming_turn_metadata import (
     apply_completed_turn_metadata as _apply_completed_turn_metadata,
     attach_reasoning_trace_to_last_assistant as _attach_reasoning_trace_to_last_assistant,
@@ -1309,9 +1311,6 @@ def _run_agent_streaming(
                     looks_invalid_generated_title=_looks_invalid_generated_title,
                     first_exchange_snippets=_first_exchange_snippets,
                 )
-                _should_bg_title = _title_plan.should_background_title
-                _u0 = _title_plan.user_text
-                _a0 = _title_plan.assistant_text
                 _token_usage = _apply_agent_token_usage_to_session(s, agent)
                 output_tokens = _token_usage.output_tokens
                 # Persist tool-call summaries even when the final message history only
@@ -1372,47 +1371,32 @@ def _run_agent_streaming(
                     # Keep this marker inside the per-session writeback lock so
                     # completed-turn ordering stays aligned with session save/journal.
                     _mark_completed_turn_memory_lifecycle(s.session_id, agent, logger=logger)
-            usage = _build_done_usage_payload(
-                _token_usage,
-                duration_seconds=_turn_metadata.duration_seconds,
-                turn_tps=_turn_metadata.turn_tps,
-                gateway_routing=_turn_metadata.gateway_routing,
-            )
-            _apply_context_window_to_usage(
-                usage,
+            # (reasoning trace already attached + saved above, before s.save())
+            _emit_completed_turn_done(
                 s,
-                agent,
-                _cfg,
+                original_session_id=session_id,
+                token_usage=_token_usage,
+                turn_metadata=_turn_metadata,
+                config=_cfg,
                 resolved_model=resolved_model or '',
                 resolved_provider=resolved_provider or '',
-            )
-            # (reasoning trace already attached + saved above, before s.save())
-            _drain_pending_steer_leftover(agent, session_id=session_id, put=put, logger=logger)
-            # /goal parity: run the Hermes GoalManager judge before terminal
-            # done/stream_end events so continuation prompts can be queued.
-            _run_post_turn_goal_hook(
-                s,
-                session_id=session_id,
+                agent=agent,
                 profile_home=_profile_home,
                 goal_related=goal_related,
                 put=put,
                 pending_goal_continuation=PENDING_GOAL_CONTINUATION,
-                logger=logger,
-            )
-            _finalize_product_turn(failed=False)
-            raw_session = s.compact() | {'messages': s.messages, 'tool_calls': tool_calls}
-            put('done', {'session': redact_session_data(raw_session), 'usage': usage})
-            _emit_success_post_done_events(
-                s,
-                original_session_id=session_id,
-                should_background_title=_should_bg_title,
-                title_user_text=_u0,
-                title_assistant_text=_a0,
-                put=put,
-                agent=agent,
+                tool_calls=tool_calls,
+                title_plan=_title_plan,
+                redact_session_data=redact_session_data,
+                build_done_usage_payload=_build_done_usage_payload,
+                apply_context_window_to_usage=_apply_context_window_to_usage,
+                drain_pending_steer_leftover=_drain_pending_steer_leftover,
+                run_post_turn_goal_hook=_run_post_turn_goal_hook,
+                finalize_product_turn=_finalize_product_turn,
                 meter_stats_fn=meter().get_stats,
                 run_background_title_update=_run_background_title_update,
                 maybe_schedule_title_refresh=_maybe_schedule_title_refresh,
+                logger=logger,
             )
         finally:
             # Stop the live metering ticker

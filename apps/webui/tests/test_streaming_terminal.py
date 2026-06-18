@@ -1,6 +1,6 @@
 from types import SimpleNamespace
 
-from api.streaming_terminal import emit_success_post_done_events
+from api.streaming_terminal import emit_completed_turn_done, emit_success_post_done_events
 
 
 class FakeThread:
@@ -82,3 +82,86 @@ def test_emit_success_post_done_events_starts_background_title_thread():
         put,
         'agent',
     )
+
+
+def test_emit_completed_turn_done_builds_done_payload_before_terminal_events():
+    events = []
+    calls = []
+    usage = {'tokens': 12}
+    session = SimpleNamespace(
+        session_id='compressed-sid',
+        title='Title',
+        messages=[{'role': 'assistant', 'content': 'done'}],
+        compact=lambda: {'session_id': 'compressed-sid'},
+    )
+    token_usage = SimpleNamespace(output_tokens=5)
+    turn_metadata = SimpleNamespace(
+        duration_seconds=1.25,
+        turn_tps=4.0,
+        gateway_routing={'provider': 'openai'},
+    )
+    title_plan = SimpleNamespace(
+        should_background_title=False,
+        user_text='hello',
+        assistant_text='answer',
+    )
+
+    def put(event, data):
+        events.append((event, data))
+
+    result = emit_completed_turn_done(
+        session,
+        original_session_id='original-sid',
+        token_usage=token_usage,
+        turn_metadata=turn_metadata,
+        config={'max_tokens': 100},
+        resolved_model='gpt-5',
+        resolved_provider='openai',
+        agent='agent',
+        profile_home='/profiles/default',
+        goal_related=True,
+        put=put,
+        pending_goal_continuation={},
+        tool_calls=[{'name': 'tool'}],
+        title_plan=title_plan,
+        redact_session_data=lambda raw: calls.append(('redact', raw)) or {'redacted': raw['session_id']},
+        build_done_usage_payload=lambda *args, **kwargs: calls.append(('usage', args, kwargs)) or usage,
+        apply_context_window_to_usage=lambda usage_arg, *args, **kwargs: calls.append(
+            ('context_window', usage_arg, args, kwargs)
+        ) or usage_arg.update({'context': 'applied'}),
+        drain_pending_steer_leftover=lambda *args, **kwargs: calls.append(('drain', args, kwargs)),
+        run_post_turn_goal_hook=lambda *args, **kwargs: calls.append(('goal', args, kwargs)),
+        finalize_product_turn=lambda **kwargs: calls.append(('finalize', kwargs)),
+        meter_stats_fn=lambda: {'metered': True},
+        run_background_title_update=lambda *args: calls.append(('title_update', args)),
+        maybe_schedule_title_refresh=lambda *args: calls.append(('title_refresh', args)),
+    )
+
+    assert result == {'tokens': 12, 'context': 'applied'}
+    assert calls[0] == (
+        'usage',
+        (token_usage,),
+        {
+            'duration_seconds': 1.25,
+            'turn_tps': 4.0,
+            'gateway_routing': {'provider': 'openai'},
+        },
+    )
+    assert calls[1][0] == 'context_window'
+    assert calls[2][0] == 'drain'
+    assert calls[3][0] == 'goal'
+    assert calls[4] == ('finalize', {'failed': False})
+    assert calls[5] == (
+        'redact',
+        {
+            'session_id': 'compressed-sid',
+            'messages': [{'role': 'assistant', 'content': 'done'}],
+            'tool_calls': [{'name': 'tool'}],
+        },
+    )
+    assert calls[6][0] == 'title_refresh'
+    assert events == [
+        ('done', {'session': {'redacted': 'compressed-sid'}, 'usage': result}),
+        ('metering', {'metered': True, 'session_id': 'original-sid', 'tps_available': False, 'estimated': False}),
+        ('stream_end', {'session_id': 'original-sid'}),
+    ]
