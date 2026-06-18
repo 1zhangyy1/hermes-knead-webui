@@ -682,6 +682,7 @@ def test_streaming_persists_reasoning_in_session():
     bridge_src = (REPO / 'api' / 'streaming_output_bridge.py').read_text()
     metadata_src = (REPO / 'api' / 'streaming_turn_metadata.py').read_text()
     terminal_src = (REPO / 'api' / 'streaming_terminal.py').read_text()
+    writeback_src = (REPO / 'api' / 'streaming_turn_writeback.py').read_text()
 
     # The output bridge must accumulate reasoning text that is actually emitted.
     assert "self.reasoning_text = ''" in bridge_src, \
@@ -691,16 +692,16 @@ def test_streaming_persists_reasoning_in_session():
         "StreamingOutputBridge does not accumulate emitted reasoning text"
 
     # Persistence block must exist before raw_session is built
-    assert "Persist reasoning trace in the session so it survives reload" in src, \
-        "Reasoning persistence comment not found in streaming.py"
+    assert "Persist reasoning trace in the session so it survives reload" in writeback_src, \
+        "Reasoning persistence comment not found in streaming_turn_writeback.py"
 
-    assert "_attach_reasoning_trace_to_last_assistant(s.messages, _output_bridge.reasoning_text)" in src, \
-        "Reasoning trace helper call not found in streaming.py"
+    assert "attach_reasoning_trace_to_last_assistant(session.messages, reasoning_text)" in writeback_src, \
+        "Reasoning trace helper call not found in streaming_turn_writeback.py"
     assert "message['reasoning'] = reasoning_text" in metadata_src, \
         "Code to set assistant reasoning not found in streaming_turn_metadata.py"
 
     # Persistence block must come BEFORE the terminal done helper builds raw_session.
-    persist_idx = src.index("Persist reasoning trace in the session")
+    persist_idx = src.index("_apply_completed_turn_writeback_state(")
     done_helper_idx = src.index("_emit_completed_turn_done(")
     assert "raw_session = session.compact()" in terminal_src, \
         "Terminal done helper must build raw_session after streaming.py patches reasoning"

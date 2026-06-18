@@ -21,17 +21,17 @@ import re
 from pathlib import Path
 
 STREAMING = Path(__file__).resolve().parent.parent / "api" / "streaming.py"
+TURN_WRITEBACK = Path(__file__).resolve().parent.parent / "api" / "streaming_turn_writeback.py"
 CONTEXT_WINDOW = Path(__file__).resolve().parent.parent / "api" / "streaming_context_window.py"
 
 
 def _persistence_block():
     """Return the source range covering the post-merge per-turn save block."""
-    src = STREAMING.read_text(encoding="utf-8")
-    start = src.find("_attach_reasoning_trace_to_last_assistant(")
-    assert start != -1, "Reasoning trace helper call not found in streaming.py"
-    end = src.find("\n                s.save()", start)
-    assert end != -1, "s.save() not found after the reasoning trace marker"
-    # Include the s.save() line so we can verify ordering
+    src = TURN_WRITEBACK.read_text(encoding="utf-8")
+    start = src.find("attach_reasoning_trace_to_last_assistant(")
+    assert start != -1, "Reasoning trace helper call not found in streaming_turn_writeback.py"
+    end = src.find("persist_context_window_on_session(", start)
+    assert end != -1, "context-window persist call not found after reasoning trace marker"
     end = src.find("\n", end + 1)
     return src[start:end]
 
@@ -104,10 +104,12 @@ def test_fallback_exception_is_swallowed():
 def test_fallback_runs_before_save():
     """The fallback must mutate s.context_length BEFORE s.save() so the value lands on disk."""
     block = _persistence_block()
-    fallback_idx = block.find("_persist_context_window_on_session")
-    save_idx = block.rfind("s.save()")
-    assert fallback_idx != -1 and save_idx != -1
-    assert fallback_idx < save_idx, (
+    fallback_idx = block.find("persist_context_window_on_session")
+    assert fallback_idx != -1
+    streaming_src = STREAMING.read_text(encoding="utf-8")
+    helper_idx = streaming_src.find("_apply_completed_turn_writeback_state(")
+    save_idx = streaming_src.find("\n                s.save()", helper_idx)
+    assert helper_idx != -1 and save_idx != -1 and helper_idx < save_idx, (
         "Fallback must run BEFORE s.save() — otherwise the resolved context_length "
         "is not persisted to the session JSON."
     )
