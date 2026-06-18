@@ -138,7 +138,10 @@ from api.streaming_turn_journal import (
     append_interrupted_turn_event as _append_interrupted_turn_event,
     append_worker_started_turn_event as _append_worker_started_turn_event,
 )
-from api.streaming_usage import apply_agent_token_usage_to_session as _apply_agent_token_usage_to_session
+from api.streaming_usage import (
+    apply_agent_token_usage_to_session as _apply_agent_token_usage_to_session,
+    build_done_usage_payload as _build_done_usage_payload,
+)
 from api.streaming_titles import (
     LEGACY_WORKSPACE_PREFIX_ANY_RE as _LEGACY_WORKSPACE_PREFIX_ANY_RE,
     LEGACY_WORKSPACE_PREFIX_RE as _LEGACY_WORKSPACE_PREFIX_RE,
@@ -1805,11 +1808,7 @@ def _run_agent_streaming(
                 if _should_bg_title:
                     _u0, _a0 = _first_exchange_snippets(s.messages)
                 _token_usage = _apply_agent_token_usage_to_session(s, agent)
-                input_tokens = _token_usage.input_tokens
                 output_tokens = _token_usage.output_tokens
-                estimated_cost = _token_usage.estimated_cost
-                cache_read_tokens = _token_usage.cache_read_tokens
-                cache_write_tokens = _token_usage.cache_write_tokens
                 # Persist tool-call summaries even when the final message history only
                 # kept bare tool rows and omitted explicit assistant tool_call IDs.
                 tool_calls = _extract_tool_calls_from_messages(
@@ -1902,18 +1901,12 @@ def _run_agent_streaming(
                         mark_turn_completed(s.session_id, agent=agent)
                     except Exception:
                         logger.debug("Memory lifecycle mark failed for session %s", s.session_id, exc_info=True)
-            usage = {
-                'input_tokens': input_tokens,
-                'output_tokens': output_tokens,
-                'estimated_cost': estimated_cost,
-                'cache_read_tokens': cache_read_tokens,
-                'cache_write_tokens': cache_write_tokens,
-                'duration_seconds': round(_turn_duration_seconds, 3),
-            }
-            if _turn_tps is not None:
-                usage['tps'] = _turn_tps
-            if _gateway_routing:
-                usage['gateway_routing'] = _gateway_routing
+            usage = _build_done_usage_payload(
+                _token_usage,
+                duration_seconds=_turn_duration_seconds,
+                turn_tps=_turn_tps,
+                gateway_routing=_gateway_routing,
+            )
             _apply_context_window_to_usage(
                 usage,
                 s,

@@ -1,6 +1,6 @@
 from types import SimpleNamespace
 
-from api.streaming_usage import apply_agent_token_usage_to_session
+from api.streaming_usage import AgentTokenUsage, apply_agent_token_usage_to_session, build_done_usage_payload
 
 
 def test_apply_agent_token_usage_overwrites_with_positive_turn_values():
@@ -61,3 +61,29 @@ def test_apply_agent_token_usage_preserves_session_when_agent_values_are_empty()
     assert session.estimated_cost == 12.34
     assert session.cache_read_tokens == 1000
     assert session.cache_write_tokens == 200
+
+
+def test_build_done_usage_payload_includes_terminal_fields():
+    usage = build_done_usage_payload(
+        AgentTokenUsage(
+            input_tokens=123,
+            output_tokens=45,
+            estimated_cost=0.067,
+            cache_read_tokens=9,
+            cache_write_tokens=3,
+        ),
+        duration_seconds=12.3456,
+        turn_tps=3.6,
+        gateway_routing={'used_provider': 'provider-b'},
+    )
+
+    assert usage == {
+        'input_tokens': 123,
+        'output_tokens': 45,
+        'estimated_cost': 0.067,
+        'cache_read_tokens': 9,
+        'cache_write_tokens': 3,
+        'duration_seconds': 12.346,
+        'tps': 3.6,
+        'gateway_routing': {'used_provider': 'provider-b'},
+    }
