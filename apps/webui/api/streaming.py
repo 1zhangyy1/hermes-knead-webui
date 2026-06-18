@@ -108,7 +108,7 @@ from api.streaming_tool_calls import (
     TOOL_RESULT_SNIPPET_MAX as _TOOL_RESULT_SNIPPET_MAX,
     extract_tool_calls_from_messages as _extract_tool_calls_from_messages,
     nearest_assistant_msg_idx as _nearest_assistant_msg_idx,
-    strip_xml_tool_calls as _strip_xml_tool_calls,
+    strip_xml_tool_calls_from_assistant_messages as _strip_xml_tool_calls_from_assistant_messages,
     tool_result_snippet as _tool_result_snippet,
     truncate_tool_args as _truncate_tool_args,
 )
@@ -1429,21 +1429,7 @@ def _run_agent_streaming(
                     _restore_reasoning_metadata(_previous_messages, _result_messages),
                     msg_text,
                 )
-                # Strip XML tool-call blocks from assistant message content.
-                # DeepSeek and some other providers emit <function_calls>...</function_calls>
-                # in the raw response text; this must be removed before the content is
-                # saved to the session and displayed in the chat bubble. (#702)
-                for _m in s.messages:
-                    if isinstance(_m, dict) and _m.get('role') == 'assistant':
-                        _raw_content = _m.get('content')
-                        if isinstance(_raw_content, str):
-                            _cleaned = _strip_xml_tool_calls(_raw_content)
-                            if _cleaned != _raw_content:
-                                _m['content'] = _cleaned
-                        elif isinstance(_raw_content, list):
-                            for _part in _raw_content:
-                                if isinstance(_part, dict) and isinstance(_part.get('text'), str):
-                                    _part['text'] = _strip_xml_tool_calls(_part['text'])
+                _strip_xml_tool_calls_from_assistant_messages(s.messages)
 
                 # ── Detect silent agent failure (no assistant reply produced) ──
                 # When the agent catches an auth/network error internally it may return

@@ -29,6 +29,11 @@ class TestXmlToolCallStrip:
 
         return strip_xml_tool_calls
 
+    def _load_messages_fn(self):
+        from api.streaming_tool_calls import strip_xml_tool_calls_from_assistant_messages
+
+        return strip_xml_tool_calls_from_assistant_messages
+
     def test_complete_block_removed(self):
         fn = self._load_fn()
         text = "Hello <function_calls><invoke>foo</invoke></function_calls> world"
@@ -76,6 +81,26 @@ class TestXmlToolCallStrip:
         assert 'Answer' in result
         assert 'still streaming' in result
 
+    def test_assistant_message_content_cleaned_in_place(self):
+        fn = self._load_messages_fn()
+        messages = [
+            {'role': 'user', 'content': '<function_calls>keep user raw</function_calls>'},
+            {'role': 'assistant', 'content': 'Hi <function_calls>x</function_calls> there'},
+            {
+                'role': 'assistant',
+                'content': [
+                    {'type': 'text', 'text': 'A <function_calls>y</function_calls> B'},
+                    {'type': 'image', 'url': 'x'},
+                ],
+            },
+        ]
+
+        fn(messages)
+
+        assert messages[0]['content'] == '<function_calls>keep user raw</function_calls>'
+        assert messages[1]['content'] == 'Hi  there'
+        assert messages[2]['content'][0]['text'] == 'A  B'
+
     def test_function_defined_in_tool_call_module(self):
         src = read('api/streaming_tool_calls.py')
         assert 'def strip_xml_tool_calls(' in src, (
@@ -87,13 +112,10 @@ class TestXmlToolCallStrip:
         the agent run completes (server-side persistence fix)."""
         src = read('api/streaming.py')
         helper_src = read('api/streaming_tool_calls.py')
-        assert 'strip_xml_tool_calls as _strip_xml_tool_calls' in src
-        assert '_strip_xml_tool_calls' in src, (
-            "_strip_xml_tool_calls must be referenced in api/streaming.py"
-        )
-        assert src.count('_strip_xml_tool_calls') >= 3, (
-            "_strip_xml_tool_calls must be imported and called"
-        )
+        assert 'strip_xml_tool_calls_from_assistant_messages as _strip_xml_tool_calls_from_assistant_messages' in src
+        assert '_strip_xml_tool_calls_from_assistant_messages(s.messages)' in src
+        assert 'def strip_xml_tool_calls_from_assistant_messages(' in helper_src
+        assert 'strip_xml_tool_calls(raw_content)' in helper_src
         assert 'function_calls' in helper_src.lower(), (
             "Server-side strip must reference 'function_calls'"
         )
