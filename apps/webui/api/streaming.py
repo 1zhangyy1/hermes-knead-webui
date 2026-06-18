@@ -31,7 +31,6 @@ from api.config import (
     load_settings,
 )
 from api.helpers import redact_session_data, _redact_text
-from api.compression_anchor import visible_messages_for_anchor
 from api.metering import meter
 from api.run_journal import RunJournalWriter
 from api.streaming_errors import (
@@ -212,6 +211,7 @@ from api.streaming_runtime_prompt import (
     build_workspace_system_message as _build_workspace_system_message,
     configure_agent_runtime_prompt as _configure_agent_runtime_prompt,
 )
+from api.streaming_compression import handle_context_compression_side_effects as _handle_context_compression_side_effects
 
 # Global lock for os.environ writes. Per-session locks (_agent_lock) prevent
 # concurrent runs of the SAME session, but two DIFFERENT sessions can still
@@ -1616,102 +1616,30 @@ def _run_agent_streaming(
                 # If compression fired inside run_conversation, the agent may have
                 # rotated its session_id. Detect and fix the mismatch so the WebUI
                 # continues writing to the correct session file.
-                #
-                # Lock migration: when session_id rotates, we alias the new ID to
-                # the *same* Lock object under SESSION_AGENT_LOCKS so that
-                # subsequent callers using _get_session_agent_lock(new_sid) get the
-                # same Lock the streaming thread is already holding.  We then pop
-                # the old-id entry to prevent a leak.  This is safe because we
-                # already hold _agent_lock (the Lock object itself), so the
-                # reference stays alive even after the dict entry is removed.
-                # Concurrent readers that already looked up the old ID will still
-                # see the same Lock object until they release it.
-                _agent_sid = getattr(agent, 'session_id', None)
-                _compressed = False
-                if _agent_sid and _agent_sid != session_id:
-                    old_sid = session_id
-                    new_sid = _agent_sid
-                    s.session_id = new_sid
-                    # Carry profile identity across the compression boundary.
-                    # Without this, s.profile stays None on the continuation
-                    # session. On the next request, _run_agent_streaming calls
-                    # get_hermes_home_for_profile(getattr(s, 'profile', None))
-                    # which falls back to the default profile's HERMES_HOME.
-                    # Memory writes then land in the wrong profile's MEMORY.md.
-                    # Stamping here also ensures s.save() persists a non-null
-                    # profile field to the continuation session's JSON file,
-                    # covering the case where the session is later evicted from
-                    # SESSIONS and reconstructed from disk via Session.load().
-                    if not s.profile and _resolved_profile_name:
-                        s.profile = _resolved_profile_name
-                        logger.info(
-                            "Stamped profile=%r on continuation session %s after compression",
-                            _resolved_profile_name, new_sid,
-                        )
-                    # Preserve the original session file so the full pre-compression
-                    # history survives even when summarisation fails.  The previous
-                    # implementation renamed old_sid.json → new_sid.json, which
-                    # destroyed the only persistent copy of the uncompressed history
-                    # before the new (possibly summary-only) session had been saved.
-                    # If the LLM summariser also failed, the user was left with zero
-                    # recoverable messages.  (#2223)
-                    # ---
-                    # Archive the old session: write its current state to disk so
-                    # the full conversation history survives even when context
-                    # compression removes messages from the model's context.  Skip
-                    # the write when the file already contains up-to-date data
-                    # (i.e. it was just saved by a checkpoint).
-                    _preserve_pre_compression_snapshot(s, old_sid)
-                    # Always link the continuation session to its immediate predecessor
-                    # (the preserved snapshot).  This OVERRIDES any prior
-                    # parent_session_id because the new continuation IS the next link
-                    # in the chain: traversal walks new → old → old.parent → ... root.
-                    # Stage-353 Opus SHOULD-FIX: previous `if not s.parent_session_id`
-                    # guard skipped this stamp on fork-of-fork compressions, so a
-                    # subsequent traversal from the new continuation would jump
-                    # over the just-preserved snapshot back to the original fork
-                    # parent, losing access to the recoverable history in old_sid.json.
-                    s.parent_session_id = old_sid
-                    with LOCK:
-                        if old_sid in SESSIONS:
-                            SESSIONS[new_sid] = SESSIONS.pop(old_sid)
-                    # Migrate the per-session lock: alias new_sid to the held
-                    # _agent_lock reference directly (not via old_sid lookup),
-                    # then remove the old_sid entry to prevent a leak.
-                    with SESSION_AGENT_LOCKS_LOCK:
-                        SESSION_AGENT_LOCKS[new_sid] = _agent_lock
-                        SESSION_AGENT_LOCKS.pop(old_sid, None)
-                    # Migrate cached agent to the new session ID so the turn
-                    # count survives context compression.
-                    from api.config import SESSION_AGENT_CACHE, SESSION_AGENT_CACHE_LOCK
-                    with SESSION_AGENT_CACHE_LOCK:
-                        _cached_entry = SESSION_AGENT_CACHE.pop(old_sid, None)
-                        if _cached_entry:
-                            SESSION_AGENT_CACHE[new_sid] = _cached_entry
-                    _compressed = True
-                # Also detect compression via the result dict or compressor state
-                if not _compressed:
-                    _compressor = getattr(agent, 'context_compressor', None)
-                    if _compressor and getattr(_compressor, 'compression_count', 0) > _pre_compression_count:
-                        _compressed = True
-                # Notify the frontend that compression happened
-                if _compressed:
-                    visible_after = visible_messages_for_anchor(s.messages, auto_compression=True)
-                    s.compression_anchor_visible_idx = (
-                        max(0, len(visible_after) - 1) if visible_after else None
-                    )
-                    s.compression_anchor_message_key = (
-                        _compression_anchor_message_key(visible_after[-1]) if visible_after else None
-                    )
-                    s.compression_anchor_summary = _compact_summary_text(
-                        _compression_summary_from_messages(s.messages)
-                        or _compression_summary_from_messages(s.context_messages)
-                    )
-                    put('compressed', {
-                        'session_id': s.session_id,
-                        'message': 'Context auto-compressed to continue the conversation',
-                        'usage': _live_usage_snapshot(),
-                    })
+                from api.compression_anchor import visible_messages_for_anchor
+                from api.config import SESSION_AGENT_CACHE, SESSION_AGENT_CACHE_LOCK
+                _handle_context_compression_side_effects(
+                    s,
+                    agent,
+                    original_session_id=session_id,
+                    resolved_profile_name=_resolved_profile_name,
+                    agent_lock=_agent_lock,
+                    pre_compression_count=_pre_compression_count,
+                    preserve_pre_compression_snapshot=_preserve_pre_compression_snapshot,
+                    sessions_lock=LOCK,
+                    sessions=SESSIONS,
+                    session_agent_locks=SESSION_AGENT_LOCKS,
+                    session_agent_locks_lock=SESSION_AGENT_LOCKS_LOCK,
+                    session_agent_cache=SESSION_AGENT_CACHE,
+                    session_agent_cache_lock=SESSION_AGENT_CACHE_LOCK,
+                    visible_messages_for_anchor=visible_messages_for_anchor,
+                    compression_anchor_message_key=_compression_anchor_message_key,
+                    compact_summary_text=_compact_summary_text,
+                    compression_summary_from_messages=_compression_summary_from_messages,
+                    put=put,
+                    usage_snapshot=_live_usage_snapshot,
+                    logger=logger,
+                )
 
                 # Stamp 'timestamp' on any messages that don't have one yet
                 _now = time.time()

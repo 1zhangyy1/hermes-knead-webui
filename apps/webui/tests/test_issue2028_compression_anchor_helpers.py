@@ -8,13 +8,15 @@ from api.compression_anchor import visible_messages_for_anchor
 
 
 def test_legacy_duplicate_anchor_helpers_are_removed():
-    routes_src = Path("api/routes.py").read_text(encoding="utf-8")
-    streaming_src = Path("api/streaming.py").read_text(encoding="utf-8")
+    webui_root = Path(__file__).parent.parent
+    routes_src = (webui_root / "api/routes.py").read_text(encoding="utf-8")
+    streaming_src = (webui_root / "api/streaming.py").read_text(encoding="utf-8")
+    compression_src = (webui_root / "api/streaming_compression.py").read_text(encoding="utf-8")
 
     assert "def _visible_messages_for_anchor" not in routes_src
     assert "def _visible_messages_for_compression_anchor" not in streaming_src
     assert "visible_messages_for_anchor(compressed, auto_compression=False)" in routes_src
-    assert "visible_messages_for_anchor(s.messages, auto_compression=True)" in streaming_src
+    assert "visible_messages_for_anchor(session.messages, auto_compression=True)" in compression_src
 
 
 def test_visible_messages_for_anchor_preserves_manual_text_part_filter():
