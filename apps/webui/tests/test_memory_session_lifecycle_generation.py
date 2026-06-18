@@ -364,13 +364,15 @@ def test_post_turn_lifecycle_marks_completion_without_commit():
     (new session, LRU eviction, shutdown drain)."""
     import api.streaming as streaming_mod
     streaming_src = Path(streaming_mod.__file__).read_text(encoding="utf-8")
+    completed_src = Path(streaming_mod.__file__).with_name("streaming_completed_writeback.py").read_text(encoding="utf-8")
     src = Path(streaming_mod.__file__).with_name("streaming_turn_writeback.py").read_text(encoding="utf-8")
 
     save_pos = src.index("session.save()")
     lifecycle_marker = src.index("mark_completed_turn_memory_lifecycle(session.session_id, agent, logger=logger)", save_pos)
     cancel_check = src.index("cancel_event.is_set()", save_pos)
     completed_journal = src.index("append_completed_turn_event", save_pos)
-    save_helper_call = streaming_src.index("_save_completed_turn_and_journal(")
+    writeback_helper_call = streaming_src.index("_handle_completed_conversation_writeback(")
+    save_helper_call = completed_src.index("save_completed_turn_and_journal_fn(")
     done_helper_call = streaming_src.index("_emit_completed_turn_done(")
 
     assert lifecycle_marker > cancel_check, (
@@ -379,7 +381,8 @@ def test_post_turn_lifecycle_marks_completion_without_commit():
     assert lifecycle_marker > completed_journal, (
         "mark_turn_completed must appear after the completed-turn journal event"
     )
-    assert save_helper_call < done_helper_call
+    assert writeback_helper_call < done_helper_call
+    assert save_helper_call != -1
 
     # The post-turn block must contain mark_turn_completed but NOT
     # commit_session_memory — extraction is a boundary concern.

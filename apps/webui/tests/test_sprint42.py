@@ -700,12 +700,15 @@ def test_streaming_persists_reasoning_in_session():
     assert "message['reasoning'] = reasoning_text" in metadata_src, \
         "Code to set assistant reasoning not found in streaming_turn_metadata.py"
 
+    completed_src = (REPO / 'api' / 'streaming_completed_writeback.py').read_text()
+
     # Persistence block must come BEFORE the terminal done helper builds raw_session.
-    persist_idx = src.index("_apply_completed_turn_writeback_state(")
+    persist_idx = completed_src.index("apply_completed_turn_writeback_state_fn(")
+    writeback_idx = src.index("_handle_completed_conversation_writeback(")
     done_helper_idx = src.index("_emit_completed_turn_done(")
     assert "raw_session = session.compact()" in terminal_src, \
         "Terminal done helper must build raw_session after streaming.py patches reasoning"
-    assert persist_idx < done_helper_idx, \
+    assert writeback_idx < done_helper_idx and persist_idx != -1, \
         "Reasoning persistence block must appear before terminal done emission"
 
 
@@ -761,11 +764,12 @@ def test_streaming_restores_prior_reasoning_metadata_after_followup():
     reasoning-only assistant segments.
     """
     src = (REPO / 'api' / 'streaming.py').read_text()
+    completed_src = (REPO / 'api' / 'streaming_completed_writeback.py').read_text()
     context_src = (REPO / 'api' / 'streaming_context.py').read_text()
     assert "def _restore_reasoning_metadata(" in src, \
         "streaming.py must define a helper to restore prior reasoning metadata"
-    assert "_apply_agent_result_to_session(" in src, \
-        "streaming.py must apply restored agent result messages before saving"
+    assert "apply_agent_result_to_session_fn(" in completed_src, \
+        "completed writeback must apply restored agent result messages before saving"
     assert "session.context_messages = next_context_messages" in context_src, \
         "streaming_context.py must restore prior reasoning metadata into model context"
     assert "session.messages = merge_display_messages_after_agent_result(" in context_src, \

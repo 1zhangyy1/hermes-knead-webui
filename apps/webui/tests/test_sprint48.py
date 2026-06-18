@@ -110,10 +110,10 @@ class TestXmlToolCallStrip:
     def test_strip_applied_to_assistant_messages(self):
         """Verify the strip call is applied to assistant message content after
         the agent run completes (server-side persistence fix)."""
-        src = read('api/streaming.py')
+        src = read('api/streaming_completed_writeback.py')
         helper_src = read('api/streaming_tool_calls.py')
-        assert 'strip_xml_tool_calls_from_assistant_messages as _strip_xml_tool_calls_from_assistant_messages' in src
-        assert 'strip_xml_tool_calls_fn=_strip_xml_tool_calls_from_assistant_messages' in src
+        assert 'from api.streaming_tool_calls import strip_xml_tool_calls_from_assistant_messages' in src
+        assert 'strip_xml_tool_calls_fn=strip_xml_tool_calls_fn' in src
         assert 'def strip_xml_tool_calls_from_assistant_messages(' in helper_src
         assert 'strip_xml_tool_calls(raw_content)' in helper_src
         assert 'function_calls' in helper_src.lower(), (

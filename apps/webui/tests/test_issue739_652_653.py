@@ -11,6 +11,7 @@ import re
 import pathlib
 
 STREAMING = pathlib.Path(__file__).parent.parent / 'api' / 'streaming.py'
+STREAMING_COMPLETED_WRITEBACK = pathlib.Path(__file__).parent.parent / 'api' / 'streaming_completed_writeback.py'
 STREAMING_CONTEXT = pathlib.Path(__file__).parent.parent / 'api' / 'streaming_context.py'
 STREAMING_ERRORS = pathlib.Path(__file__).parent.parent / 'api' / 'streaming_errors.py'
 STREAMING_ERROR_WRITEBACK = pathlib.Path(__file__).parent.parent / 'api' / 'streaming_error_writeback.py'
@@ -21,6 +22,7 @@ STREAMING_TITLE_REFRESH = pathlib.Path(__file__).parent.parent / 'api' / 'stream
 MESSAGES_JS = pathlib.Path(__file__).parent.parent / 'static' / 'messages.js'
 
 streaming_src = STREAMING.read_text(encoding='utf-8')
+streaming_completed_writeback_src = STREAMING_COMPLETED_WRITEBACK.read_text(encoding='utf-8')
 streaming_context_src = STREAMING_CONTEXT.read_text(encoding='utf-8')
 streaming_errors_src = STREAMING_ERRORS.read_text(encoding='utf-8')
 streaming_error_writeback_src = STREAMING_ERROR_WRITEBACK.read_text(encoding='utf-8')
@@ -76,7 +78,8 @@ class TestErrorPersistence:
 
     def test_silent_failure_appends_error_message(self):
         """Silent-failure path appends an _error-marked message before returning."""
-        assert "_handle_silent_failure_after_merge(" in streaming_src
+        assert "_handle_completed_conversation_writeback(" in streaming_src
+        assert "handle_silent_failure_after_merge_fn(" in streaming_completed_writeback_src
         assert "emit_and_persist_silent_failure_error_fn(" in streaming_silent_failure_src
         assert "emit_and_persist_streaming_error(" in streaming_error_writeback_src
         assert "persist_streaming_error_message(" in streaming_error_writeback_src
@@ -85,8 +88,8 @@ class TestErrorPersistence:
 
     def test_silent_failure_calls_save_before_return(self):
         """save() must be called after appending the error message."""
-        helper_idx = streaming_src.find("_handle_silent_failure_after_merge(")
-        return_idx = streaming_src.find("return  # apperror already closes the stream", helper_idx)
+        helper_idx = streaming_completed_writeback_src.find("handle_silent_failure_after_merge_fn(")
+        return_idx = streaming_completed_writeback_src.find("if silent_result.should_return:", helper_idx)
         assert helper_idx != -1 and return_idx != -1 and helper_idx < return_idx
         emit_idx = streaming_silent_failure_src.find("emit_and_persist_silent_failure_error_fn(")
         handled_return_idx = streaming_silent_failure_src.find("should_return=True", emit_idx)

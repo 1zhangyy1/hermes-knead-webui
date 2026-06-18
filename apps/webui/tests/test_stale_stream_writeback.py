@@ -12,6 +12,7 @@ from api.models import Session
 
 WEBUI_ROOT = Path(__file__).parent.parent
 STREAMING_SRC = WEBUI_ROOT / "api/streaming.py"
+STREAMING_COMPLETED_WRITEBACK_SRC = WEBUI_ROOT / "api/streaming_completed_writeback.py"
 STREAMING_RECOVERY_SRC = WEBUI_ROOT / "api/streaming_recovery.py"
 STREAMING_TURN_WRITEBACK_SRC = WEBUI_ROOT / "api/streaming_turn_writeback.py"
 
@@ -82,13 +83,15 @@ def test_cancel_stream_does_not_append_marker_after_stream_ownership_rotated():
 
 def test_success_path_checks_stream_ownership_before_persisting_result():
     src = STREAMING_SRC.read_text(encoding="utf-8")
+    completed_src = STREAMING_COMPLETED_WRITEBACK_SRC.read_text(encoding="utf-8")
     writeback_src = STREAMING_TURN_WRITEBACK_SRC.read_text(encoding="utf-8")
-    helper_call = "_prepare_success_turn_writeback("
-    helper_pos = src.find(helper_call)
-    result_merge_pos = src.find("_apply_agent_result_to_session(")
-    compression_pos = src.find("Handle context compression side effects")
+    helper_call = "prepare_success_turn_writeback_fn("
+    helper_pos = completed_src.find(helper_call)
+    result_merge_pos = completed_src.find("apply_agent_result_to_session_fn(")
+    compression_pos = completed_src.find("apply_streaming_context_compression_side_effects_fn(")
     guard = "if not ephemeral and not stream_writeback_is_current(session, stream_id):"
 
+    assert "_handle_completed_conversation_writeback(" in src
     assert helper_pos != -1
     assert result_merge_pos != -1
     assert compression_pos != -1

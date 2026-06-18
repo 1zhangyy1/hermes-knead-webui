@@ -331,21 +331,23 @@ class TestIssue765FollowupHardening:
         src = (Path(__file__).parent.parent / "api" / "streaming.py").read_text(
             encoding="utf-8"
         )
+        completed_src = (Path(__file__).parent.parent / "api" / "streaming_completed_writeback.py").read_text(
+            encoding="utf-8"
+        )
         ephemeral_src = (Path(__file__).parent.parent / "api" / "streaming_ephemeral.py").read_text(
             encoding="utf-8"
         )
         stop_idx = src.find("_handle_completed_conversation_post_run(")
-        lock_idx = src.find(
-            "with _agent_lock:\n"
-            "                if not _prepare_success_turn_writeback("
-        )
-        save_idx = src.find("_apply_agent_result_to_session(")
+        helper_idx = src.find("_handle_completed_conversation_writeback(", stop_idx)
+        lock_idx = completed_src.find("with agent_lock:")
+        save_idx = completed_src.find("apply_agent_result_to_session_fn(")
 
         assert stop_idx != -1, "Success path must pass through the post-run checkpoint/cancel helper"
         assert "stop_checkpoint_thread_fn(checkpoint_stop, checkpoint_thread)" in ephemeral_src
-        assert lock_idx != -1, "Success path must serialize mutation with _agent_lock"
+        assert helper_idx != -1, "Success path must enter completed-writeback helper"
+        assert lock_idx != -1, "Success path must serialize mutation with agent_lock"
         assert save_idx != -1, "Success path restore/mutation block not found"
-        assert stop_idx < lock_idx <= save_idx, (
+        assert stop_idx < helper_idx and lock_idx < save_idx, (
             "Checkpoint stop/join must happen before the success-path session mutation block"
         )
 
@@ -355,18 +357,19 @@ class TestIssue765FollowupHardening:
         Reacquiring the same per-session lock inside the post-run_conversation block
         deadlocks because `_get_session_agent_lock()` returns a non-reentrant Lock.
         """
-        src = (Path(__file__).parent.parent / "api" / "streaming.py").read_text(
+        streaming_src = (Path(__file__).parent.parent / "api" / "streaming.py").read_text(
             encoding="utf-8"
         )
-        outer_lock_idx = src.find(
-            "with _agent_lock:\n"
-            "                if not _prepare_success_turn_writeback("
+        src = (Path(__file__).parent.parent / "api" / "streaming_completed_writeback.py").read_text(
+            encoding="utf-8"
         )
-        silent_failure_idx = src.find("_handle_silent_failure_after_merge(")
-        inner_lock_idx = src.find("with _agent_lock:", outer_lock_idx + 1)
-        compression_idx = src.find("# ── Handle context compression side effects ──")
+        assert "_handle_completed_conversation_writeback(" in streaming_src
+        outer_lock_idx = src.find("with agent_lock:")
+        silent_failure_idx = src.find("handle_silent_failure_after_merge_fn(")
+        inner_lock_idx = src.find("with agent_lock:", outer_lock_idx + 1)
+        compression_idx = src.find("apply_streaming_context_compression_side_effects_fn(")
 
-        assert outer_lock_idx != -1, "Outer success-path _agent_lock block not found"
+        assert outer_lock_idx != -1, "Outer success-path agent_lock block not found"
         assert silent_failure_idx != -1, "Silent-failure helper call not found"
         assert compression_idx != -1, "Compression marker not found"
         assert not (
