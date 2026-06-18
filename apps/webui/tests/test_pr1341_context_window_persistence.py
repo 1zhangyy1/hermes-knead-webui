@@ -21,6 +21,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 STREAMING = ROOT / "api" / "streaming.py"
+CONTEXT_WINDOW = ROOT / "api" / "streaming_context_window.py"
 SESSION_MODEL = ROOT / "api" / "session_model.py"
 ROUTES = ROOT / "api" / "routes.py"
 
@@ -49,20 +50,25 @@ def test_streaming_persists_context_fields_on_session_before_save():
     )
 
     block = src[block_start:save_call]
+    helper = CONTEXT_WINDOW.read_text(encoding="utf-8")
 
-    # The three fields must all be assigned on s within this block
-    assert "s.context_length" in block, (
-        "s.context_length must be written before s.save() in the post-merge block"
+    assert "_persist_context_window_on_session(" in block, (
+        "streaming.py must persist context fields before s.save() in the post-merge block"
     )
-    assert "s.threshold_tokens" in block, (
-        "s.threshold_tokens must be written before s.save() in the post-merge block"
+
+    # The three fields must all be assigned in the helper invoked by this block.
+    assert "session.context_length" in helper, (
+        "session.context_length must be written by the context-window helper"
     )
-    assert "s.last_prompt_tokens" in block, (
-        "s.last_prompt_tokens must be written before s.save() in the post-merge block"
+    assert "session.threshold_tokens" in helper, (
+        "session.threshold_tokens must be written by the context-window helper"
+    )
+    assert "session.last_prompt_tokens" in helper, (
+        "session.last_prompt_tokens must be written by the context-window helper"
     )
 
     # The values must come from the agent's context_compressor
-    assert "context_compressor" in block, (
+    assert "context_compressor" in helper, (
         "Values must be sourced from agent.context_compressor"
     )
 
