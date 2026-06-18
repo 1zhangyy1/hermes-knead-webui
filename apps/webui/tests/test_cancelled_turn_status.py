@@ -166,13 +166,15 @@ class TestCancelledTurnPersistenceGuards:
 
     def test_post_run_cancel_guard_runs_before_normal_success_merge(self):
         src = _read("api/streaming.py")
+        pipeline_src = _read("api/streaming_turn_pipeline.py")
         conversation_src = _read("api/streaming_conversation_run.py")
         completed_src = _read("api/streaming_completed_writeback.py")
         cancellation_src = _read("api/streaming_cancellation.py")
         ephemeral_src = _read("api/streaming_ephemeral.py")
-        run_helper_idx = src.find("_run_agent_conversation_and_handle_post_run(")
-        writeback_idx = src.find("_handle_completed_conversation_writeback(", run_helper_idx)
-        assert run_helper_idx != -1 and writeback_idx != -1, "run/writeback path not found"
+        pipeline_idx = src.find("_run_streaming_turn_pipeline(")
+        run_helper_idx = pipeline_src.find("run_agent_conversation_and_handle_post_run_fn(")
+        writeback_idx = pipeline_src.find("handle_completed_conversation_writeback_fn(", run_helper_idx)
+        assert pipeline_idx != -1 and run_helper_idx != -1 and writeback_idx != -1, "run/writeback path not found"
         run_idx = conversation_src.find("result = agent.run_conversation(")
         post_run_idx = conversation_src.find("handle_completed_conversation_post_run_fn(")
         return_idx = conversation_src.find("return ConversationRunResult", post_run_idx)

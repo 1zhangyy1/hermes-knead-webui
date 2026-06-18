@@ -123,7 +123,6 @@ from api.streaming_process_notifications import (
 from api.streaming_turn_journal import (
     append_interrupted_turn_event as _append_interrupted_turn_event,
 )
-from api.streaming_turn_start import prepare_streaming_turn_input as _prepare_streaming_turn_input
 from api.streaming_usage import build_done_usage_payload as _build_done_usage_payload
 from api.streaming_titles import (
     LEGACY_WORKSPACE_PREFIX_ANY_RE as _LEGACY_WORKSPACE_PREFIX_ANY_RE,
@@ -187,10 +186,8 @@ from api.streaming_runtime_prompt import (
     build_workspace_system_message as _build_workspace_system_message,
     configure_agent_runtime_prompt as _configure_agent_runtime_prompt,
 )
-from api.streaming_completed_writeback import handle_completed_conversation_writeback as _handle_completed_conversation_writeback
-from api.streaming_conversation_run import run_agent_conversation_and_handle_post_run as _run_agent_conversation_and_handle_post_run
 from api.streaming_exception_handling import handle_streaming_exception as _handle_streaming_exception
-from api.streaming_success_completion import handle_completed_conversation_success as _handle_completed_conversation_success
+from api.streaming_turn_pipeline import run_streaming_turn_pipeline as _run_streaming_turn_pipeline
 from api.streaming_worker_context import initialize_streaming_worker_context as _initialize_streaming_worker_context
 from api.streaming_worker_startup import prepare_streaming_worker_startup as _prepare_streaming_worker_startup
 
@@ -683,9 +680,10 @@ def _run_agent_streaming(
     # Initialised here (before any code that may raise) so the outer `finally`
     # block can safely check `if _checkpoint_stop is not None` even when an
     # exception fires before the checkpoint thread is created (Issue #765).
+    _checkpoint_state = {'stop': None, 'thread': None}
+    _agent_lock = None
     _checkpoint_stop = None
     _ckpt_thread = None
-    _agent_lock = None
     try:
         _startup = _prepare_streaming_worker_startup(
             session_id=session_id,
@@ -746,145 +744,24 @@ def _run_agent_streaming(
             )
             if not _agent_setup.should_continue:
                 return
-            _output_bridge = _agent_setup.output_bridge
-            _live_tool_calls = _agent_setup.live_tool_calls
-            _checkpoint_activity = _agent_setup.checkpoint_activity
-            _AIAgent = _agent_setup.agent_factory
-            _rt = _agent_setup.runtime
-            resolved_api_key = _agent_setup.resolved_api_key
-            resolved_model = _agent_setup.resolved_model
-            resolved_provider = _agent_setup.resolved_provider
-            resolved_base_url = _agent_setup.resolved_base_url
-            _cfg = _agent_setup.config
-            _agent_kwargs = _agent_setup.agent_kwargs
-            _agent_params = _agent_setup.agent_params
             agent = _agent_setup.agent
-            _agent_sig = _agent_setup.agent_sig
 
-            _turn_input = _prepare_streaming_turn_input(
+            _turn_pipeline_result = _run_streaming_turn_pipeline(
+                agent_setup=_agent_setup,
                 session=s,
-                agent=agent,
+                session_id=session_id,
+                stream_id=stream_id,
                 msg_text=msg_text,
                 attachments=attachments,
                 workspace=workspace,
-                config=_cfg,
                 product_context=product_context,
-                agent_lock=_agent_lock,
-                checkpoint_activity=_checkpoint_activity,
-                session_id=session_id,
-                personality_name=getattr(s, 'personality', None),
-                webui_ephemeral_system_prompt=_webui_ephemeral_system_prompt,
-                logger=logger,
-            )
-            workspace_system_msg = _turn_input.system_message
-            user_message = _turn_input.user_message
-            _turn_start = _turn_input.turn_start
-            _turn_started_at = _turn_start.started_at
-            _previous_messages = _turn_start.previous_messages
-            _previous_context_messages = _turn_start.previous_context_messages
-            _pre_compression_count = _turn_start.pre_compression_count
-            _checkpoint_runner = _turn_input.checkpoint_runner
-            _checkpoint_stop = _checkpoint_runner.stop_event
-            _ckpt_thread = _checkpoint_runner.thread
-
-            _conversation_run = _run_agent_conversation_and_handle_post_run(
-                agent=agent,
-                user_message=user_message,
-                system_message=workspace_system_msg,
-                previous_context_messages=_previous_context_messages,
-                config=_cfg,
-                session=s,
-                session_id=session_id,
-                stream_id=stream_id,
-                cancel_event=cancel_event,
-                agent_lock=_agent_lock,
-                finalize_cancelled_turn=_finalize_cancelled_turn,
-                put_cancel=_put_cancel,
-                ephemeral=ephemeral,
-                checkpoint_stop=_checkpoint_stop,
-                checkpoint_thread=_ckpt_thread,
-                put=put,
-                msg_text=msg_text,
-                sanitize_messages_for_api=_sanitize_messages_for_api,
-                handle_post_run_cancel=_handle_post_run_cancel,
-                stop_checkpoint_thread=_stop_checkpoint_thread,
-                logger=logger,
-            )
-            result = _conversation_run.result
-            if _conversation_run.should_return:
-                return
-            _writeback_result = _handle_completed_conversation_writeback(
-                result,
-                session=s,
-                agent=agent,
-                self_healed=_self_healed,
-                stream_id=stream_id,
-                session_id=session_id,
-                cancel_event=cancel_event,
-                agent_lock=_agent_lock,
-                ephemeral=ephemeral,
-                previous_messages=_previous_messages,
-                previous_context_messages=_previous_context_messages,
-                msg_text=msg_text,
-                output_bridge=_output_bridge,
-                live_tool_calls=_live_tool_calls,
-                turn_started_at=_turn_started_at,
-                attachments=attachments,
                 model=model,
-                resolved_model=resolved_model,
-                resolved_provider=resolved_provider,
-                resolved_base_url=resolved_base_url,
-                resolved_profile_name=_resolved_profile_name,
-                config=_cfg,
-                pre_compression_count=_pre_compression_count,
-                usage_snapshot=_run_state.live_usage_snapshot,
-                agent_factory=_AIAgent,
-                agent_kwargs=_agent_kwargs,
-                agent_params=_agent_params,
-                agent_sig=_agent_sig,
-                user_message=user_message,
-                system_message=workspace_system_msg,
-                custom_provider_resolver=resolve_custom_provider_connection,
-                agent_instances=AGENT_INSTANCES,
-                streams_lock=STREAMS_LOCK,
-                put=put,
-                finalize_cancelled_turn=_finalize_cancelled_turn,
-                append_interrupted_turn_event=_append_interrupted_turn_event,
-                put_cancel=_put_cancel,
-                stream_writeback_is_current=_stream_writeback_is_current,
-                classify_provider_error=_classify_provider_error,
-                provider_error_payload=_provider_error_payload,
-                finalize_product_turn=_finalize_product_turn,
-                materialize_pending_user_turn=_materialize_pending_user_turn_before_error,
-                sanitize_messages_for_api=_sanitize_messages_for_api,
-                has_new_assistant_reply=_has_new_assistant_reply,
-                assistant_reply_added_after_current_turn=_assistant_reply_added_after_current_turn,
-                preserve_pre_compression_snapshot=_preserve_pre_compression_snapshot,
-                compression_anchor_message_key=_compression_anchor_message_key,
-                compact_summary_text=_compact_summary_text,
-                compression_summary_from_messages=_compression_summary_from_messages,
-                title_from_fn=title_from,
-                is_provisional_title=_is_provisional_title,
-                looks_invalid_generated_title=_looks_invalid_generated_title,
-                first_exchange_snippets=_first_exchange_snippets,
-                extract_gateway_routing_metadata=_extract_gateway_routing_metadata,
-                logger=logger,
-            )
-            _success_result = _handle_completed_conversation_success(
-                _writeback_result,
-                current_result=result,
-                runtime=_rt,
-                resolved_api_key=resolved_api_key,
-                resolved_provider=resolved_provider,
-                resolved_base_url=resolved_base_url,
-                agent_kwargs=_agent_kwargs,
-                agent=agent,
-                self_healed=_self_healed,
-                session=s,
-                original_session_id=session_id,
-                config=_cfg,
-                resolved_model=resolved_model,
                 profile_home=_profile_home,
+                resolved_profile_name=_resolved_profile_name,
+                run_state=_run_state,
+                cancel_event=cancel_event,
+                agent_lock=_agent_lock,
+                ephemeral=ephemeral,
                 goal_related=goal_related,
                 put=put,
                 pending_goal_continuation=PENDING_GOAL_CONTINUATION,
@@ -897,27 +774,46 @@ def _run_agent_streaming(
                 meter_stats_fn=meter().get_stats,
                 run_background_title_update=_run_background_title_update,
                 maybe_schedule_title_refresh=_maybe_schedule_title_refresh,
+                finalize_cancelled_turn=_finalize_cancelled_turn,
+                put_cancel=_put_cancel,
+                handle_post_run_cancel=_handle_post_run_cancel,
+                stop_checkpoint_thread=_stop_checkpoint_thread,
+                sanitize_messages_for_api=_sanitize_messages_for_api,
+                stream_writeback_is_current=_stream_writeback_is_current,
+                classify_provider_error=_classify_provider_error,
+                provider_error_payload=_provider_error_payload,
+                append_interrupted_turn_event=_append_interrupted_turn_event,
+                materialize_pending_user_turn=_materialize_pending_user_turn_before_error,
+                has_new_assistant_reply=_has_new_assistant_reply,
+                assistant_reply_added_after_current_turn=_assistant_reply_added_after_current_turn,
+                preserve_pre_compression_snapshot=_preserve_pre_compression_snapshot,
+                compression_anchor_message_key=_compression_anchor_message_key,
+                compact_summary_text=_compact_summary_text,
+                compression_summary_from_messages=_compression_summary_from_messages,
+                title_from_fn=title_from,
+                is_provisional_title=_is_provisional_title,
+                looks_invalid_generated_title=_looks_invalid_generated_title,
+                first_exchange_snippets=_first_exchange_snippets,
+                extract_gateway_routing_metadata=_extract_gateway_routing_metadata,
+                custom_provider_resolver=resolve_custom_provider_connection,
+                agent_instances=AGENT_INSTANCES,
+                streams_lock=STREAMS_LOCK,
+                webui_ephemeral_system_prompt=_webui_ephemeral_system_prompt,
                 logger=logger,
+                runtime_state=_agent_setup_runtime_vars,
+                checkpoint_state=_checkpoint_state,
             )
-            result = _success_result.result
-            _rt = _success_result.runtime
-            resolved_api_key = _success_result.resolved_api_key
-            resolved_provider = _success_result.resolved_provider
-            resolved_base_url = _success_result.resolved_base_url
-            _agent_kwargs = _success_result.agent_kwargs
-            agent = _success_result.agent
-            _self_healed = _success_result.self_healed
-            _agent_setup_runtime_vars.update(
-                {
-                    '_rt': _rt,
-                    'resolved_api_key': resolved_api_key,
-                    'resolved_provider': resolved_provider,
-                    'resolved_base_url': resolved_base_url,
-                    '_agent_kwargs': _agent_kwargs,
-                    'agent': agent,
-                }
-            )
-            if _success_result.should_return:
+            _checkpoint_stop = _turn_pipeline_result.checkpoint_stop
+            _ckpt_thread = _turn_pipeline_result.checkpoint_thread
+            result = _turn_pipeline_result.result
+            _rt = _turn_pipeline_result.runtime
+            resolved_api_key = _turn_pipeline_result.resolved_api_key
+            resolved_provider = _turn_pipeline_result.resolved_provider
+            resolved_base_url = _turn_pipeline_result.resolved_base_url
+            _agent_kwargs = _turn_pipeline_result.agent_kwargs
+            agent = _turn_pipeline_result.agent
+            _self_healed = _turn_pipeline_result.self_healed
+            if _turn_pipeline_result.should_return:
                 return
         finally:
             _finalize_streaming_run_attempt(
@@ -930,6 +826,8 @@ def _run_agent_streaming(
             )
 
     except Exception as e:
+        _checkpoint_stop = _checkpoint_state.get('stop') or _checkpoint_stop
+        _ckpt_thread = _checkpoint_state.get('thread') or _ckpt_thread
         _exception_runtime_vars = dict(locals())
         _exception_runtime_vars.update(_agent_setup_runtime_vars)
         _exception_result = _handle_streaming_exception(
@@ -973,6 +871,8 @@ def _run_agent_streaming(
         if _exception_result.should_return:
             return  # skip error emission or stale exception writeback
     finally:
+        _checkpoint_stop = _checkpoint_state.get('stop') or _checkpoint_stop
+        _ckpt_thread = _checkpoint_state.get('thread') or _ckpt_thread
         _finalize_streaming_worker_exit(
             session=s,
             stream_id=stream_id,

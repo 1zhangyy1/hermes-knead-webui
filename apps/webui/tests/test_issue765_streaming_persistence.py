@@ -331,6 +331,9 @@ class TestIssue765FollowupHardening:
         src = (Path(__file__).parent.parent / "api" / "streaming.py").read_text(
             encoding="utf-8"
         )
+        pipeline_src = (Path(__file__).parent.parent / "api" / "streaming_turn_pipeline.py").read_text(
+            encoding="utf-8"
+        )
         conversation_src = (Path(__file__).parent.parent / "api" / "streaming_conversation_run.py").read_text(
             encoding="utf-8"
         )
@@ -340,12 +343,14 @@ class TestIssue765FollowupHardening:
         ephemeral_src = (Path(__file__).parent.parent / "api" / "streaming_ephemeral.py").read_text(
             encoding="utf-8"
         )
-        run_helper_idx = src.find("_run_agent_conversation_and_handle_post_run(")
-        helper_idx = src.find("_handle_completed_conversation_writeback(", run_helper_idx)
+        pipeline_idx = src.find("_run_streaming_turn_pipeline(")
+        run_helper_idx = pipeline_src.find("run_agent_conversation_and_handle_post_run_fn(")
+        helper_idx = pipeline_src.find("handle_completed_conversation_writeback_fn(", run_helper_idx)
         post_run_idx = conversation_src.find("handle_completed_conversation_post_run_fn(")
         lock_idx = completed_src.find("with agent_lock:")
         save_idx = completed_src.find("apply_agent_result_to_session_fn(")
 
+        assert pipeline_idx != -1, "Success path must pass through the turn pipeline helper"
         assert run_helper_idx != -1, "Success path must pass through the conversation-run helper"
         assert post_run_idx != -1, "Conversation run helper must pass through the post-run checkpoint/cancel helper"
         assert "stop_checkpoint_thread_fn(checkpoint_stop, checkpoint_thread)" in ephemeral_src
@@ -368,7 +373,11 @@ class TestIssue765FollowupHardening:
         src = (Path(__file__).parent.parent / "api" / "streaming_completed_writeback.py").read_text(
             encoding="utf-8"
         )
-        assert "_handle_completed_conversation_writeback(" in streaming_src
+        pipeline_src = (Path(__file__).parent.parent / "api" / "streaming_turn_pipeline.py").read_text(
+            encoding="utf-8"
+        )
+        assert "_run_streaming_turn_pipeline(" in streaming_src
+        assert "handle_completed_conversation_writeback_fn(" in pipeline_src
         outer_lock_idx = src.find("with agent_lock:")
         silent_failure_idx = src.find("handle_silent_failure_after_merge_fn(")
         inner_lock_idx = src.find("with agent_lock:", outer_lock_idx + 1)

@@ -21,6 +21,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 STREAMING = ROOT / "api" / "streaming.py"
+STREAMING_TURN_PIPELINE = ROOT / "api" / "streaming_turn_pipeline.py"
 TURN_WRITEBACK = ROOT / "api" / "streaming_turn_writeback.py"
 CONTEXT_WINDOW = ROOT / "api" / "streaming_context_window.py"
 SESSION_MODEL = ROOT / "api" / "session_model.py"
@@ -31,6 +32,7 @@ def test_streaming_persists_context_fields_on_session_before_save():
     """The post-merge per-turn save block must write the three fields to the
     session BEFORE calling s.save(), otherwise the values never reach disk."""
     src = STREAMING.read_text(encoding="utf-8")
+    pipeline_src = STREAMING_TURN_PIPELINE.read_text(encoding="utf-8")
     completed_src = (STREAMING.parent / "streaming_completed_writeback.py").read_text(encoding="utf-8")
     writeback_src = TURN_WRITEBACK.read_text(encoding="utf-8")
 
@@ -51,7 +53,8 @@ def test_streaming_persists_context_fields_on_session_before_save():
         "s.save() should be close to the post-merge marker — block expanded unexpectedly. "
         "If you've added a new pre-save mutation block here, bump this limit."
     )
-    assert "_handle_completed_conversation_writeback(" in src
+    assert "_run_streaming_turn_pipeline(" in src
+    assert "handle_completed_conversation_writeback_fn(" in pipeline_src
 
     helper = CONTEXT_WINDOW.read_text(encoding="utf-8")
 
