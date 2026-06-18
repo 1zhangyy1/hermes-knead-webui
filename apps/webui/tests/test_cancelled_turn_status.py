@@ -116,7 +116,8 @@ class TestCancelledTurnPersistenceGuards:
     def test_cancel_marker_patterns_are_centralized_for_dedupe(self):
         assert _CANCEL_MARKER_PATTERNS == ('task cancelled', 'task canceled', 'response interrupted')
         src = _read("api/streaming.py")
-        assert "any(pattern in normalized for pattern in _CANCEL_MARKER_PATTERNS)" in src
+        cancellation_src = _read("api/streaming_cancellation.py")
+        assert "any(pattern in normalized for pattern in marker_patterns)" in cancellation_src
         assert "any(pattern in _content for pattern in _CANCEL_MARKER_PATTERNS)" in src
 
     def test_silent_failure_path_checks_cancel_event_before_persisting_provider_error(self):

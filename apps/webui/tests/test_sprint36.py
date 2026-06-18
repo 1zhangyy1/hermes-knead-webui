@@ -217,9 +217,9 @@ def test_cancel_marker_flagged_as_error_to_skip_in_api_history():
     cancelled...") — a behavioral regression introduced when this PR started
     persisting the marker to the session.
     """
-    src = read("api/streaming.py")
-    idx = src.find("'content': _cancelled_turn_content(message)")
-    assert idx != -1, "cancel marker content writer not found in cancel_stream()"
+    src = read("api/streaming_cancellation.py")
+    idx = src.find("'content': cancelled_turn_content_fn(message)")
+    assert idx != -1, "cancel marker content writer not found in streaming_cancellation"
 
     # Walk back to the start of the dict literal (opening brace)
     brace_open = src.rfind("{", 0, idx)

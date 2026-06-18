@@ -44,6 +44,12 @@ from api.streaming_errors import (
     preferred_agent_display_name as _preferred_agent_display_name_impl,
     provider_error_payload as _provider_error_payload_impl,
 )
+from api.streaming_cancellation import (
+    cleanup_ephemeral_cancelled_turn as _cleanup_ephemeral_cancelled_turn_impl,
+    finalize_cancelled_turn as _finalize_cancelled_turn_impl,
+    persist_cancelled_turn as _persist_cancelled_turn_impl,
+    session_has_cancel_marker as _session_has_cancel_marker_impl,
+)
 from api.streaming_gateway import (
     GATEWAY_ROUTING_ATTEMPT_KEYS as _GATEWAY_ROUTING_ATTEMPT_KEYS,
     GATEWAY_ROUTING_CONTAINER_KEYS as _GATEWAY_ROUTING_CONTAINER_KEYS,
@@ -276,28 +282,7 @@ def _provider_error_payload(message: str, err_type: str, hint: str = '') -> dict
 
 
 def _session_has_cancel_marker(session) -> bool:
-    """Return True if a visible cancel/interrupted marker is already persisted."""
-    for msg in reversed(getattr(session, 'messages', None) or []):
-        if not isinstance(msg, dict):
-            continue
-        if msg.get('role') == 'user':
-            return False
-        if msg.get('role') != 'assistant':
-            continue
-        content = msg.get('content')
-        text = ''
-        if isinstance(content, str):
-            text = content
-        elif isinstance(content, list):
-            parts = []
-            for part in content:
-                if isinstance(part, dict):
-                    parts.append(str(part.get('text') or part.get('content') or ''))
-            text = '\n'.join(parts)
-        normalized = text.strip().lower()
-        if any(pattern in normalized for pattern in _CANCEL_MARKER_PATTERNS):
-            return True
-    return False
+    return _session_has_cancel_marker_impl(session)
 
 
 def _cancelled_turn_content(message: str = 'Task cancelled.') -> str:
@@ -308,51 +293,28 @@ def _cancelled_turn_content(message: str = 'Task cancelled.') -> str:
 
 
 def _persist_cancelled_turn(session, *, message: str = 'Task cancelled.') -> None:
-    """Persist a user-cancelled terminal state without provider-error wording.
-
-    cancel_stream() usually writes this marker first, but the streaming thread can
-    later unwind through the silent-failure or exception path. Those paths must
-    not append a misleading provider no-response error after an explicit cancel.
-    """
-    _materialize_pending_user_turn_before_error(session)
-    session.active_stream_id = None
-    session.pending_user_message = None
-    session.pending_attachments = []
-    session.pending_started_at = None
-    if not _session_has_cancel_marker(session):
-        session.messages.append({
-            'role': 'assistant',
-            'content': _cancelled_turn_content(message),
-            '_error': True,
-            'provider_details': str(message or 'Task cancelled.').strip(),
-            'provider_details_label': 'Cancellation details',
-            'timestamp': int(time.time()),
-        })
+    _persist_cancelled_turn_impl(
+        session,
+        message=message,
+        materialize_pending_user_turn=_materialize_pending_user_turn_before_error,
+        session_has_cancel_marker_fn=_session_has_cancel_marker,
+        cancelled_turn_content_fn=_cancelled_turn_content,
+    )
 
 
 def _cleanup_ephemeral_cancelled_turn(session) -> None:
-    """Remove transient /btw session state after a cancel without saving it."""
-    session.active_stream_id = None
-    session.pending_user_message = None
-    session.pending_attachments = []
-    session.pending_started_at = None
-    try:
-        import pathlib
-        pathlib.Path(session.path).unlink(missing_ok=True)
-    except Exception:
-        logger.debug("Failed to clean up ephemeral cancelled session", exc_info=True)
+    _cleanup_ephemeral_cancelled_turn_impl(session, logger=logger)
 
 
 def _finalize_cancelled_turn(session, *, ephemeral: bool = False, message: str = 'Task cancelled.') -> None:
-    """Finalize a cancelled turn for persistent or ephemeral sessions."""
-    if ephemeral:
-        _cleanup_ephemeral_cancelled_turn(session)
-        return
-    _persist_cancelled_turn(session, message=message)
-    try:
-        session.save()
-    except Exception:
-        logger.debug("Failed to persist cancelled turn", exc_info=True)
+    _finalize_cancelled_turn_impl(
+        session,
+        ephemeral=ephemeral,
+        message=message,
+        cleanup_ephemeral_cancelled_turn_fn=_cleanup_ephemeral_cancelled_turn,
+        persist_cancelled_turn_fn=_persist_cancelled_turn,
+        logger=logger,
+    )
 
 
 def _aiagent_import_error_detail() -> str:
