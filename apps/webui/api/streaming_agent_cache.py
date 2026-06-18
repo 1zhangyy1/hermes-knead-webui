@@ -84,6 +84,61 @@ def cached_agent_for_signature(session_id: str, agent_sig: str, *, logger: Any |
     return agent
 
 
+def refresh_or_discard_cached_agent(
+    session_id: str,
+    agent: Any,
+    agent_kwargs: dict[str, Any],
+    *,
+    logger: Any | None = None,
+) -> Any | None:
+    """Refresh cached-agent runtime credentials or drop an unsafe cache entry."""
+    from api import streaming_agent_runtime
+
+    if streaming_agent_runtime.refresh_cached_agent_runtime(agent, agent_kwargs):
+        return agent
+
+    if logger is not None:
+        logger.warning(
+            '[webui] Cached agent runtime could not be safely refreshed; rebuilding agent for session %s',
+            session_id,
+        )
+    try:
+        if getattr(agent, '_session_db', None) is not None:
+            agent._session_db.close()
+    except Exception:
+        pass
+
+    from api.config import SESSION_AGENT_CACHE, SESSION_AGENT_CACHE_LOCK
+    with SESSION_AGENT_CACHE_LOCK:
+        SESSION_AGENT_CACHE.pop(session_id, None)
+    return None
+
+
+def cache_new_agent_for_signature(
+    session_id: str,
+    agent: Any,
+    agent_sig: str,
+    *,
+    logger: Any | None = None,
+) -> None:
+    """Cache a newly constructed agent and handle any LRU evictions."""
+    from api.config import SESSION_AGENT_CACHE, SESSION_AGENT_CACHE_LOCK, SESSION_AGENT_CACHE_MAX
+
+    register_agent_for_lifecycle(session_id, agent, agent_kind='new', logger=logger)
+    evicted_items = []
+    with SESSION_AGENT_CACHE_LOCK:
+        SESSION_AGENT_CACHE[session_id] = (agent, agent_sig)
+        SESSION_AGENT_CACHE.move_to_end(session_id)  # LRU: mark as recently used
+        while len(SESSION_AGENT_CACHE) > SESSION_AGENT_CACHE_MAX:
+            evicted_sid, evicted_entry = SESSION_AGENT_CACHE.popitem(last=False)
+            evicted_items.append((evicted_sid, evicted_entry))
+    # Commit and close evicted agents outside the cache lock so concurrent
+    # cache users are not blocked by provider I/O.
+    handle_evicted_agent_cache_items(evicted_items, logger=logger)
+    if logger is not None:
+        logger.debug('[webui] Created new agent for session %s', session_id)
+
+
 def handle_evicted_agent_cache_items(evicted_items: list[tuple[str, Any]], *, logger: Any | None = None) -> None:
     """Commit lifecycle state and close evicted cached agents outside the cache lock."""
     for evicted_sid, evicted_entry in evicted_items:
