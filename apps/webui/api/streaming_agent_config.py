@@ -1,6 +1,21 @@
 """Configuration helpers for WebUI streaming agent construction."""
 
 
+def initialize_session_db(*, session_db_factory=None, warning_fn=print):
+    """Create SessionDB for WebUI agents, falling back to None on failure."""
+    try:
+        if session_db_factory is None:
+            from hermes_state import SessionDB as session_db_factory
+        return session_db_factory()
+    except Exception as db_err:
+        if warning_fn is not None:
+            warning_fn(
+                f"[webui] WARNING: SessionDB init failed — session_search will be unavailable: {db_err}",
+                flush=True,
+            )
+        return None
+
+
 def resolve_fallback_config(_cfg):
     """Normalize fallback_model/fallback_providers config for AIAgent."""
     # Fallback model from profile config (e.g. for rate-limit recovery)

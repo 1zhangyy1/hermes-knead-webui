@@ -134,6 +134,7 @@ from api.streaming_agent_cache import (
 )
 from api.streaming_agent_config import (
     build_agent_kwargs as _build_agent_kwargs_impl,
+    initialize_session_db as _initialize_session_db,
     resolve_fallback_config as _resolve_fallback_config_impl,
     resolve_max_iterations_config as _resolve_max_iterations_config_impl,
     resolve_max_tokens_config as _resolve_max_tokens_config_impl,
@@ -1011,13 +1012,7 @@ def _run_agent_streaming(
             if _AIAgent is None:
                 raise ImportError(_aiagent_import_error_detail())
 
-            # Initialize SessionDB so session_search works in WebUI sessions
-            _session_db = None
-            try:
-                from hermes_state import SessionDB
-                _session_db = SessionDB()
-            except Exception as _db_err:
-                print(f"[webui] WARNING: SessionDB init failed — session_search will be unavailable: {_db_err}", flush=True)
+            _session_db = _initialize_session_db()
             resolved_model, resolved_provider, resolved_base_url = resolve_model_provider(
                 model_with_provider_context(model, provider_context)
             )
