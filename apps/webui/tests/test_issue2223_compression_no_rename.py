@@ -17,8 +17,10 @@ import threading
 import pytest
 
 STREAMING = pathlib.Path(__file__).resolve().parents[1] / "api" / "streaming.py"
+STREAMING_COMPRESSION = pathlib.Path(__file__).resolve().parents[1] / "api" / "streaming_compression.py"
 STREAMING_CONTEXT = pathlib.Path(__file__).resolve().parents[1] / "api" / "streaming_context.py"
 streaming_src = STREAMING.read_text(encoding="utf-8")
+streaming_compression_src = STREAMING_COMPRESSION.read_text(encoding="utf-8")
 streaming_context_src = STREAMING_CONTEXT.read_text(encoding="utf-8")
 
 
@@ -32,14 +34,15 @@ class TestNoRenameDuringCompression:
         """old_path.rename(new_path) must not appear in the compression rotation block."""
         # The old code had: if old_path.exists() and not new_path.exists(): old_path.rename(new_path)
         # That line must be gone.
-        assert "old_path.rename(new_path)" not in streaming_src, (
+        assert "old_path.rename(new_path)" not in streaming_src
+        assert "old_path.rename(new_path)" not in streaming_compression_src, (
             "old_path.rename(new_path) still present — compression rotation "
             "still destroys session history (#2223)"
         )
 
     def test_parent_session_id_stamped_on_continuation(self):
         """The continuation session must carry parent_session_id linking to old_sid."""
-        assert "s.parent_session_id = old_sid" in streaming_src, (
+        assert "session.parent_session_id = old_session_id" in streaming_compression_src, (
             "parent_session_id not stamped on continuation session (#2223)"
         )
 
@@ -64,7 +67,7 @@ class TestNoRenameDuringCompression:
         snapshot. Traversal then walks new → old → old.parent → ... root.
         """
         # The guarded form is the bug; the unconditional form is the fix.
-        assert "if not s.parent_session_id:\n                        s.parent_session_id = old_sid" not in streaming_src, (
+        assert "if not s.parent_session_id" not in streaming_compression_src, (
             "Guarded parent_session_id stamping resurfaced — breaks fork-of-fork "
             "lineage traversal after compression"
         )
@@ -78,7 +81,8 @@ class TestNoRenameDuringCompression:
         Result: fork lineage badge ("Forked from X") disappeared on the old snapshot.
         """
         # The clearing pattern must be gone.
-        assert "s.parent_session_id = None" not in streaming_src, (
+        assert "s.parent_session_id = None" not in streaming_src
+        assert "session.parent_session_id = None" not in streaming_compression_src, (
             "Clearing parent_session_id before preservation save resurfaced — "
             "breaks fork lineage on the old snapshot"
         )
