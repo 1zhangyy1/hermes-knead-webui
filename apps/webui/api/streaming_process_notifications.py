@@ -94,3 +94,9 @@ def drain_webui_process_notifications(session_id: str, *, process_registry=None,
             break
     return notifications
 
+
+def message_text_with_process_notifications(msg_text: str, process_notifications: list[str] | None) -> str:
+    """Prefix drained process notifications without changing persisted user text."""
+    if process_notifications:
+        return "\n\n".join([*process_notifications, msg_text]).strip()
+    return msg_text
