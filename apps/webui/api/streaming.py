@@ -137,10 +137,6 @@ from api.streaming_agent_config import (
     resolve_agent_constructor_settings as _resolve_agent_constructor_settings,
     resolve_agent_runtime_connection as _resolve_agent_runtime_connection,
 )
-from api.streaming_agent_status import make_agent_status_callback as _make_agent_status_callback
-from api.streaming_event_sink import StreamingEventSink as _StreamingEventSink
-from api.streaming_live_usage import LiveUsageTracker as _LiveUsageTracker
-from api.streaming_metering import StreamingMeteringTicker as _StreamingMeteringTicker
 from api.streaming_memory_lifecycle import mark_completed_turn_memory_lifecycle as _mark_completed_turn_memory_lifecycle
 from api.streaming_output_bridge import StreamingOutputBridge as _StreamingOutputBridge
 from api.streaming_process_notifications import (
@@ -150,6 +146,7 @@ from api.streaming_process_notifications import (
     mark_process_completion_consumed as _mark_process_completion_consumed_impl,
 )
 from api.streaming_product_turn import ProductTurnFinalizer as _ProductTurnFinalizer
+from api.streaming_run_state import initialize_streaming_run_state as _initialize_streaming_run_state
 from api.streaming_turn_journal import (
     append_assistant_started_turn_event as _append_assistant_started_turn_event,
     append_completed_turn_event as _append_completed_turn_event,
@@ -734,47 +731,24 @@ def _run_agent_streaming(
     # profile's mcp_servers because os.environ['HERMES_HOME'] hadn't been
     # rewritten yet.  See https://github.com/nesquena/hermes-webui/issues/1968.
 
-    # Sprint 10: create a cancel event for this stream
-    cancel_event = threading.Event()
-    with STREAMS_LOCK:
-        CANCEL_FLAGS[stream_id] = cancel_event
-        STREAM_PARTIAL_TEXT[stream_id] = ''  # start accumulating partial text (#893)
-        STREAM_REASONING_TEXT[stream_id] = ''  # start accumulating reasoning trace (#1361 §A)
-        STREAM_LIVE_TOOL_CALLS[stream_id] = []  # start accumulating tool calls (#1361 §B)
-
     agent = None
-    _live_usage_tracker = _LiveUsageTracker(
-        get_session=lambda: get_session(session_id),
-        get_agent=lambda: agent,
-    )
-    _live_prompt_estimate_seen_ids = _live_usage_tracker.seen_tool_call_ids
-
-    def _bump_live_prompt_estimate(messages) -> int:
-        return _live_usage_tracker.bump_prompt_estimate(messages)
-
-    def _live_usage_snapshot():
-        return _live_usage_tracker.snapshot()
-
-    _event_sink = _StreamingEventSink(
-        stream_id=stream_id,
-        queue=q,
-        cancel_event=cancel_event,
-        run_journal=run_journal,
-        last_event_ids=STREAM_LAST_EVENT_ID,
-        logger=logger,
-    )
-
-    def put(event, data):
-        _event_sink.put(event, data)
-
-    _metering_ticker = _StreamingMeteringTicker(
+    _run_state = _initialize_streaming_run_state(
         stream_id=stream_id,
         session_id=session_id,
-        usage_snapshot=_live_usage_snapshot,
-        put=put,
-    ).start()
-
-    _agent_status_callback = _make_agent_status_callback(session_id=session_id, put=put)
+        queue=q,
+        run_journal=run_journal,
+        streams_lock=STREAMS_LOCK,
+        cancel_flags=CANCEL_FLAGS,
+        partial_texts=STREAM_PARTIAL_TEXT,
+        reasoning_texts=STREAM_REASONING_TEXT,
+        live_tool_calls=STREAM_LIVE_TOOL_CALLS,
+        last_event_ids=STREAM_LAST_EVENT_ID,
+        get_session=lambda: get_session(session_id),
+        get_agent=lambda: agent,
+        logger=logger,
+    )
+    cancel_event = _run_state.cancel_event
+    put = _run_state.put
 
     # Initialised here (before any code that may raise) so the outer `finally`
     # block can safely check `if _checkpoint_stop is not None` even when an
@@ -851,7 +825,7 @@ def _run_agent_streaming(
                 session_id=session_id,
                 partial_texts=STREAM_PARTIAL_TEXT,
                 reasoning_texts=STREAM_REASONING_TEXT,
-                usage_snapshot=_live_usage_snapshot,
+                usage_snapshot=_run_state.live_usage_snapshot,
                 put=put,
             )
 
@@ -866,11 +840,11 @@ def _run_agent_streaming(
                 live_tool_calls=_live_tool_calls,
                 shared_live_tool_calls=STREAM_LIVE_TOOL_CALLS,
                 checkpoint_activity=_checkpoint_activity,
-                seen_tool_call_ids=_live_prompt_estimate_seen_ids,
+                seen_tool_call_ids=_run_state.seen_tool_call_ids,
                 put=put,
                 emit_reasoning=_output_bridge.on_reasoning,
-                usage_snapshot=_live_usage_snapshot,
-                bump_live_prompt_estimate=_bump_live_prompt_estimate,
+                usage_snapshot=_run_state.live_usage_snapshot,
+                bump_live_prompt_estimate=_run_state.bump_live_prompt_estimate,
                 tool_result_snippet=_tool_result_snippet,
                 logger=logger,
             )
@@ -928,7 +902,7 @@ def _run_agent_streaming(
                 interim_assistant_callback=_output_bridge.on_interim_assistant,
                 tool_start_callback=_tool_bridge.on_tool_start,
                 tool_complete_callback=_tool_bridge.on_tool_complete,
-                status_callback=_agent_status_callback,
+                status_callback=_run_state.agent_status_callback,
                 max_iterations=_max_iterations_cfg,
                 max_tokens=_max_tokens_cfg,
                 reasoning_config=_reasoning_config,
@@ -1231,7 +1205,7 @@ def _run_agent_streaming(
                     compact_summary_text=_compact_summary_text,
                     compression_summary_from_messages=_compression_summary_from_messages,
                     put=put,
-                    usage_snapshot=_live_usage_snapshot,
+                    usage_snapshot=_run_state.live_usage_snapshot,
                     logger=logger,
                 )
 
@@ -1306,7 +1280,7 @@ def _run_agent_streaming(
             )
         finally:
             # Stop the live metering ticker
-            _metering_ticker.stop()
+            _run_state.metering_ticker.stop()
             # Unregister gateway callbacks and unblock any threads still
             # waiting on approval/clarify prompts.
             _gateway_notifications.unregister(session_id)
