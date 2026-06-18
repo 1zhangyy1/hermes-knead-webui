@@ -104,7 +104,10 @@ from api.streaming_context_window import (
     apply_context_window_to_usage as _apply_context_window_to_usage,
     persist_context_window_on_session as _persist_context_window_on_session,
 )
-from api.streaming_checkpoint import start_periodic_checkpoint as _start_periodic_checkpoint
+from api.streaming_checkpoint import (
+    start_periodic_checkpoint as _start_periodic_checkpoint,
+    stop_checkpoint_thread as _stop_checkpoint_thread,
+)
 from api.streaming_tool_calls import (
     TOOL_RESULT_SNIPPET_MAX as _TOOL_RESULT_SNIPPET_MAX,
     extract_tool_calls_from_messages as _extract_tool_calls_from_messages,
@@ -1232,10 +1235,7 @@ def _run_agent_streaming(
                 persist_user_message=msg_text,
             )
             if cancel_event.is_set():
-                if _checkpoint_stop is not None:
-                    _checkpoint_stop.set()
-                if _ckpt_thread is not None:
-                    _ckpt_thread.join(timeout=15)
+                _stop_checkpoint_thread(_checkpoint_stop, _ckpt_thread)
                 if ephemeral:
                     _cleanup_ephemeral_cancelled_turn(s)
                 else:
@@ -1256,10 +1256,7 @@ def _run_agent_streaming(
                     put=put,
                 )
                 return  # skip all normal persistence for ephemeral sessions
-            if _checkpoint_stop is not None:
-                _checkpoint_stop.set()
-            if _ckpt_thread is not None:
-                _ckpt_thread.join(timeout=15)
+            _stop_checkpoint_thread(_checkpoint_stop, _ckpt_thread)
             if cancel_event.is_set():
                 with _agent_lock:
                     _finalize_cancelled_turn(s, ephemeral=False)
@@ -1653,10 +1650,7 @@ def _run_agent_streaming(
         _classification = _classify_provider_error(err_str, e)
         if cancel_event.is_set():
             if s is not None:
-                if _checkpoint_stop is not None:
-                    _checkpoint_stop.set()
-                if _ckpt_thread is not None:
-                    _ckpt_thread.join(timeout=15)
+                _stop_checkpoint_thread(_checkpoint_stop, _ckpt_thread)
                 _lock_ctx = _agent_lock if _agent_lock is not None else contextlib.nullcontext()
                 with _lock_ctx:
                     _finalize_cancelled_turn(s, ephemeral=ephemeral)
@@ -1731,10 +1725,7 @@ def _run_agent_streaming(
                         )
                         # Retry succeeded — persist the result normally
                         if s is not None:
-                            if _checkpoint_stop is not None:
-                                _checkpoint_stop.set()
-                            if _ckpt_thread is not None:
-                                _ckpt_thread.join(timeout=15)
+                            _stop_checkpoint_thread(_checkpoint_stop, _ckpt_thread)
                             _lock_ctx = _agent_lock if _agent_lock is not None else contextlib.nullcontext()
                             with _lock_ctx:
                                 if not ephemeral and not _stream_writeback_is_current(s, stream_id):
@@ -1781,10 +1772,7 @@ def _run_agent_streaming(
 
         _error_payload = _provider_error_payload(err_str, _exc_type, _exc_hint)
         if s is not None:
-            if _checkpoint_stop is not None:
-                _checkpoint_stop.set()
-            if _ckpt_thread is not None:
-                _ckpt_thread.join(timeout=15)
+            _stop_checkpoint_thread(_checkpoint_stop, _ckpt_thread)
             # Persist the error so it survives page reload.
             # _error=True ensures _sanitize_messages_for_api excludes it from subsequent
             # API calls so the LLM never sees its own error as prior context on the next turn.
@@ -1825,10 +1813,7 @@ def _run_agent_streaming(
         # Stop the periodic checkpoint thread before the final recovery path.
         # The checkpoint thread also uses the per-session lock; joining it first
         # avoids contending with checkpoint writes during stale-pending repair.
-        if _checkpoint_stop is not None:
-            _checkpoint_stop.set()
-        if _ckpt_thread is not None:
-            _ckpt_thread.join(timeout=15)
+        _stop_checkpoint_thread(_checkpoint_stop, _ckpt_thread)
         if (s is not None
                 and getattr(s, 'active_stream_id', None) == stream_id
                 and getattr(s, 'pending_user_message', None)):

@@ -1,4 +1,4 @@
-from api.streaming_checkpoint import StreamingCheckpointRunner
+from api.streaming_checkpoint import StreamingCheckpointRunner, stop_checkpoint_thread
 
 
 class RecordingLock:
@@ -46,3 +46,31 @@ def test_checkpoint_saves_once_per_activity_increment_under_agent_lock():
 
     assert session.saves == [{"skip_index": True}, {"skip_index": True}]
     assert lock.enter_count == 2
+
+
+def test_stop_checkpoint_thread_sets_event_and_joins_thread():
+    class StopEvent:
+        def __init__(self):
+            self.set_calls = 0
+
+        def set(self):
+            self.set_calls += 1
+
+    class Thread:
+        def __init__(self):
+            self.join_calls = []
+
+        def join(self, timeout=None):
+            self.join_calls.append(timeout)
+
+    stop = StopEvent()
+    thread = Thread()
+
+    stop_checkpoint_thread(stop, thread, timeout=3)
+
+    assert stop.set_calls == 1
+    assert thread.join_calls == [3]
+
+
+def test_stop_checkpoint_thread_allows_missing_runner_parts():
+    stop_checkpoint_thread(None, None)
