@@ -139,6 +139,7 @@ from api.streaming_turn_journal import (
     append_interrupted_turn_event as _append_interrupted_turn_event,
     append_worker_started_turn_event as _append_worker_started_turn_event,
 )
+from api.streaming_terminal import emit_success_post_done_events as _emit_success_post_done_events
 from api.streaming_turn_metadata import apply_completed_turn_metadata as _apply_completed_turn_metadata
 from api.streaming_usage import (
     apply_agent_token_usage_to_session as _apply_agent_token_usage_to_session,
@@ -1904,27 +1905,18 @@ def _run_agent_streaming(
             _finalize_product_turn(failed=False)
             raw_session = s.compact() | {'messages': s.messages, 'tool_calls': tool_calls}
             put('done', {'session': redact_session_data(raw_session), 'usage': usage})
-            # Emit one last metering packet for the live message-header TPS label.
-            meter_stats = meter().get_stats()
-            meter_stats['session_id'] = session_id
-            meter_stats.setdefault('tps_available', False)
-            meter_stats.setdefault('estimated', False)
-            put('metering', meter_stats)
-            if _should_bg_title and _u0 and _a0:
-                threading.Thread(
-                    target=_run_background_title_update,
-                    args=(s.session_id, _u0, _a0, str(s.title or '').strip(), put, agent),
-                    daemon=True,
-                ).start()
-            else:
-                # Use the original session_id parameter (never reassigned), not s.session_id
-                # which may be rotated during context compression. The client captured
-                # activeSid = original session_id so they must match for stream_end to close.
-                put('stream_end', {'session_id': session_id})
-                # Adaptive title refresh: re-generate title from latest exchange
-                # every N exchanges (when enabled in settings). Runs after stream_end
-                # so it doesn't block the stream.
-                _maybe_schedule_title_refresh(s, put, agent)
+            _emit_success_post_done_events(
+                s,
+                original_session_id=session_id,
+                should_background_title=_should_bg_title,
+                title_user_text=_u0,
+                title_assistant_text=_a0,
+                put=put,
+                agent=agent,
+                meter_stats_fn=meter().get_stats,
+                run_background_title_update=_run_background_title_update,
+                maybe_schedule_title_refresh=_maybe_schedule_title_refresh,
+            )
         finally:
             # Stop the live metering ticker
             _metering_ticker.stop()

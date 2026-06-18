@@ -13,12 +13,14 @@ import pathlib
 STREAMING = pathlib.Path(__file__).parent.parent / 'api' / 'streaming.py'
 STREAMING_CONTEXT = pathlib.Path(__file__).parent.parent / 'api' / 'streaming_context.py'
 STREAMING_ERRORS = pathlib.Path(__file__).parent.parent / 'api' / 'streaming_errors.py'
+STREAMING_TERMINAL = pathlib.Path(__file__).parent.parent / 'api' / 'streaming_terminal.py'
 STREAMING_TITLE_REFRESH = pathlib.Path(__file__).parent.parent / 'api' / 'streaming_title_refresh.py'
 MESSAGES_JS = pathlib.Path(__file__).parent.parent / 'static' / 'messages.js'
 
 streaming_src = STREAMING.read_text(encoding='utf-8')
 streaming_context_src = STREAMING_CONTEXT.read_text(encoding='utf-8')
 streaming_errors_src = STREAMING_ERRORS.read_text(encoding='utf-8')
+streaming_terminal_src = STREAMING_TERMINAL.read_text(encoding='utf-8')
 streaming_title_refresh_src = STREAMING_TITLE_REFRESH.read_text(encoding='utf-8')
 messages_js_src = MESSAGES_JS.read_text(encoding='utf-8')
 
@@ -108,7 +110,7 @@ class TestStreamEndSessionId:
         # The fixed code: put('stream_end', {'session_id': session_id})
         # Not: put('stream_end', {'session_id': s.session_id})
         # Verify the pattern appears in the non-background-title branch
-        assert "put('stream_end', {'session_id': session_id})" in streaming_src
+        assert "put('stream_end', {'session_id': original_session_id})" in streaming_terminal_src
 
     def test_background_title_thread_stream_end_uses_session_id_param(self):
         """Background title thread also emits stream_end with original session_id."""
@@ -119,8 +121,9 @@ class TestStreamEndSessionId:
     def test_s_session_id_not_used_in_stream_end(self):
         """s.session_id (which may be rotated after compaction) must not appear in stream_end."""
         # Find all stream_end emissions and verify none use s.session_id
-        for match in re.finditer(r"put[_a-z]*\('stream_end',[^)]+\)", streaming_src):
-            assert 's.session_id' not in match.group(), \
+        combined_src = streaming_src + "\n" + streaming_terminal_src
+        for match in re.finditer(r"put[_a-z]*\('stream_end',[^)]+\)", combined_src):
+            assert 's.session_id' not in match.group() and 'session.session_id' not in match.group(), \
                 f"stream_end uses s.session_id (may be rotated): {match.group()}"
 
     def test_title_event_uses_original_session_id(self):
