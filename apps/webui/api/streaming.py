@@ -90,6 +90,7 @@ from api.streaming_tool_calls import (
     tool_result_snippet as _tool_result_snippet,
     truncate_tool_args as _truncate_tool_args,
 )
+from api.streaming_tool_bridge import StreamingToolEventBridge as _StreamingToolEventBridge
 from api.streaming_agent_runtime import (
     agent_cache_api_key_sig as _agent_cache_api_key_sig,
     refresh_cached_agent_primary_runtime_snapshot as _refresh_cached_agent_primary_runtime_snapshot,
@@ -1453,160 +1454,51 @@ def _run_agent_streaming(
             # block is reordered later (Issue #765).
             _checkpoint_activity = [0]
 
-            def _record_live_tool_start(tool_call_id, name, args):
-                if not tool_call_id or tool_call_id in _live_prompt_estimate_seen_ids:
+            def _emit_tool_reasoning(reason_text):
+                nonlocal _reasoning_text
+                if not reason_text:
                     return
-                _live_prompt_estimate_seen_ids.add(tool_call_id)
-                _tool_call = {
-                    'id': tool_call_id,
-                    'type': 'function',
-                    'function': {
-                        'name': str(name or ''),
-                        'arguments': json.dumps(args if isinstance(args, dict) else {}, ensure_ascii=False, sort_keys=True),
-                    },
-                }
-                _bump_live_prompt_estimate([{
-                    'role': 'assistant',
-                    'content': '',
-                    'tool_calls': [_tool_call],
-                }])
+                _reasoning_text += str(reason_text)
+                # Mirror to shared dict so cancel_stream() can persist it (#1361 §A)
+                if stream_id in STREAM_REASONING_TEXT:
+                    STREAM_REASONING_TEXT[stream_id] += str(reason_text)
+                put('reasoning', {'text': str(reason_text)})
+                _metering_reasoning_deltas[0] += 1
+                meter().record_reasoning(stream_id, _metering_reasoning_deltas[0])
+                _emit_metering()
 
-            def _record_live_tool_complete(tool_call_id, name, function_result):
-                if not tool_call_id:
-                    return
-                _result_text = _tool_result_snippet(function_result)
-                _bump_live_prompt_estimate([{
-                    'role': 'tool',
-                    'name': str(name or ''),
-                    'tool_call_id': tool_call_id,
-                    'content': _result_text,
-                }])
+            def _emit_tool_metering_snapshot():
+                _tool_stats = meter().get_stats()
+                _tool_stats['session_id'] = session_id
+                _tool_stats['usage'] = _live_usage_snapshot()
+                put('metering', _tool_stats)
+
+            _tool_bridge = _StreamingToolEventBridge(
+                stream_id=stream_id,
+                session_id=session_id,
+                live_tool_calls=_live_tool_calls,
+                shared_live_tool_calls=STREAM_LIVE_TOOL_CALLS,
+                checkpoint_activity=_checkpoint_activity,
+                seen_tool_call_ids=_live_prompt_estimate_seen_ids,
+                put=put,
+                emit_reasoning=_emit_tool_reasoning,
+                emit_metering_snapshot=_emit_tool_metering_snapshot,
+                bump_live_prompt_estimate=_bump_live_prompt_estimate,
+                tool_result_snippet=_tool_result_snippet,
+            )
 
             def on_tool(*cb_args, **cb_kwargs):
-                nonlocal _reasoning_text
-                event_type = None
-                name = None
-                preview = None
-                args = None
-
-                if len(cb_args) >= 4:
-                    event_type, name, preview, args = cb_args[:4]
-                elif len(cb_args) == 3:
-                    name, preview, args = cb_args
-                    event_type = 'tool.started'
-                elif len(cb_args) == 2:
-                    event_type, name = cb_args
-                elif len(cb_args) == 1:
-                    name = cb_args[0]
-                    event_type = 'tool.started'
-
-                if event_type in ('reasoning.available', '_thinking'):
-                    reason_text = preview if event_type == 'reasoning.available' else name
-                    if reason_text:
-                        _reasoning_text += str(reason_text)
-                        # Mirror to shared dict so cancel_stream() can persist it (#1361 §A)
-                        if stream_id in STREAM_REASONING_TEXT:
-                            STREAM_REASONING_TEXT[stream_id] += str(reason_text)
-                        put('reasoning', {'text': str(reason_text)})
-                        _metering_reasoning_deltas[0] += 1
-                        meter().record_reasoning(stream_id, _metering_reasoning_deltas[0])
-                        _emit_metering()
-                    return
-
-                args_snap = {}
-                if isinstance(args, dict):
-                    for k, v in list(args.items())[:4]:
-                        s2 = str(v)
-                        args_snap[k] = s2[:120] + ('...' if len(s2) > 120 else '')
-
-                if event_type in (None, 'tool.started'):
-                    _live_tool_calls.append({
-                        'name': name,
-                        'args': args if isinstance(args, dict) else {},
-                    })
-                    # Mirror to shared dict so cancel_stream() can persist it (#1361 §B)
-                    if stream_id in STREAM_LIVE_TOOL_CALLS:
-                        STREAM_LIVE_TOOL_CALLS[stream_id].append({
-                            'name': name,
-                            'args': args if isinstance(args, dict) else {},
-                            'done': False,
-                        })
-                    put('tool', {
-                        'event_type': event_type or 'tool.started',
-                        'name': name,
-                        'preview': preview,
-                        'args': args_snap,
-                    })
-                    _tool_stats = meter().get_stats()
-                    _tool_stats['session_id'] = session_id
-                    _tool_stats['usage'] = _live_usage_snapshot()
-                    put('metering', _tool_stats)
-                    # Fallback: poll for pending approval in case notify_cb wasn't
-                    # registered (e.g. older approval module without gateway support).
-                    try:
-                        from tools.approval import has_pending as _has_pending, _pending, _lock
-                        if _has_pending(session_id):
-                            with _lock:
-                                p = dict(_pending.get(session_id, {}))
-                            if p:
-                                put('approval', p)
-                    except ImportError:
-                        pass
-                    return
-
-                if event_type == 'tool.completed':
-                    for live_tc in reversed(_live_tool_calls):
-                        if live_tc.get('done'):
-                            continue
-                        if not name or live_tc.get('name') == name:
-                            live_tc['done'] = True
-                            live_tc['duration'] = cb_kwargs.get('duration')
-                            live_tc['is_error'] = bool(cb_kwargs.get('is_error', False))
-                            break
-                    # Mirror done state to shared dict (#1361 §B)
-                    if stream_id in STREAM_LIVE_TOOL_CALLS:
-                        for shared_tc in reversed(STREAM_LIVE_TOOL_CALLS[stream_id]):
-                            if shared_tc.get('done'):
-                                continue
-                            if not name or shared_tc.get('name') == name:
-                                shared_tc['done'] = True
-                                shared_tc['duration'] = cb_kwargs.get('duration')
-                                shared_tc['is_error'] = bool(cb_kwargs.get('is_error', False))
-                                break
-                    # Signal the checkpoint thread that new work has completed (Issue #765).
-                    # Each completed tool call is a meaningful unit of progress worth persisting.
-                    _checkpoint_activity[0] += 1
-                    put('tool_complete', {
-                        'event_type': event_type,
-                        'name': name,
-                        'preview': preview,
-                        'args': args_snap,
-                        'duration': cb_kwargs.get('duration'),
-                        'is_error': bool(cb_kwargs.get('is_error', False)),
-                    })
-                    _tool_stats = meter().get_stats()
-                    _tool_stats['session_id'] = session_id
-                    _tool_stats['usage'] = _live_usage_snapshot()
-                    put('metering', _tool_stats)
-                    return
+                _tool_bridge.on_tool(*cb_args, **cb_kwargs)
 
             def on_tool_start(tool_call_id, name, args):
                 try:
-                    _record_live_tool_start(tool_call_id, name, args)
-                    _tool_stats = meter().get_stats()
-                    _tool_stats['session_id'] = session_id
-                    _tool_stats['usage'] = _live_usage_snapshot()
-                    put('metering', _tool_stats)
+                    _tool_bridge.on_tool_start(tool_call_id, name, args)
                 except Exception:
                     logger.debug('Failed to update live prompt estimate on tool start', exc_info=True)
 
             def on_tool_complete(tool_call_id, name, args, function_result):
                 try:
-                    _record_live_tool_complete(tool_call_id, name, function_result)
-                    _tool_stats = meter().get_stats()
-                    _tool_stats['session_id'] = session_id
-                    _tool_stats['usage'] = _live_usage_snapshot()
-                    put('metering', _tool_stats)
+                    _tool_bridge.on_tool_complete(tool_call_id, name, args, function_result)
                 except Exception:
                     logger.debug('Failed to update live prompt estimate on tool completion', exc_info=True)
 
