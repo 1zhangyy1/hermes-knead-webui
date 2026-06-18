@@ -133,11 +133,8 @@ from api.streaming_agent_config import (
     build_agent_kwargs as _build_agent_kwargs_impl,
     initialize_session_db as _initialize_session_db,
     load_agent_config_and_toolsets as _load_agent_config_and_toolsets,
+    resolve_agent_constructor_settings as _resolve_agent_constructor_settings,
     resolve_agent_runtime_connection as _resolve_agent_runtime_connection,
-    resolve_fallback_config as _resolve_fallback_config_impl,
-    resolve_max_iterations_config as _resolve_max_iterations_config_impl,
-    resolve_max_tokens_config as _resolve_max_tokens_config_impl,
-    resolve_reasoning_config as _resolve_reasoning_config_impl,
 )
 from api.streaming_agent_status import make_agent_status_callback as _make_agent_status_callback
 from api.streaming_event_sink import StreamingEventSink as _StreamingEventSink
@@ -1024,22 +1021,16 @@ def _run_agent_streaming(
 
             _cfg, _toolsets = _load_agent_config_and_toolsets(session_id)
 
-            _fallback_resolved = _resolve_fallback_config_impl(_cfg)
-
             # Build kwargs defensively — guard newer params so the WebUI
             # degrades gracefully when run against an older hermes-agent build.
             # (fixes: TypeError: AIAgent.__init__() got an unexpected keyword
             # argument 'credential_pool' — issue #772)
-            import inspect as _inspect
-            _agent_params = set(_inspect.signature(_AIAgent.__init__).parameters)
-
-            _max_iterations_cfg = _resolve_max_iterations_config_impl(_cfg)
-            _max_tokens_cfg = _resolve_max_tokens_config_impl(_cfg)
-            try:
-                from api.config import parse_reasoning_effort as _parse_reff
-                _reasoning_config = _resolve_reasoning_config_impl(_cfg, _parse_reff)
-            except Exception:
-                _reasoning_config = None
+            _agent_constructor = _resolve_agent_constructor_settings(_AIAgent, _cfg)
+            _agent_params = _agent_constructor.agent_params
+            _fallback_resolved = _agent_constructor.fallback_resolved
+            _max_iterations_cfg = _agent_constructor.max_iterations
+            _max_tokens_cfg = _agent_constructor.max_tokens
+            _reasoning_config = _agent_constructor.reasoning_config
 
             _agent_kwargs = _build_agent_kwargs_impl(
                 agent_params=_agent_params,
