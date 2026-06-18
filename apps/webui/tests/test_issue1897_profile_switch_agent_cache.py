@@ -236,7 +236,7 @@ def test_cache_signature_includes_profile_home():
 
 def test_profile_home_resolved_before_cache_signature():
     profile_runtime_resolve = STREAMING_PY.index("_profile_activation = _activate_streaming_profile_runtime(")
-    agent_for_turn_start = STREAMING_PY.index("_get_agent_for_turn(")
+    agent_for_turn_start = STREAMING_PY.index("_get_and_register_agent_for_turn(")
     agent_for_turn_block = STREAMING_PY[agent_for_turn_start:agent_for_turn_start + 900]
     assert profile_runtime_resolve < agent_for_turn_start
     assert "profile_home=_profile_home" in agent_for_turn_block

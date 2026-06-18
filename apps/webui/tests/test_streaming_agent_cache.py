@@ -1,8 +1,10 @@
 from api.streaming_agent_cache import (
     AgentForTurn,
+    RegisteredAgentForTurn,
     build_agent_cache_signature,
     cache_new_agent_for_signature,
     cached_agent_for_signature,
+    get_and_register_agent_for_turn,
     get_agent_for_turn,
     get_cached_or_new_agent_for_turn,
     handle_evicted_agent_cache_items,
@@ -417,6 +419,92 @@ def test_get_agent_for_turn_uses_cache_signature_with_profile_home():
         },
     )
     assert calls[1] == ("cached_or_new", "sid-1", "sig-1", {"api_key": "fresh"}, _Agent, "db", None)
+
+
+def test_get_and_register_agent_for_turn_registers_cancel_propagation():
+    agent = _Agent()
+    session = object()
+    calls = []
+
+    result = get_and_register_agent_for_turn(
+        session_id="sid-1",
+        stream_id="stream-1",
+        session=session,
+        agent_factory=_Agent,
+        agent_kwargs={"api_key": "fresh"},
+        ephemeral=False,
+        resolved_model="model-a",
+        resolved_api_key="key-a",
+        resolved_base_url="https://example.invalid",
+        resolved_provider="provider-a",
+        runtime={},
+        max_iterations=12,
+        max_tokens=4096,
+        fallback_resolved={"model": "fallback"},
+        toolsets=["terminal"],
+        reasoning_config={"effort": "medium"},
+        profile_home="/profiles/alpha",
+        session_db="db",
+        agent_lock="lock",
+        finalize_cancelled_turn_fn="finalize",
+        put_cancel_fn="put-cancel",
+        get_agent_for_turn_fn=lambda **kwargs: calls.append(("agent", kwargs)) or AgentForTurn(agent, "sig-1"),
+        register_agent_instance_or_cancel_fn=lambda *args, **kwargs: calls.append(("register", args, kwargs)) or True,
+        logger="logger",
+    )
+
+    assert isinstance(result, RegisteredAgentForTurn)
+    assert result.agent is agent
+    assert result.agent_sig == "sig-1"
+    assert result.should_continue is True
+    assert calls[0][0] == "agent"
+    assert calls[0][1]["profile_home"] == "/profiles/alpha"
+    assert calls[0][1]["session_db"] == "db"
+    assert calls[1] == (
+        "register",
+        ("stream-1", agent, session),
+        {
+            "agent_lock": "lock",
+            "finalize_cancelled_turn_fn": "finalize",
+            "put_cancel_fn": "put-cancel",
+            "ephemeral": False,
+            "logger": "logger",
+        },
+    )
+
+
+def test_get_and_register_agent_for_turn_stops_when_cancelled_during_registration():
+    agent = _Agent()
+
+    result = get_and_register_agent_for_turn(
+        session_id="sid-1",
+        stream_id="stream-1",
+        session=object(),
+        agent_factory=_Agent,
+        agent_kwargs={},
+        ephemeral=True,
+        resolved_model=None,
+        resolved_api_key=None,
+        resolved_base_url=None,
+        resolved_provider=None,
+        runtime={},
+        max_iterations=None,
+        max_tokens=None,
+        fallback_resolved=None,
+        toolsets=[],
+        reasoning_config=None,
+        profile_home=None,
+        session_db=None,
+        agent_lock=None,
+        finalize_cancelled_turn_fn=lambda *_args, **_kwargs: None,
+        put_cancel_fn=lambda *_args, **_kwargs: None,
+        get_agent_for_turn_fn=lambda **_kwargs: AgentForTurn(agent, None),
+        register_agent_instance_or_cancel_fn=lambda *_args, **_kwargs: False,
+    )
+
+    assert result.agent is agent
+    assert result.agent_sig is None
+    assert result.should_continue is False
 
 
 def test_handle_evicted_agent_cache_items_commits_unregisters_and_closes(monkeypatch):

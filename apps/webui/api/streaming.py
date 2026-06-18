@@ -49,7 +49,6 @@ from api.streaming_cancellation import (
     handle_post_run_cancel as _handle_post_run_cancel,
     handle_preflight_cancel as _handle_preflight_cancel,
     persist_cancelled_turn as _persist_cancelled_turn_impl,
-    register_agent_instance_or_cancel as _register_agent_instance_or_cancel,
     session_has_cancel_marker as _session_has_cancel_marker_impl,
 )
 from api.streaming_chat_steer import (
@@ -126,7 +125,7 @@ from api.streaming_agent_runtime import (
     refresh_cached_agent_runtime as _refresh_cached_agent_runtime,
 )
 from api.streaming_agent_cache import (
-    get_agent_for_turn as _get_agent_for_turn,
+    get_and_register_agent_for_turn as _get_and_register_agent_for_turn,
 )
 from api.streaming_agent_config import (
     initialize_session_db as _initialize_session_db,
@@ -840,8 +839,10 @@ def _run_agent_streaming(
             _max_tokens_cfg = _agent_kwargs_state.max_tokens
             _reasoning_config = _agent_kwargs_state.reasoning_config
 
-            _agent_for_turn = _get_agent_for_turn(
+            _registered_agent = _get_and_register_agent_for_turn(
                 session_id=session_id,
+                stream_id=stream_id,
+                session=s,
                 agent_factory=_AIAgent,
                 agent_kwargs=_agent_kwargs,
                 ephemeral=ephemeral,
@@ -857,23 +858,15 @@ def _run_agent_streaming(
                 reasoning_config=_reasoning_config,
                 profile_home=_profile_home,
                 session_db=_session_db,
-                logger=logger,
-            )
-            agent = _agent_for_turn.agent
-            _agent_sig = _agent_for_turn.agent_sig
-
-            # Store agent instance for cancel/interrupt propagation
-            if not _register_agent_instance_or_cancel(
-                stream_id,
-                agent,
-                s,
                 agent_lock=_agent_lock,
                 finalize_cancelled_turn_fn=_finalize_cancelled_turn,
                 put_cancel_fn=_put_cancel,
-                ephemeral=ephemeral,
                 logger=logger,
-            ):
+            )
+            if not _registered_agent.should_continue:
                 return
+            agent = _registered_agent.agent
+            _agent_sig = _registered_agent.agent_sig
 
             _turn_input = _prepare_streaming_turn_input(
                 session=s,
