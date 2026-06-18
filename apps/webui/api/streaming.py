@@ -68,6 +68,7 @@ from api.streaming_gateway import (
 from api.streaming_gateway_notifications import register_streaming_gateway_notifications as _register_streaming_gateway_notifications
 from api.streaming_goal import run_post_turn_goal_hook as _run_post_turn_goal_hook
 from api.streaming_error_writeback import persist_streaming_error_message as _persist_streaming_error_message
+from api.streaming_ephemeral import emit_ephemeral_done as _emit_ephemeral_done
 from api.streaming_attachments import (
     IMAGE_MAGIC as _IMAGE_MAGIC,
     NATIVE_IMAGE_MAX_BYTES as _NATIVE_IMAGE_MAX_BYTES,
@@ -1247,24 +1248,13 @@ def _run_agent_streaming(
                 return
             # ── Ephemeral mode (/btw): deliver answer, skip persistence, cleanup ──
             if ephemeral:
-                _answer = ''
-                for _m in reversed(result.get('messages') or []):
-                    if isinstance(_m, dict) and _m.get('role') == 'assistant':
-                        _answer = str(_m.get('content', ''))
-                        break
-                put('done', {
-                    'session': {'session_id': session_id, 'messages': result.get('messages', [])},
-                    'usage': {'input_tokens': 0, 'output_tokens': 0},
-                    'ephemeral': True,
-                    'answer': _answer,
-                })
-                if _checkpoint_stop is not None:
-                    _checkpoint_stop.set()
-                try:
-                    import pathlib
-                    pathlib.Path(s.path).unlink(missing_ok=True)
-                except Exception:
-                    pass
+                _emit_ephemeral_done(
+                    result,
+                    session_id=session_id,
+                    session_path=s.path,
+                    checkpoint_stop=_checkpoint_stop,
+                    put=put,
+                )
                 return  # skip all normal persistence for ephemeral sessions
             if _checkpoint_stop is not None:
                 _checkpoint_stop.set()
