@@ -6,15 +6,18 @@ REPO = Path(__file__).resolve().parents[1]
 
 def test_streaming_initializes_one_run_journal_writer_per_stream():
     src = (REPO / "api" / "streaming.py").read_text(encoding="utf-8")
+    context_src = (REPO / "api" / "streaming_worker_context.py").read_text(encoding="utf-8")
     run_state_src = (REPO / "api" / "streaming_run_state.py").read_text(encoding="utf-8")
-    register_idx = src.index("register_active_run(")
-    writer_idx = src.index("RunJournalWriter(session_id, stream_id)", register_idx)
-    init_idx = src.index("_initialize_streaming_run_state(", writer_idx)
+    context_call_idx = src.index("_initialize_streaming_worker_context(")
+    register_idx = context_src.index("register_active_run_fn(")
+    writer_idx = context_src.index("run_journal_factory(session_id, stream_id)", register_idx)
+    init_idx = context_src.index("initialize_run_state_fn(", writer_idx)
     cancel_idx = run_state_src.index("cancel_event = event_factory()")
     stream_register_idx = run_state_src.index("cancel_flags[stream_id] = cancel_event", cancel_idx)
     sink_idx = run_state_src.index("event_sink = event_sink_factory(", stream_register_idx)
 
-    assert "from api.run_journal import RunJournalWriter" in src
+    assert "from api.run_journal import RunJournalWriter" in context_src
+    assert context_call_idx != -1
     assert register_idx < writer_idx < init_idx
     assert cancel_idx < stream_register_idx < sink_idx
 

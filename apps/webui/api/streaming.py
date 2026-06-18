@@ -6,7 +6,6 @@ import json
 import logging
 import os
 import threading
-import time
 from typing import Optional
 
 logger = logging.getLogger(__name__)
@@ -18,7 +17,7 @@ from api.config import (
     STREAM_GOAL_RELATED, PENDING_GOAL_CONTINUATION,
     LOCK, SESSIONS, SESSION_DIR,
     _get_session_agent_lock, _set_thread_env,
-    register_active_run, update_active_run,
+    update_active_run,
     SESSION_AGENT_LOCKS, SESSION_AGENT_LOCKS_LOCK,
     resolve_model_provider,
     resolve_custom_provider_connection,
@@ -27,7 +26,6 @@ from api.config import (
 )
 from api.helpers import redact_session_data, _redact_text
 from api.metering import meter
-from api.run_journal import RunJournalWriter
 from api.streaming_errors import (
     CANCEL_MARKER_PATTERNS as _CANCEL_MARKER_PATTERNS,
     cancelled_turn_content as _cancelled_turn_content_impl,
@@ -131,11 +129,8 @@ from api.streaming_process_notifications import (
     message_text_with_process_notifications as _message_text_with_process_notifications,
     mark_process_completion_consumed as _mark_process_completion_consumed_impl,
 )
-from api.streaming_product_turn import ProductTurnFinalizer as _ProductTurnFinalizer
-from api.streaming_run_state import initialize_webui_streaming_run_state as _initialize_streaming_run_state
 from api.streaming_turn_journal import (
     append_interrupted_turn_event as _append_interrupted_turn_event,
-    append_worker_started_turn_event as _append_worker_started_turn_event,
 )
 from api.streaming_turn_start import prepare_streaming_turn_input as _prepare_streaming_turn_input
 from api.streaming_usage import build_done_usage_payload as _build_done_usage_payload
@@ -205,6 +200,7 @@ from api.streaming_completed_writeback import handle_completed_conversation_writ
 from api.streaming_conversation_run import run_agent_conversation_and_handle_post_run as _run_agent_conversation_and_handle_post_run
 from api.streaming_exception_handling import handle_streaming_exception as _handle_streaming_exception
 from api.streaming_success_completion import handle_completed_conversation_success as _handle_completed_conversation_success
+from api.streaming_worker_context import initialize_streaming_worker_context as _initialize_streaming_worker_context
 from api.streaming_worker_startup import prepare_streaming_worker_startup as _prepare_streaming_worker_startup
 
 # Global lock for os.environ writes. Per-session locks (_agent_lock) prevent
@@ -660,44 +656,27 @@ def _run_agent_streaming(
     When ephemeral=True, session mutations are skipped — used by /btw to get
     a streaming answer without persisting to the parent session.
     """
-    q = STREAMS.get(stream_id)
-    if q is None:
-        return
-    register_active_run(
-        stream_id,
+    agent = None
+    _worker_context = _initialize_streaming_worker_context(
+        stream_id=stream_id,
         session_id=session_id,
-        started_at=time.time(),
-        phase="starting",
-        workspace=str(workspace),
+        workspace=workspace,
         model=model,
-        provider=model_provider,
-        ephemeral=bool(ephemeral),
+        model_provider=model_provider,
+        ephemeral=ephemeral,
+        product_context=product_context,
+        streams=STREAMS,
+        get_session=lambda: get_session(session_id),
+        get_agent=lambda: agent,
+        logger=logger,
     )
-    _product_turn_finalizer = _ProductTurnFinalizer(product_context, logger=logger)
-
-    def _finalize_product_turn(
-        *,
-        failed: bool = False,
-        error_type: str | None = None,
-        error_message: str | None = None,
-    ) -> None:
-        _product_turn_finalizer.finalize(
-            failed=failed,
-            error_type=error_type,
-            error_message=error_message,
-        )
-
-    def _put_cancel(message: str = "Cancelled by user") -> None:
-        _finalize_product_turn(failed=True)
-        put('cancel', {'message': message})
-
-    try:
-        run_journal = RunJournalWriter(session_id, stream_id)
-    except Exception:
-        run_journal = None
-        logger.debug("Failed to initialize run journal for stream %s", stream_id, exc_info=True)
-    if not ephemeral:
-        _append_worker_started_turn_event(session_id, stream_id, logger=logger)
+    if _worker_context.should_return:
+        return
+    _run_state = _worker_context.run_state
+    cancel_event = _worker_context.cancel_event
+    put = _worker_context.put
+    _finalize_product_turn = _worker_context.finalize_product_turn
+    _put_cancel = _worker_context.put_cancel
     s = None
     _rt = {}
     _output_bridge = None
@@ -708,19 +687,6 @@ def _run_agent_streaming(
     # (was here at v0.51.30) — the previous placement always read the default
     # profile's mcp_servers because os.environ['HERMES_HOME'] hadn't been
     # rewritten yet.  See https://github.com/nesquena/hermes-webui/issues/1968.
-
-    agent = None
-    _run_state = _initialize_streaming_run_state(
-        stream_id=stream_id,
-        session_id=session_id,
-        queue=q,
-        run_journal=run_journal,
-        get_session=lambda: get_session(session_id),
-        get_agent=lambda: agent,
-        logger=logger,
-    )
-    cancel_event = _run_state.cancel_event
-    put = _run_state.put
 
     # Initialised here (before any code that may raise) so the outer `finally`
     # block can safely check `if _checkpoint_stop is not None` even when an
