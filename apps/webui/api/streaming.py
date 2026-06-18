@@ -7,7 +7,6 @@ import logging
 import os
 import threading
 import time
-from pathlib import Path
 from typing import Optional
 
 logger = logging.getLogger(__name__)
@@ -62,7 +61,6 @@ from api.streaming_gateway import (
     find_gateway_metadata_payload as _find_gateway_metadata_payload,
     normalize_gateway_routing_metadata as _normalize_gateway_routing_metadata,
 )
-from api.streaming_gateway_notifications import register_streaming_gateway_notifications as _register_streaming_gateway_notifications
 from api.streaming_goal import run_post_turn_goal_hook as _run_post_turn_goal_hook
 from api.streaming_ephemeral import handle_completed_conversation_post_run as _handle_completed_conversation_post_run
 from api.streaming_attachments import (
@@ -194,7 +192,6 @@ from api.streaming_recovery import (
 )
 from api.streaming_runtime_helpers import (
     WEBUI_VISIBLE_PROGRESS_PROMPT as _WEBUI_VISIBLE_PROGRESS_PROMPT_IMPL,
-    activate_streaming_profile_runtime as _activate_streaming_profile_runtime,
     aiagent_import_error_detail as _aiagent_import_error_detail_impl,
     clarify_timeout_seconds as _clarify_timeout_seconds_impl,
     has_new_assistant_reply as _has_new_assistant_reply_impl,
@@ -208,6 +205,7 @@ from api.streaming_runtime_prompt import (
 )
 from api.streaming_completed_writeback import handle_completed_conversation_writeback as _handle_completed_conversation_writeback
 from api.streaming_exception_handling import handle_streaming_exception as _handle_streaming_exception
+from api.streaming_worker_startup import prepare_streaming_worker_startup as _prepare_streaming_worker_startup
 
 # Global lock for os.environ writes. Per-session locks (_agent_lock) prevent
 # concurrent runs of the SAME session, but two DIFFERENT sessions can still
@@ -731,40 +729,35 @@ def _run_agent_streaming(
     _ckpt_thread = None
     _agent_lock = None
     try:
-        s = get_session(session_id)
-        update_active_run(stream_id, phase="running", session_id=session_id)
-        s.workspace = str(Path(workspace).expanduser().resolve())
-        s.model = model
-        provider_context = (
-            str(model_provider).strip().lower()
-            if model_provider is not None
-            else getattr(s, "model_provider", None)
-        )
-        s.model_provider = provider_context or None
-
-        _agent_lock = _get_session_agent_lock(session_id)
-        # TD1: set thread-local env context so concurrent sessions don't clobber globals
-        # Check for pre-flight cancel (user cancelled before agent even started)
-        if _handle_preflight_cancel(cancel_event, s, _agent_lock, _finalize_cancelled_turn, _put_cancel, ephemeral=ephemeral):
-            return
-
-        _profile_activation = _activate_streaming_profile_runtime(
-            s,
-            workspace=str(s.workspace),
+        _startup = _prepare_streaming_worker_startup(
             session_id=session_id,
+            stream_id=stream_id,
+            workspace=workspace,
+            model=model,
+            model_provider=model_provider,
+            ephemeral=ephemeral,
+            cancel_event=cancel_event,
+            put=put,
+            get_session=get_session,
+            update_active_run=update_active_run,
+            get_session_agent_lock=_get_session_agent_lock,
+            handle_preflight_cancel=_handle_preflight_cancel,
+            finalize_cancelled_turn=_finalize_cancelled_turn,
+            put_cancel=_put_cancel,
             set_thread_env=_set_thread_env,
             env_lock=_ENV_LOCK,
-        )
-        _profile_home = _profile_activation.profile_home
-        _resolved_profile_name = _profile_activation.resolved_profile_name
-        old_profile_env = _profile_activation.profile_env_snapshot
-        old_runtime_env = _profile_activation.runtime_env_snapshot
-
-        _gateway_notifications = _register_streaming_gateway_notifications(
-            session_id,
-            put=put,
             logger=logger,
         )
+        s = _startup.session
+        _agent_lock = _startup.agent_lock
+        provider_context = _startup.provider_context
+        _profile_home = _startup.profile_home
+        _resolved_profile_name = _startup.resolved_profile_name
+        old_profile_env = _startup.profile_env_snapshot or {}
+        old_runtime_env = _startup.runtime_env_snapshot or {}
+        _gateway_notifications = _startup.gateway_notifications
+        if _startup.should_return:
+            return
 
         try:
             _self_healed = False  # (#1401) prevents infinite self-heal retries

@@ -235,10 +235,13 @@ def test_cache_signature_includes_profile_home():
 
 
 def test_profile_home_resolved_before_cache_signature():
-    profile_runtime_resolve = STREAMING_PY.index("_profile_activation = _activate_streaming_profile_runtime(")
+    startup_py = (REPO / "api" / "streaming_worker_startup.py").read_text(encoding="utf-8")
+    profile_runtime_resolve = startup_py.index("activation = activate_streaming_profile_runtime_fn(")
     agent_for_turn_start = STREAMING_PY.index("_get_and_register_agent_for_turn(")
     agent_for_turn_block = STREAMING_PY[agent_for_turn_start:agent_for_turn_start + 900]
-    assert profile_runtime_resolve < agent_for_turn_start
+    startup_call = STREAMING_PY.index("_startup = _prepare_streaming_worker_startup(")
+    assert startup_call < agent_for_turn_start
+    assert profile_runtime_resolve != -1
     assert "profile_home=_profile_home" in agent_for_turn_block
     assert "_profile_home = str(_profile_home_path)" in STREAMING_RUNTIME_HELPERS_PY
 
