@@ -45,6 +45,7 @@ from api.streaming_errors import (
     provider_error_payload as _provider_error_payload_impl,
 )
 from api.streaming_cancellation import (
+    capture_cancel_stream_snapshot as _capture_cancel_stream_snapshot_impl,
     cleanup_ephemeral_cancelled_turn as _cleanup_ephemeral_cancelled_turn_impl,
     finalize_cancelled_turn as _finalize_cancelled_turn_impl,
     persist_cancel_stream_writeback as _persist_cancel_stream_writeback_impl,
@@ -2604,105 +2605,23 @@ def cancel_stream(stream_id: str) -> bool:
     """
     from api import config as _live_config
 
-    # Use module-level aliases (imported from api.config at startup).
-    # In production these are always the same objects as api.config.STREAMS etc.
-    # The fallback below handles a hypothetical future case where api.config's
-    # state dicts are replaced at runtime (e.g. a future profile-reload path).
-    # No production code currently does this; the fallback is defensive only.
-    streams = STREAMS
-    cancel_flags = CANCEL_FLAGS
-    agent_instances = AGENT_INSTANCES
-    partial_texts = STREAM_PARTIAL_TEXT
-    streams_lock = STREAMS_LOCK
-    if stream_id not in streams and getattr(_live_config, 'STREAMS', streams) is not streams:
-        streams = _live_config.STREAMS
-        cancel_flags = _live_config.CANCEL_FLAGS
-        agent_instances = _live_config.AGENT_INSTANCES
-        partial_texts = _live_config.STREAM_PARTIAL_TEXT
-        streams_lock = _live_config.STREAMS_LOCK
-
-    with streams_lock:
-        if stream_id not in streams:
-            return False
-
-        # Set WebUI layer cancel flag
-        flag = cancel_flags.get(stream_id)
-        if flag:
-            flag.set()
-
-        # Interrupt the AIAgent instance to stop tool execution
-        agent = agent_instances.get(stream_id)
-        if agent:
-            try:
-                agent.interrupt("Cancelled by user")
-            except Exception as e:
-                # Log but don't block the cancel flow
-                import logging
-                logging.getLogger(__name__).debug(
-                    f"Failed to interrupt agent for stream {stream_id}: {e}"
-                )
-        else:
-            # Agent not yet stored - cancel_event flag will be checked by agent thread
-            import logging
-            logging.getLogger(__name__).debug(
-                f"Cancel requested for stream {stream_id} before agent ready - "
-                f"cancel_event flag set, will be checked on agent startup"
-            )
-
-        # Clear any pending clarify prompt so the blocked tool call can unwind.
-        try:
-            from api.clarify import clear_pending as _clear_clarify_pending
-
-            if agent and getattr(agent, "session_id", None):
-                _clear_clarify_pending(agent.session_id)
-        except Exception:
-            logger.debug("Failed to clear clarify prompt during cancel")
-
-        # Capture the queue while the stream still exists, but do not emit the
-        # terminal cancel event until the session cleanup below confirms the turn
-        # is still active. Otherwise a late Stop click can race with a successful
-        # worker save and show cancel in the client while persistence says done.
-        q = streams.get(stream_id)
-        _emit_cancel_event = True
-
-        # ── Eager session lock release (fixes #653) ──────────────────────────
-        # Pop stream state now so the 409 guard in routes.py sees the session
-        # as idle and allows new /api/chat/start immediately after cancel,
-        # even if the agent thread is still blocked in a C-level syscall.
-        # The worker thread's finally block uses .pop(key, None) too, so a
-        # double-pop here is safe (no-op).
-        streams.pop(stream_id, None)
-        cancel_flags.pop(stream_id, None)
-        agent_instances.pop(stream_id, None)
-        # STREAM_PARTIAL_TEXT is intentionally NOT popped here — the agent thread may
-        # still be appending tokens. We capture the snapshot two lines below; the
-        # streaming finally block handles the cleanup when the thread exits.
-
-        # Capture partial text and session_id while holding STREAMS_LOCK (avoids a
-        # race where the agent thread deallocates the agent object or clears the
-        # partial text after we release).
-        # Session cleanup (get_session + save) must happen OUTSIDE the lock —
-        # get_session() acquires LOCK, and the streaming thread does LOCK first
-        # then STREAMS_LOCK, so inverting the order here would cause deadlock.
-        _cancel_session_id = getattr(agent, 'session_id', None) if agent else None
-        _cancel_partial_text = partial_texts.get(stream_id, '')
-        # Fallback: check the live config's partial text map if we used an alias
-        # and the text wasn't found in the alias (defensive, matches streams fallback above).
-        if not _cancel_partial_text:
-            live_partials = getattr(_live_config, 'STREAM_PARTIAL_TEXT', partial_texts)
-            if live_partials is not partial_texts:
-                _cancel_partial_text = live_partials.get(stream_id, '')
-        # Capture reasoning trace and live tool calls (#1361 §A + §B)
-        _cancel_reasoning = STREAM_REASONING_TEXT.get(stream_id, '')
-        if not _cancel_reasoning:
-            live_reasoning = getattr(_live_config, 'STREAM_REASONING_TEXT', STREAM_REASONING_TEXT)
-            if live_reasoning is not STREAM_REASONING_TEXT:
-                _cancel_reasoning = live_reasoning.get(stream_id, '')
-        _cancel_tool_calls = STREAM_LIVE_TOOL_CALLS.get(stream_id, [])
-        if not _cancel_tool_calls:
-            live_tools = getattr(_live_config, 'STREAM_LIVE_TOOL_CALLS', STREAM_LIVE_TOOL_CALLS)
-            if live_tools is not STREAM_LIVE_TOOL_CALLS:
-                _cancel_tool_calls = live_tools.get(stream_id, [])
+    _cancel_snapshot = _capture_cancel_stream_snapshot_impl(
+        stream_id,
+        live_config=_live_config,
+        streams=STREAMS,
+        cancel_flags=CANCEL_FLAGS,
+        agent_instances=AGENT_INSTANCES,
+        partial_texts=STREAM_PARTIAL_TEXT,
+        reasoning_texts=STREAM_REASONING_TEXT,
+        live_tool_calls=STREAM_LIVE_TOOL_CALLS,
+        streams_lock=STREAMS_LOCK,
+        logger=logger,
+    )
+    if _cancel_snapshot is None:
+        return False
+    q = _cancel_snapshot.queue
+    _emit_cancel_event = True
+    _cancel_session_id = _cancel_snapshot.session_id
 
     # Session cleanup outside STREAMS_LOCK to preserve lock ordering.
     # Acquire the per-session _agent_lock too, mirroring every other session
@@ -2729,9 +2648,9 @@ def cancel_stream(stream_id: str) -> bool:
                     return True
                 _persist_cancel_stream_writeback_impl(
                     _cs,
-                    partial_text=_cancel_partial_text,
-                    reasoning_text=_cancel_reasoning,
-                    tool_calls=_cancel_tool_calls,
+                    partial_text=_cancel_snapshot.partial_text,
+                    reasoning_text=_cancel_snapshot.reasoning_text,
+                    tool_calls=_cancel_snapshot.tool_calls,
                     cancelled_turn_content_fn=_cancelled_turn_content,
                     logger=logger,
                     session_id=_cancel_session_id,
