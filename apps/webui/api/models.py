@@ -96,10 +96,12 @@ from api.session_repair import (
     append_journaled_partial_output as _append_journaled_partial_output_impl,
     append_recovered_pending_turn as _append_recovered_pending_turn_impl,
     append_recovered_turn_to_context as _append_recovered_turn_to_context_impl,
+    apply_core_sync_or_error_marker as _apply_core_sync_or_error_marker_impl,
     find_existing_assistant_for_journal_content as _find_existing_assistant_for_journal_content_impl,
     interrupted_recovery_marker as _interrupted_recovery_marker_impl,
     journal_tool_already_present as _journal_tool_already_present_impl,
     normalize_journal_recovery_text as _normalize_journal_recovery_text_impl,
+    repair_stale_pending as _repair_stale_pending_impl,
     run_journal_has_visible_output as _run_journal_has_visible_output_impl,
     truncate_journal_tool_args as _truncate_journal_tool_args_impl,
 )
@@ -560,135 +562,22 @@ def _apply_core_sync_or_error_marker(
     Returns True if repair was applied, False if the re-check bailed out.
     Must never raise — caller is responsible for exception handling.
     """
-    sid = session.session_id
-    # Bail if pending is unset — nothing to repair.
-    if not session.pending_user_message:
-        return False
-    if stream_id_for_recheck is not None:
-        # Bail if active_stream_id rotated between the pre-lock check and now.
-        # Cache-miss repair must also skip if the stream is alive again, but the
-        # streaming thread's final fallback runs before removing its own stream
-        # from STREAMS and must be allowed to repair that same active stream.
-        if session.active_stream_id != stream_id_for_recheck:
-            return False
-        if require_stream_dead and session.active_stream_id in _active_stream_ids():
-            return False
-
-    # When messages is already non-empty, do not overwrite history from any core
-    # transcript. The pending user turn may still be the only durable copy of a
-    # prompt submitted just before a server restart, so materialize it before
-    # clearing runtime stream state.
-    if len(session.messages) != 0:
-        _pending_text = " ".join(str(session.pending_user_message or "").split())
-        _already_checkpointed = False
-        if _pending_text and session.messages:
-            _last_msg = session.messages[-1]
-            if isinstance(_last_msg, dict) and _last_msg.get('role') == 'user':
-                _last_text = " ".join(str(_last_msg.get('content') or "").split())
-                _already_checkpointed = _last_text == _pending_text
-        _recovered_ts = int(time.time())
-        if isinstance(session.pending_started_at, (int, float)) and session.pending_started_at > 0:
-            _recovered_ts = int(session.pending_started_at)
-        if not _already_checkpointed:
-            _append_recovered_pending_turn(session, timestamp=_recovered_ts)
-        else:
-            recovered = {
-                'role': 'user',
-                'content': session.pending_user_message,
-                '_recovered': True,
-            }
-            if session.pending_attachments:
-                recovered['attachments'] = list(session.pending_attachments)
-            _append_recovered_turn_to_context(session, recovered)
-        recovered_output = _append_journaled_partial_output(
-            session,
-            stream_id_for_recheck or session.active_stream_id,
-        )
-        session.active_stream_id = None
-        session.pending_user_message = None
-        session.pending_attachments = []
-        session.pending_started_at = None
-        session.messages.append(_interrupted_recovery_marker(recovered_output=recovered_output))
-        session.save(touch_updated_at=touch_updated_at)
-        logger.info(
-            "Session %s: recovered pending user turn (messages non-empty), added error marker",
-            sid,
-        )
-        return True
-
-    # ── messages *is* empty ─ full repair ─────────────────────────────────
-
-    if core_path.exists():
-        with open(core_path, encoding='utf-8') as f:
-            core = json.load(f)
-        core_messages = core.get('messages', [])
-        if core_messages:
-            _stream_id = stream_id_for_recheck or session.active_stream_id
-            session.messages = core_messages
-            session.tool_calls = core.get('tool_calls', [])
-            for field in ('input_tokens', 'output_tokens', 'estimated_cost'):
-                if core.get(field) is not None:
-                    setattr(session, field, core[field])
-            _pending_text = _normalize_journal_recovery_text(session.pending_user_message)
-            _already_checkpointed = False
-            if _pending_text and session.messages:
-                for _last_msg in reversed(session.messages):
-                    if isinstance(_last_msg, dict) and _last_msg.get('role') == 'user':
-                        _last_text = _normalize_journal_recovery_text(_last_msg.get('content'))
-                        _already_checkpointed = _last_text == _pending_text
-                        break
-            if (
-                _pending_text
-                and not _already_checkpointed
-                and _run_journal_has_visible_output(session, _stream_id)
-            ):
-                _recovered_ts = int(time.time())
-                if isinstance(session.pending_started_at, (int, float)) and session.pending_started_at > 0:
-                    _recovered_ts = int(session.pending_started_at)
-                _append_recovered_pending_turn(session, timestamp=_recovered_ts)
-            recovered_output = _append_journaled_partial_output(
-                session,
-                _stream_id,
-                dedupe_existing=True,
-            )
-            session.active_stream_id = None
-            session.pending_user_message = None
-            session.pending_attachments = []
-            session.pending_started_at = None
-            if recovered_output:
-                session.messages.append(
-                    _interrupted_recovery_marker(recovered_output=True)
-                )
-            session.save(touch_updated_at=touch_updated_at)
-            logger.info(
-                "Session %s: synced %d messages from core transcript%s",
-                sid,
-                len(core_messages),
-                " and recovered journaled output" if recovered_output else "",
-            )
-            return True
-
-    # Core missing or empty — restore the pending user message as a recovered
-    # user turn (preserving the draft), then append an error marker.
-    if session.pending_user_message:
-        # Use the original send time if available so the recovered turn
-        # appears in the correct chronological position.
-        _recovered_ts = int(time.time())
-        if isinstance(session.pending_started_at, (int, float)) and session.pending_started_at > 0:
-            _recovered_ts = int(session.pending_started_at)
-        _append_recovered_pending_turn(session, timestamp=_recovered_ts)
-    recovered_output = _append_journaled_partial_output(
+    return _apply_core_sync_or_error_marker_impl(
         session,
-        stream_id_for_recheck or session.active_stream_id,
+        core_path,
+        stream_id_for_recheck=stream_id_for_recheck,
+        require_stream_dead=require_stream_dead,
+        touch_updated_at=touch_updated_at,
+        active_stream_ids=_active_stream_ids,
+        append_recovered_pending_turn=_append_recovered_pending_turn,
+        append_recovered_turn_to_context=_append_recovered_turn_to_context,
+        append_journaled_partial_output=_append_journaled_partial_output,
+        interrupted_recovery_marker=_interrupted_recovery_marker,
+        normalize_journal_recovery_text=_normalize_journal_recovery_text,
+        run_journal_has_visible_output=_run_journal_has_visible_output,
+        logger=logger,
+        now=time.time,
     )
-    session.active_stream_id = None
-    session.pending_user_message = None
-    session.pending_attachments = []
-    session.pending_started_at = None
-    session.messages.append(_interrupted_recovery_marker(recovered_output=recovered_output))
-    session.save(touch_updated_at=touch_updated_at)
-    logger.info("Session %s: no core transcript found, added error marker", sid)
-    return True
 
 
 # ── _repair_stale_pending grace period (#1624) ─────────────────────────────
@@ -725,75 +614,16 @@ def _repair_stale_pending(session) -> bool:
     Returns True if repair was applied, False otherwise.
     Must never raise — all errors are caught and logged.
     """
-    # Capture the stream id seen at pre-check time; the under-lock re-check in
-    # _apply_core_sync_or_error_marker uses this to detect a rotated active_stream_id
-    # (e.g. context compression) or a stream that came back alive.
-    _seen_stream_id = session.active_stream_id
-    if (not session.pending_user_message
-            or not _seen_stream_id
-            or _seen_stream_id in _active_stream_ids()):
-        return False
-
-    # Grace-period guard: bail if the turn is too fresh to be a real crash.
-    # Falsy pending_started_at (None, 0, missing) means "old enough" — preserve
-    # legacy-data recovery semantics for sessions that pre-date the field.
-    _started = getattr(session, 'pending_started_at', None)
-    if _started:
-        try:
-            _age = time.time() - float(_started)
-        except (TypeError, ValueError):
-            _age = float('inf')
-        if _age < _REPAIR_STALE_PENDING_GRACE_SECONDS:
-            logger.debug(
-                "_repair_stale_pending: skipping repair for session %s — "
-                "pending_started_at age=%.1fs < %ds grace window",
-                session.session_id, _age, _REPAIR_STALE_PENDING_GRACE_SECONDS,
-            )
-            return False
-    else:
-        # Treat missing/falsy pending_started_at as "old enough" (legacy data).
-        _age = float('inf')
-
-    sid = session.session_id
-    if not sid or not all(c in '0123456789abcdefghijklmnopqrstuvwxyz_' for c in sid):
-        return False
-
-    try:
-        profile_home = _get_profile_home(session.profile)
-        core_path = profile_home / 'sessions' / f'session_{sid}.json'
-
-        lock = _get_session_agent_lock(sid)
-        # Non-blocking acquire: bail immediately if the caller already holds this
-        # lock (e.g. retry_last, undo_last, cancel_stream). Blocking would deadlock
-        # because _get_session_agent_lock returns a non-reentrant threading.Lock.
-        if not lock.acquire(blocking=False):
-            logger.debug(
-                "_repair_stale_pending: lock contended, skipping repair for session %s", sid,
-            )
-            return False
-        try:
-            # Telemetry (#1624): log legitimate repair firings so the next batch
-            # of user reports tells us whether the underlying race still fires
-            # post-fix. Rate-limit by age (Opus pre-release SHOULD-FIX): WARNING
-            # for the diagnostically valuable race window (< 5 min — actual
-            # leak-path candidates that slipped past the grace guard) and DEBUG
-            # for the long-tail (orphaned sidecars from prior process lifetimes)
-            # so reconnect loops on stuck sessions don't flood the log.
-            _DIAG_WARN_WINDOW_SECONDS = 300  # 5 min
-            _age_str = ('inf' if _age == float('inf') else f'{_age:.1f}s')
-            _log = logger.warning if _age < _DIAG_WARN_WINDOW_SECONDS else logger.debug
-            _log(
-                "_repair_stale_pending firing: session=%s stream_id=%s pending_age=%s",
-                sid, _seen_stream_id, _age_str,
-            )
-            return _apply_core_sync_or_error_marker(
-                session, core_path, stream_id_for_recheck=_seen_stream_id,
-            )
-        finally:
-            lock.release()
-    except Exception:
-        logger.exception("_repair_stale_pending failed for session %s", sid)
-        return False
+    return _repair_stale_pending_impl(
+        session,
+        active_stream_ids=_active_stream_ids,
+        get_profile_home=_get_profile_home,
+        get_session_agent_lock=_get_session_agent_lock,
+        apply_core_sync_or_error_marker=_apply_core_sync_or_error_marker,
+        logger=logger,
+        now=time.time,
+        grace_seconds=_REPAIR_STALE_PENDING_GRACE_SECONDS,
+    )
 
 
 def get_session(sid, metadata_only=False):
