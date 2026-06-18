@@ -51,6 +51,17 @@ def restore_agent_process_env(
         restore_env_snapshot(runtime_env_snapshot)
 
 
+def discover_mcp_tools_for_profile() -> bool:
+    """Best-effort MCP discovery after the streaming profile env is active."""
+    try:
+        from tools.mcp_tool import discover_mcp_tools
+
+        discover_mcp_tools()
+        return True
+    except Exception:
+        return False
+
+
 def clarify_timeout_seconds(get_config_fn, default: int = 120) -> int:
     """Resolve clarify timeout from config, with bounded fallback."""
     try:

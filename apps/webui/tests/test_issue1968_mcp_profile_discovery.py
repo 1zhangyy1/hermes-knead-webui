@@ -18,14 +18,15 @@ import re
 
 ROOT = Path(__file__).resolve().parents[1]
 STREAMING_PY = (ROOT / "api" / "streaming.py").read_text(encoding="utf-8")
+RUNTIME_HELPERS_PY = (ROOT / "api" / "streaming_runtime_helpers.py").read_text(encoding="utf-8")
 
 
-def _line_of(pattern: str) -> int:
+def _line_of(source: str, pattern: str, source_name: str) -> int:
     """Return the 1-indexed line number of the first match for `pattern`."""
-    for idx, line in enumerate(STREAMING_PY.splitlines(), start=1):
+    for idx, line in enumerate(source.splitlines(), start=1):
         if re.search(pattern, line):
             return idx
-    raise AssertionError(f"pattern not found in api/streaming.py: {pattern!r}")
+    raise AssertionError(f"pattern not found in {source_name}: {pattern!r}")
 
 
 def test_discover_mcp_tools_called_after_hermes_home_mutation():
@@ -33,10 +34,10 @@ def test_discover_mcp_tools_called_after_hermes_home_mutation():
     `HERMES_HOME = _profile_home` assignment, otherwise non-default profile
     MCP servers are never discovered.
     """
-    home_set_line = _line_of(r"os\.environ\['HERMES_HOME'\]\s*=\s*_profile_home")
-    discover_call_line = _line_of(r"discover_mcp_tools\(\)\s*$")
+    home_set_line = _line_of(STREAMING_PY, r"os\.environ\['HERMES_HOME'\]\s*=\s*_profile_home", "api/streaming.py")
+    discover_call_line = _line_of(STREAMING_PY, r"_discover_mcp_tools_for_profile\(\)\s*$", "api/streaming.py")
     assert discover_call_line > home_set_line, (
-        f"discover_mcp_tools() at line {discover_call_line} must be AFTER the "
+        f"_discover_mcp_tools_for_profile() at line {discover_call_line} must be AFTER the "
         f"HERMES_HOME mutation at line {home_set_line} (issue #1968). "
         "Otherwise non-default profile MCP servers never load."
     )
@@ -51,17 +52,17 @@ def test_discover_mcp_tools_called_after_env_lock_release():
     Lexical check: the discover call must come after the `# Lock released` marker
     that follows the `with _ENV_LOCK:` block.
     """
-    lock_release_marker = _line_of(r"# Lock released — agent runs without holding it")
-    discover_call_line = _line_of(r"discover_mcp_tools\(\)\s*$")
+    lock_release_marker = _line_of(STREAMING_PY, r"# Lock released — agent runs without holding it", "api/streaming.py")
+    discover_call_line = _line_of(STREAMING_PY, r"_discover_mcp_tools_for_profile\(\)\s*$", "api/streaming.py")
     assert discover_call_line > lock_release_marker, (
-        f"discover_mcp_tools() at line {discover_call_line} should run AFTER "
+        f"_discover_mcp_tools_for_profile() at line {discover_call_line} should run AFTER "
         f"the _ENV_LOCK release at line {lock_release_marker}, not inside the "
         "lock block (which would serialize MCP discovery across sessions)."
     )
 
 
 def test_discover_mcp_tools_only_called_once_in_streaming():
-    """Sanity check: only one *actual call* to `discover_mcp_tools()` in
+    """Sanity check: only one *actual call* to the helper in
     `api/streaming.py` — not counting prose mentions inside comments.
 
     The fix relocates the existing call rather than adding a second one.  If a
@@ -69,11 +70,11 @@ def test_discover_mcp_tools_only_called_once_in_streaming():
     """
     call_lines = [
         line for line in STREAMING_PY.splitlines()
-        if "discover_mcp_tools()" in line
+        if "_discover_mcp_tools_for_profile()" in line
         and not line.lstrip().startswith("#")
     ]
     assert len(call_lines) == 1, (
-        f"Expected exactly 1 `discover_mcp_tools()` call line in api/streaming.py "
+        f"Expected exactly 1 `_discover_mcp_tools_for_profile()` call line in api/streaming.py "
         f"(comments excluded), found {len(call_lines)}: {call_lines!r}.  A "
         "duplicate call site would re-introduce the #1968 bug if placed before "
         "the HERMES_HOME mutation."
@@ -87,7 +88,7 @@ def test_discover_mcp_tools_call_is_inside_try_except():
     Looks at the 6 lines immediately surrounding the call (which is the actual
     structural block, regardless of how chatty the preceding comment is).
     """
-    lines = STREAMING_PY.splitlines()
+    lines = RUNTIME_HELPERS_PY.splitlines()
     call_idx = None
     for idx, line in enumerate(lines):
         if "discover_mcp_tools()" in line and not line.lstrip().startswith("#"):

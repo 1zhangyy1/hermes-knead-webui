@@ -1,6 +1,12 @@
 import os
+import sys
+import types
 
-from api.streaming_runtime_helpers import restore_agent_process_env, restore_env_snapshot
+from api.streaming_runtime_helpers import (
+    discover_mcp_tools_for_profile,
+    restore_agent_process_env,
+    restore_env_snapshot,
+)
 
 
 class DummyLock:
@@ -49,3 +55,18 @@ def test_restore_agent_process_env_uses_lock_and_restores_both_snapshots(monkeyp
     assert os.environ['PROFILE_KEY'] == 'old-profile'
     assert os.environ['TERMINAL_CWD'] == '/old'
     assert 'HERMES_SESSION_ID' not in os.environ
+
+
+def test_discover_mcp_tools_for_profile_runs_best_effort(monkeypatch):
+    calls = []
+    tools_pkg = types.ModuleType("tools")
+    mcp_tool = types.ModuleType("tools.mcp_tool")
+    mcp_tool.discover_mcp_tools = lambda: calls.append("discover")
+    monkeypatch.setitem(sys.modules, "tools", tools_pkg)
+    monkeypatch.setitem(sys.modules, "tools.mcp_tool", mcp_tool)
+
+    assert discover_mcp_tools_for_profile() is True
+    assert calls == ["discover"]
+
+    mcp_tool.discover_mcp_tools = lambda: (_ for _ in ()).throw(RuntimeError("boom"))
+    assert discover_mcp_tools_for_profile() is False
