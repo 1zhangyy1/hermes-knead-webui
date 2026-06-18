@@ -70,7 +70,10 @@ from api.streaming_gateway import (
 )
 from api.streaming_gateway_notifications import register_streaming_gateway_notifications as _register_streaming_gateway_notifications
 from api.streaming_goal import run_post_turn_goal_hook as _run_post_turn_goal_hook
-from api.streaming_error_writeback import persist_streaming_error_message as _persist_streaming_error_message
+from api.streaming_error_writeback import (
+    emit_and_persist_streaming_error as _emit_and_persist_streaming_error,
+    persist_streaming_error_message as _persist_streaming_error_message,
+)
 from api.streaming_ephemeral import emit_ephemeral_done as _emit_ephemeral_done
 from api.streaming_attachments import (
     IMAGE_MAGIC as _IMAGE_MAGIC,
@@ -1245,27 +1248,15 @@ def _run_agent_streaming(
                         # fall through to normal post-result persistence below.
                         pass
                     else:
-                        _error_payload = _provider_error_payload(
-                            _err_str or f'{_err_label}.',
-                            _err_type,
-                            _err_hint,
-                        )
-                        _finalize_product_turn(
-                            failed=True,
-                            error_type=_err_type,
-                            error_message=_error_payload.get('message') or _err_label,
-                        )
-                        put('apperror', _error_payload)
-                        # Persist the error so it survives page reload.
-                        # _error=True ensures _sanitize_messages_for_api excludes it from
-                        # subsequent API calls so the LLM never sees its own error as prior context.
-                        _persist_streaming_error_message(
+                        _emit_and_persist_streaming_error(
                             s,
                             label=_err_label,
-                            message=_error_payload.get("message") or _err_label,
+                            message=_err_str or f'{_err_label}.',
                             error_type=_err_type,
                             hint=_err_hint,
-                            details=_error_payload.get('details'),
+                            put=put,
+                            provider_error_payload=_provider_error_payload,
+                            finalize_product_turn=_finalize_product_turn,
                             always_include_hint=True,
                             materialize_pending_user_turn=_materialize_pending_user_turn_before_error,
                             logger=logger,

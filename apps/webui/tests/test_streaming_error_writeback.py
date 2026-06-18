@@ -1,4 +1,5 @@
 from api.streaming_error_writeback import (
+    emit_and_persist_streaming_error,
     format_streaming_error_content,
     persist_streaming_error_message,
     provider_details_label,
@@ -109,3 +110,49 @@ def test_persist_streaming_error_message_logs_save_failure():
 
     assert logger.messages
     assert session.messages[-1]['_error'] is True
+
+
+def test_emit_and_persist_streaming_error_emits_then_persists_payload():
+    events = []
+
+    class RecordingSession(Session):
+        def save(self):
+            events.append('save')
+            super().save()
+
+    session = RecordingSession()
+
+    payload = emit_and_persist_streaming_error(
+        session,
+        label='No response',
+        message='No response.',
+        error_type='no_response',
+        hint='Try again',
+        put=lambda event, data: events.append(('put', event, data)),
+        provider_error_payload=lambda message, error_type, hint: events.append(
+            ('payload', message, error_type, hint)
+        ) or {'message': 'Payload message', 'details': 'provider details'},
+        finalize_product_turn=lambda **kwargs: events.append(('finalize', kwargs)),
+        always_include_hint=True,
+        materialize_pending_user_turn=lambda current: events.append(('materialize', current)),
+    )
+
+    assert payload == {'message': 'Payload message', 'details': 'provider details'}
+    assert events == [
+        ('payload', 'No response.', 'no_response', 'Try again'),
+        ('finalize', {
+            'failed': True,
+            'error_type': 'no_response',
+            'error_message': 'Payload message',
+        }),
+        ('put', 'apperror', payload),
+        ('materialize', session),
+        'save',
+    ]
+    assert session.messages[-1] == {
+        'role': 'assistant',
+        'content': '**No response:** Payload message\n\n*Try again*',
+        'timestamp': session.messages[-1]['timestamp'],
+        '_error': True,
+        'provider_details': 'provider details',
+    }
