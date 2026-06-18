@@ -1,6 +1,7 @@
 from api.streaming_agent_config import (
     build_agent_kwargs,
     initialize_session_db,
+    load_agent_config_and_toolsets,
     resolve_agent_runtime_connection,
     resolve_fallback_config,
     resolve_max_iterations_config,
@@ -102,6 +103,73 @@ def test_resolve_agent_runtime_connection_warns_when_runtime_provider_fails():
     assert warnings == [
         (
             "[webui] WARNING: resolve_runtime_provider failed: oauth unavailable",
+            True,
+        )
+    ]
+
+
+class _SessionMeta:
+    enabled_toolsets = ["session-tool"]
+
+
+class _SessionLoader:
+    @staticmethod
+    def load_metadata_only(_session_id):
+        return _SessionMeta()
+
+
+def test_load_agent_config_and_toolsets_uses_config_toolsets_without_session_override(tmp_path):
+    cfg = {"toolsets": ["config-tool"]}
+
+    result = load_agent_config_and_toolsets(
+        "sid-1",
+        get_config_fn=lambda: cfg,
+        resolve_toolsets_fn=lambda config: ["resolved", config["toolsets"][0]],
+        session_cls=_SessionLoader,
+        session_dir=tmp_path,
+    )
+
+    assert result == (cfg, ["resolved", "config-tool"])
+
+
+def test_load_agent_config_and_toolsets_applies_session_override(tmp_path):
+    cfg = {"toolsets": ["config-tool"]}
+    (tmp_path / "sid-1.json").write_text("{}", encoding="utf-8")
+
+    result = load_agent_config_and_toolsets(
+        "sid-1",
+        get_config_fn=lambda: cfg,
+        resolve_toolsets_fn=lambda _config: ["config-tool"],
+        session_cls=_SessionLoader,
+        session_dir=tmp_path,
+    )
+
+    assert result == (cfg, ["session-tool"])
+
+
+def test_load_agent_config_and_toolsets_warns_and_keeps_config_toolsets_on_override_failure(tmp_path):
+    cfg = {"toolsets": ["config-tool"]}
+    warnings = []
+    (tmp_path / "sid-1.json").write_text("{}", encoding="utf-8")
+
+    class FailingSessionLoader:
+        @staticmethod
+        def load_metadata_only(_session_id):
+            raise RuntimeError("metadata unavailable")
+
+    result = load_agent_config_and_toolsets(
+        "sid-1",
+        get_config_fn=lambda: cfg,
+        resolve_toolsets_fn=lambda _config: ["config-tool"],
+        session_cls=FailingSessionLoader,
+        session_dir=tmp_path,
+        warning_fn=lambda message, *, flush=False: warnings.append((message, flush)),
+    )
+
+    assert result == (cfg, ["config-tool"])
+    assert warnings == [
+        (
+            "[webui] WARNING: failed to read per-session toolsets for sid-1: metadata unavailable",
             True,
         )
     ]

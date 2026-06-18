@@ -135,6 +135,7 @@ from api.streaming_agent_cache import (
 from api.streaming_agent_config import (
     build_agent_kwargs as _build_agent_kwargs_impl,
     initialize_session_db as _initialize_session_db,
+    load_agent_config_and_toolsets as _load_agent_config_and_toolsets,
     resolve_agent_runtime_connection as _resolve_agent_runtime_connection,
     resolve_fallback_config as _resolve_fallback_config_impl,
     resolve_max_iterations_config as _resolve_max_iterations_config_impl,
@@ -1024,33 +1025,7 @@ def _run_agent_streaming(
                 custom_provider_resolver=resolve_custom_provider_connection,
             )
 
-            # Read per-profile config at call time (not module-level snapshot)
-            from api.config import get_config as _get_config
-            _cfg = _get_config()
-
-            # Per-profile toolsets — use _resolve_cli_toolsets() so MCP
-            # server toolsets are included, matching native CLI behaviour.
-            from api.config import _resolve_cli_toolsets
-            _toolsets = _resolve_cli_toolsets(_cfg)
-
-            # Per-session toolset override (#493): if the session has
-            # enabled_toolsets set, use that instead of the global config.
-            try:
-                from api.models import Session, SESSION_DIR
-                _session_path = SESSION_DIR / f"{session_id}.json"
-                if _session_path.exists():
-                    _session_meta = Session.load_metadata_only(session_id)
-                    # load_metadata_only returns a Session INSTANCE, not a dict.
-                    # The previous .get('enabled_toolsets') raised AttributeError
-                    # which was swallowed by the bare except below — the entire
-                    # per-session toolset override silently no-op'd. Use
-                    # getattr() to read the attribute correctly.
-                    # (Opus pre-release advisor finding for v0.50.257.)
-                    _override = getattr(_session_meta, 'enabled_toolsets', None) if _session_meta else None
-                    if _override:
-                        _toolsets = _override
-            except Exception as _ts_err:
-                print(f"[webui] WARNING: failed to read per-session toolsets for {session_id}: {_ts_err}", flush=True)
+            _cfg, _toolsets = _load_agent_config_and_toolsets(session_id)
 
             _fallback_resolved = _resolve_fallback_config_impl(_cfg)
 
