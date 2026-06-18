@@ -129,10 +129,9 @@ from api.streaming_agent_cache import (
     get_agent_for_turn as _get_agent_for_turn,
 )
 from api.streaming_agent_config import (
-    build_agent_kwargs as _build_agent_kwargs_impl,
     initialize_session_db as _initialize_session_db,
     load_agent_config_and_toolsets as _load_agent_config_and_toolsets,
-    resolve_agent_constructor_settings as _resolve_agent_constructor_settings,
+    prepare_webui_agent_kwargs as _prepare_webui_agent_kwargs,
     resolve_agent_runtime_connection as _resolve_agent_runtime_connection,
 )
 from api.streaming_bridges import initialize_webui_streaming_bridges as _initialize_streaming_bridges
@@ -816,48 +815,30 @@ def _run_agent_streaming(
 
             _cfg, _toolsets = _load_agent_config_and_toolsets(session_id)
 
-            # Build kwargs defensively — guard newer params so the WebUI
-            # degrades gracefully when run against an older hermes-agent build.
-            # (fixes: TypeError: AIAgent.__init__() got an unexpected keyword
-            # argument 'credential_pool' — issue #772)
-            _agent_constructor = _resolve_agent_constructor_settings(_AIAgent, _cfg)
-            _agent_params = _agent_constructor.agent_params
-            _fallback_resolved = _agent_constructor.fallback_resolved
-            _max_iterations_cfg = _agent_constructor.max_iterations
-            _max_tokens_cfg = _agent_constructor.max_tokens
-            _reasoning_config = _agent_constructor.reasoning_config
-
-            _agent_kwargs = _build_agent_kwargs_impl(
-                agent_params=_agent_params,
+            _agent_kwargs_state = _prepare_webui_agent_kwargs(
+                agent_cls=_AIAgent,
+                config=_cfg,
                 model=resolved_model,
                 provider=resolved_provider,
                 base_url=resolved_base_url,
                 api_key=resolved_api_key,
                 enabled_toolsets=_toolsets,
-                fallback_model=_fallback_resolved,
                 session_id=session_id,
                 session_db=_session_db,
-                stream_delta_callback=_output_bridge.on_token,
-                reasoning_callback=_output_bridge.on_reasoning,
-                tool_progress_callback=_tool_bridge.on_tool,
-                clarify_callback=(
-                    lambda question, choices: _webui_clarify_callback_impl(
-                        question,
-                        choices,
-                        session_id,
-                        cancel_event,
-                        _clarify_timeout_seconds,
-                    )
-                ),
-                interim_assistant_callback=_output_bridge.on_interim_assistant,
-                tool_start_callback=_tool_bridge.on_tool_start,
-                tool_complete_callback=_tool_bridge.on_tool_complete,
-                status_callback=_run_state.agent_status_callback,
-                max_iterations=_max_iterations_cfg,
-                max_tokens=_max_tokens_cfg,
-                reasoning_config=_reasoning_config,
+                output_bridge=_output_bridge,
+                tool_bridge=_tool_bridge,
+                run_state=_run_state,
+                cancel_event=cancel_event,
+                clarify_timeout_seconds=_clarify_timeout_seconds,
+                webui_clarify_callback=_webui_clarify_callback_impl,
                 runtime=_rt,
             )
+            _agent_kwargs = _agent_kwargs_state.agent_kwargs
+            _agent_params = _agent_kwargs_state.agent_params
+            _fallback_resolved = _agent_kwargs_state.fallback_resolved
+            _max_iterations_cfg = _agent_kwargs_state.max_iterations
+            _max_tokens_cfg = _agent_kwargs_state.max_tokens
+            _reasoning_config = _agent_kwargs_state.reasoning_config
 
             _agent_for_turn = _get_agent_for_turn(
                 session_id=session_id,

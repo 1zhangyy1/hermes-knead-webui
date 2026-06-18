@@ -1,8 +1,10 @@
 from api.streaming_agent_config import (
     AgentConstructorSettings,
+    WebUIAgentKwargsState,
     build_agent_kwargs,
     initialize_session_db,
     load_agent_config_and_toolsets,
+    prepare_webui_agent_kwargs,
     resolve_agent_constructor_settings,
     resolve_agent_runtime_connection,
     resolve_fallback_config,
@@ -322,6 +324,85 @@ def test_build_agent_kwargs_skips_unsupported_optional_fields():
     assert 'api_mode' not in kwargs
     assert 'credential_pool' not in kwargs
     assert 'gateway_session_key' not in kwargs
+
+
+def test_prepare_webui_agent_kwargs_wires_streaming_callbacks_and_constructor_state():
+    calls = []
+    output_bridge = type(
+        "OutputBridge",
+        (),
+        {
+            "on_token": object(),
+            "on_reasoning": object(),
+            "on_interim_assistant": object(),
+        },
+    )()
+    tool_bridge = type(
+        "ToolBridge",
+        (),
+        {
+            "on_tool": object(),
+            "on_tool_start": object(),
+            "on_tool_complete": object(),
+        },
+    )()
+    run_state = type("RunState", (), {"agent_status_callback": object()})()
+    settings = AgentConstructorSettings(
+        agent_params={"max_iterations", "status_callback"},
+        fallback_resolved={"model": "fallback"},
+        max_iterations=9,
+        max_tokens=2048,
+        reasoning_config={"effort": "high"},
+    )
+    clarify_calls = []
+
+    def fake_build_agent_kwargs(**kwargs):
+        calls.append(kwargs)
+        return {"built": kwargs}
+
+    state = prepare_webui_agent_kwargs(
+        agent_cls=object,
+        config={"agent": {"max_turns": 9}},
+        model="gpt-5",
+        provider="openai",
+        base_url="https://api.example",
+        api_key="key",
+        enabled_toolsets=["terminal"],
+        session_id="sid-1",
+        session_db="db",
+        output_bridge=output_bridge,
+        tool_bridge=tool_bridge,
+        run_state=run_state,
+        cancel_event="cancel-event",
+        clarify_timeout_seconds=lambda: 123,
+        webui_clarify_callback=lambda *args: clarify_calls.append(args) or "clarified",
+        runtime={"api_mode": "responses"},
+        resolve_agent_constructor_settings_fn=lambda agent_cls, config: settings,
+        build_agent_kwargs_fn=fake_build_agent_kwargs,
+    )
+
+    assert isinstance(state, WebUIAgentKwargsState)
+    assert state.agent_kwargs == {"built": calls[0]}
+    assert state.agent_params == {"max_iterations", "status_callback"}
+    assert state.fallback_resolved == {"model": "fallback"}
+    assert state.max_iterations == 9
+    assert state.max_tokens == 2048
+    assert state.reasoning_config == {"effort": "high"}
+
+    kwargs = calls[0]
+    assert kwargs["stream_delta_callback"] is output_bridge.on_token
+    assert kwargs["reasoning_callback"] is output_bridge.on_reasoning
+    assert kwargs["tool_progress_callback"] is tool_bridge.on_tool
+    assert kwargs["interim_assistant_callback"] is output_bridge.on_interim_assistant
+    assert kwargs["tool_start_callback"] is tool_bridge.on_tool_start
+    assert kwargs["tool_complete_callback"] is tool_bridge.on_tool_complete
+    assert kwargs["status_callback"] is run_state.agent_status_callback
+    assert kwargs["max_iterations"] == 9
+    assert kwargs["max_tokens"] == 2048
+    assert kwargs["reasoning_config"] == {"effort": "high"}
+    assert kwargs["clarify_callback"]("q", ["a"]) == "clarified"
+    assert clarify_calls[0][:4] == ("q", ["a"], "sid-1", "cancel-event")
+    assert clarify_calls[0][4]() == 123
 
 
 def test_resolve_config_helpers_keep_existing_parsing_behaviour():
