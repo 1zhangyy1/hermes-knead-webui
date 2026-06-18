@@ -38,6 +38,7 @@ from api.streaming_errors import (
     cancelled_turn_hint as _cancelled_turn_hint_impl,
     classify_provider_error as _classify_provider_error_impl,
     is_quota_error_text as _is_quota_error_text_impl,
+    exception_error_copy as _exception_error_copy,
     preferred_agent_display_name as _preferred_agent_display_name_impl,
     provider_error_payload as _provider_error_payload_impl,
     sanitize_provider_error_text as _sanitize_provider_error_text,
@@ -1405,16 +1406,7 @@ def _run_agent_streaming(
         _exc_is_cancelled = _classification['type'] == 'cancelled'
         _exc_is_interrupted = _classification['type'] == 'interrupted'
 
-        # The user hint still points to Settings / `hermes model` from _classify_provider_error().
-        if _exc_is_quota:
-            _exc_label, _exc_type, _exc_hint = (
-                _classification['label'], _classification['type'], _classification['hint'],
-            )
-        elif _exc_is_rate_limit:
-            _exc_label, _exc_type, _exc_hint = (
-                _classification['label'], _classification['type'], _classification['hint'],
-            )
-        elif _exc_is_auth:
+        if _exc_is_auth:
             if not _self_healed:
                 # ── Credential self-heal on 401 (#1401) ──
                 _heal_rt = _attempt_credential_self_heal(
@@ -1482,22 +1474,8 @@ def _run_agent_streaming(
                     except Exception as _retry_exc2:
                         logger.warning('[webui] self-heal (except path): retry failed: %s', _retry_exc2)
                         # Fall through to emit the original error
-            # Self-heal didn't apply or retry failed — emit the auth error
-            _exc_label, _exc_type, _exc_hint = (
-                'Authentication error', 'auth_mismatch',
-                'The selected model may not be supported by your configured provider. '
-                'Run `hermes model` in your terminal to switch providers, then restart the WebUI.',
-            )
-        elif _exc_is_not_found:
-            _exc_label, _exc_type, _exc_hint = (
-                _classification['label'], _classification['type'], _classification['hint'],
-            )
-        elif _exc_is_cancelled or _exc_is_interrupted:
-            _exc_label, _exc_type, _exc_hint = (
-                _classification['label'], _classification['type'], _classification['hint'],
-            )
-        else:
-            _exc_label, _exc_type, _exc_hint = 'Error', 'error', ''
+
+        _exc_label, _exc_type, _exc_hint = _exception_error_copy(_classification)
 
         _error_payload = _provider_error_payload(err_str, _exc_type, _exc_hint)
         if s is not None:

@@ -79,7 +79,7 @@ class TestStreamingModelNotFoundDetection:
 
     def test_not_found_hint_mentions_settings(self):
         """The model_not_found hint must mention Settings or hermes model."""
-        src = _read("api/streaming.py")
+        src = _read("api/streaming_errors.py")
         idx = src.find("model_not_found")
         block = src[idx:idx + 500]
         assert "Settings" in block or "hermes model" in block, (
@@ -89,8 +89,8 @@ class TestStreamingModelNotFoundDetection:
     def test_not_found_check_order_after_auth(self):
         """model_not_found must be checked after auth_mismatch (auth first)."""
         src = _read("api/streaming.py")
-        auth_idx = src.find("elif _exc_is_auth")
-        nf_idx = src.find("elif _exc_is_not_found")
+        auth_idx = src.find("_exc_is_auth")
+        nf_idx = src.find("_exc_is_not_found")
         assert auth_idx != -1, "_exc_is_auth not found"
         assert nf_idx != -1, "_exc_is_not_found not found"
         assert auth_idx < nf_idx, (
