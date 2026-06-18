@@ -480,13 +480,21 @@ def test_materialize_helper_called_immediately_before_error_path_clears():
         'api',
         'streaming_success_completion.py',
     ).read_text(encoding='utf-8')
+    pipeline_src = Path(__file__).parent.parent.joinpath(
+        'api',
+        'streaming_turn_pipeline.py',
+    ).read_text(encoding='utf-8')
 
     assert 'session.pending_user_message = None' in writeback_src
 
-    silent_idx = src.find("_handle_completed_conversation_writeback(")
-    success_idx = src.find("_handle_completed_conversation_success(", silent_idx)
-    silent_block = src[silent_idx:success_idx]
-    assert "materialize_pending_user_turn=_materialize_pending_user_turn_before_error" in silent_block
+    pipeline_idx = src.find("_run_streaming_turn_pipeline(")
+    pipeline_call_block = src[pipeline_idx:pipeline_idx + 4000]
+    silent_idx = pipeline_src.find("handle_completed_conversation_writeback_fn(")
+    success_idx = pipeline_src.find("handle_completed_conversation_success_fn(", silent_idx)
+    silent_block = pipeline_src[silent_idx:success_idx]
+    assert pipeline_idx != -1
+    assert "materialize_pending_user_turn=_materialize_pending_user_turn_before_error" in pipeline_call_block
+    assert "materialize_pending_user_turn=materialize_pending_user_turn" in silent_block
     assert "if writeback_result.should_return:" in success_src
     assert "handle_silent_failure_after_merge_fn(" in completed_writeback_src
     assert "materialize_pending_user_turn=materialize_pending_user_turn" in completed_writeback_src

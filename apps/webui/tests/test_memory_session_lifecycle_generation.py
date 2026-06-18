@@ -365,6 +365,7 @@ def test_post_turn_lifecycle_marks_completion_without_commit():
     import api.streaming as streaming_mod
     streaming_src = Path(streaming_mod.__file__).read_text(encoding="utf-8")
     completed_src = Path(streaming_mod.__file__).with_name("streaming_completed_writeback.py").read_text(encoding="utf-8")
+    pipeline_src = Path(streaming_mod.__file__).with_name("streaming_turn_pipeline.py").read_text(encoding="utf-8")
     success_src = Path(streaming_mod.__file__).with_name("streaming_success_completion.py").read_text(encoding="utf-8")
     src = Path(streaming_mod.__file__).with_name("streaming_turn_writeback.py").read_text(encoding="utf-8")
 
@@ -372,9 +373,10 @@ def test_post_turn_lifecycle_marks_completion_without_commit():
     lifecycle_marker = src.index("mark_completed_turn_memory_lifecycle(session.session_id, agent, logger=logger)", save_pos)
     cancel_check = src.index("cancel_event.is_set()", save_pos)
     completed_journal = src.index("append_completed_turn_event", save_pos)
-    writeback_helper_call = streaming_src.index("_handle_completed_conversation_writeback(")
+    pipeline_helper_call = streaming_src.index("_run_streaming_turn_pipeline(")
+    writeback_helper_call = pipeline_src.index("handle_completed_conversation_writeback_fn(")
     save_helper_call = completed_src.index("save_completed_turn_and_journal_fn(")
-    success_helper_call = streaming_src.index("_handle_completed_conversation_success(")
+    success_helper_call = pipeline_src.index("handle_completed_conversation_success_fn(")
     done_helper_call = success_src.index("emit_completed_turn_done_fn(")
 
     assert lifecycle_marker > cancel_check, (
@@ -383,6 +385,7 @@ def test_post_turn_lifecycle_marks_completion_without_commit():
     assert lifecycle_marker > completed_journal, (
         "mark_turn_completed must appear after the completed-turn journal event"
     )
+    assert pipeline_helper_call != -1
     assert writeback_helper_call < success_helper_call
     assert done_helper_call != -1
     assert save_helper_call != -1

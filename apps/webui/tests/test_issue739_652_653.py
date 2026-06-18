@@ -11,6 +11,7 @@ import re
 import pathlib
 
 STREAMING = pathlib.Path(__file__).parent.parent / 'api' / 'streaming.py'
+STREAMING_TURN_PIPELINE = pathlib.Path(__file__).parent.parent / 'api' / 'streaming_turn_pipeline.py'
 STREAMING_COMPLETED_WRITEBACK = pathlib.Path(__file__).parent.parent / 'api' / 'streaming_completed_writeback.py'
 STREAMING_CONTEXT = pathlib.Path(__file__).parent.parent / 'api' / 'streaming_context.py'
 STREAMING_ERRORS = pathlib.Path(__file__).parent.parent / 'api' / 'streaming_errors.py'
@@ -78,7 +79,9 @@ class TestErrorPersistence:
 
     def test_silent_failure_appends_error_message(self):
         """Silent-failure path appends an _error-marked message before returning."""
-        assert "_handle_completed_conversation_writeback(" in streaming_src
+        streaming_turn_pipeline_src = STREAMING_TURN_PIPELINE.read_text()
+        assert "_run_streaming_turn_pipeline(" in streaming_src
+        assert "handle_completed_conversation_writeback_fn(" in streaming_turn_pipeline_src
         assert "handle_silent_failure_after_merge_fn(" in streaming_completed_writeback_src
         assert "emit_and_persist_silent_failure_error_fn(" in streaming_silent_failure_src
         assert "emit_and_persist_streaming_error(" in streaming_error_writeback_src

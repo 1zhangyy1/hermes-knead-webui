@@ -10,6 +10,7 @@ import re
 
 REPO = pathlib.Path(__file__).parent.parent
 STREAMING_PY = (REPO / "api" / "streaming.py").read_text(encoding="utf-8")
+STREAMING_TURN_PIPELINE_PY = (REPO / "api" / "streaming_turn_pipeline.py").read_text(encoding="utf-8")
 STREAMING_COMPLETED_WRITEBACK_PY = (REPO / "api" / "streaming_completed_writeback.py").read_text(encoding="utf-8")
 STREAMING_ERRORS_PY = (REPO / "api" / "streaming_errors.py").read_text(encoding="utf-8")
 STREAMING_SILENT_FAILURE_PY = (REPO / "api" / "streaming_silent_failure.py").read_text(encoding="utf-8")
@@ -26,9 +27,10 @@ class TestSilentErrorDetection:
 
     def test_streaming_detects_no_assistant_reply(self):
         """streaming.py must check if any assistant message was produced."""
-        assert "_handle_completed_conversation_writeback(" in STREAMING_PY, (
-            "streaming.py must route completed turns through the writeback helper (#373)"
+        assert "_run_streaming_turn_pipeline(" in STREAMING_PY, (
+            "streaming.py must route completed turns through the turn pipeline helper (#373)"
         )
+        assert "handle_completed_conversation_writeback_fn(" in STREAMING_TURN_PIPELINE_PY
         assert "detect_silent_failure_after_merge_fn(" in STREAMING_COMPLETED_WRITEBACK_PY
         assert "assistant_added" in STREAMING_SILENT_FAILURE_PY
 

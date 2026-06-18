@@ -24,6 +24,7 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 STREAMING_PY = (REPO / "api" / "streaming.py").read_text(encoding="utf-8")
+STREAMING_TURN_PIPELINE_PY = (REPO / "api" / "streaming_turn_pipeline.py").read_text(encoding="utf-8")
 CONTEXT_WINDOW_PY = (REPO / "api" / "streaming_context_window.py").read_text(encoding="utf-8")
 TURN_WRITEBACK_PY = (REPO / "api" / "streaming_turn_writeback.py").read_text(encoding="utf-8")
 TERMINAL_PY = (REPO / "api" / "streaming_terminal.py").read_text(encoding="utf-8")
@@ -47,7 +48,8 @@ def _fallback_helper():
 def test_streaming_uses_context_window_helper_for_both_paths():
     assert "persist_context_window_on_session(" in TURN_WRITEBACK_PY
     completed_writeback = (Path(__file__).parent.parent / "api" / "streaming_completed_writeback.py").read_text(encoding="utf-8")
-    assert "_handle_completed_conversation_writeback(" in STREAMING_PY
+    assert "_run_streaming_turn_pipeline(" in STREAMING_PY
+    assert "handle_completed_conversation_writeback_fn(" in STREAMING_TURN_PIPELINE_PY
     assert "apply_completed_turn_writeback_state_fn(" in completed_writeback
     assert "apply_context_window_to_usage=_apply_context_window_to_usage" in STREAMING_PY
     assert "apply_context_window_to_usage(" in TERMINAL_PY

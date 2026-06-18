@@ -19,12 +19,14 @@ def test_webui_drains_only_matching_background_completion_events():
 
 def test_webui_injects_process_notifications_without_persisting_them_as_user_text():
     src = (REPO / "api" / "streaming.py").read_text(encoding="utf-8")
+    pipeline_src = (REPO / "api" / "streaming_turn_pipeline.py").read_text(encoding="utf-8")
     conversation_src = (REPO / "api" / "streaming_conversation_run.py").read_text(encoding="utf-8")
     turn_start_src = (REPO / "api" / "streaming_turn_start.py").read_text(encoding="utf-8")
     process_src = (REPO / "api" / "streaming_process_notifications.py").read_text(encoding="utf-8")
 
-    assert "_turn_input = _prepare_streaming_turn_input(" in src
-    assert "_run_agent_conversation_and_handle_post_run(" in src
+    assert "_run_streaming_turn_pipeline(" in src
+    assert "prepare_streaming_turn_input_fn(" in pipeline_src
+    assert "run_agent_conversation_and_handle_post_run_fn(" in pipeline_src
     assert "process_notifications = drain_process_notifications_fn(session_id, logger=logger)" in turn_start_src
     assert "message_text_with_process_notifications_fn(msg_text, process_notifications)" in turn_start_src
     assert "[*process_notifications, msg_text]" in process_src
