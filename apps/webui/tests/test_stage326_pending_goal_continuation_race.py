@@ -25,6 +25,10 @@ def _read_streaming():
     return Path(__file__).parents[1].joinpath("api", "streaming.py").read_text(encoding="utf-8")
 
 
+def _read_streaming_cleanup():
+    return Path(__file__).parents[1].joinpath("api", "streaming_cleanup.py").read_text(encoding="utf-8")
+
+
 def _read_streaming_goal():
     return Path(__file__).parents[1].joinpath("api", "streaming_goal.py").read_text(encoding="utf-8")
 
@@ -40,11 +44,11 @@ def test_streaming_finally_does_not_discard_pending_goal_continuation():
     Doing so races against the frontend's SSE-receive → POST /chat/start
     round-trip and erases the marker before it can be consumed.
     """
-    src = _read_streaming()
+    src = _read_streaming_cleanup()
 
-    # Find the cleanup block — STREAM_GOAL_RELATED.pop is a stable anchor.
-    pop_idx = src.find("STREAM_GOAL_RELATED.pop(stream_id")
-    assert pop_idx != -1, "STREAM_GOAL_RELATED cleanup not found — test needs update"
+    # Find the cleanup block — goal_related.pop is a stable anchor.
+    pop_idx = src.find("goal_related.pop(stream_id")
+    assert pop_idx != -1, "goal_related cleanup not found — test needs update"
 
     # Look at the next ~600 chars (the immediate cleanup block).
     block = src[pop_idx:pop_idx + 600]
@@ -98,10 +102,10 @@ def test_stream_goal_related_pop_keyed_by_stream_id():
     """STREAM_GOAL_RELATED.pop in the cleanup must be keyed by stream_id
     (the ending stream's id), not session_id — a different stream's flag
     must not be erased."""
-    src = _read_streaming()
+    src = _read_streaming_cleanup()
     # Search for the cleanup line.
-    m = re.search(r"STREAM_GOAL_RELATED\.pop\(([^,)]+)", src)
-    assert m is not None, "STREAM_GOAL_RELATED.pop not found in streaming.py"
+    m = re.search(r"goal_related\.pop\(([^,)]+)", src)
+    assert m is not None, "goal_related.pop not found in streaming_cleanup.py"
     key = m.group(1).strip()
     assert key == "stream_id", (
         f"STREAM_GOAL_RELATED.pop must be keyed by stream_id, got {key!r}. "
