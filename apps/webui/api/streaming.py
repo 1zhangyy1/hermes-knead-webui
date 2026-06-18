@@ -210,7 +210,7 @@ from api.streaming_recovery import (
     attempt_credential_self_heal as _attempt_credential_self_heal_impl,
     last_resort_sync_from_core as _last_resort_sync_from_core_impl,
     materialize_pending_user_turn_before_error as _materialize_pending_user_turn_before_error_impl,
-    rebuild_agent_for_credential_self_heal as _rebuild_agent_for_credential_self_heal,
+    retry_conversation_after_credential_self_heal as _retry_conversation_after_credential_self_heal,
 )
 from api.streaming_runtime_helpers import (
     WEBUI_VISIBLE_PROGRESS_PROMPT as _WEBUI_VISIBLE_PROGRESS_PROMPT_IMPL,
@@ -1118,55 +1118,50 @@ def _run_agent_streaming(
                         # ── Credential self-heal on 401 (#1401) ──
                         # Before emitting the error, try re-reading credentials
                         # and retrying once with a fresh agent.
-                        _heal_result = None
-                        _heal_rt = _attempt_credential_self_heal(
-                            resolved_provider or '', session_id, _agent_lock,
+                        _heal_retry = _retry_conversation_after_credential_self_heal(
+                            provider_id=resolved_provider or '',
+                            session_id=session_id,
+                            agent_lock=_agent_lock,
+                            agent_factory=_AIAgent,
+                            agent_kwargs=_agent_kwargs,
+                            agent_params=_agent_params,
+                            resolved_model=resolved_model,
+                            resolved_provider=resolved_provider,
+                            resolved_base_url=resolved_base_url,
+                            custom_provider_resolver=resolve_custom_provider_connection,
+                            stream_id=stream_id,
+                            agent_instances=AGENT_INSTANCES,
+                            streams_lock=STREAMS_LOCK,
+                            ephemeral=ephemeral,
+                            agent_sig=_agent_sig,
+                            user_message=user_message,
+                            system_message=workspace_system_msg,
+                            previous_context_messages=_previous_context_messages,
+                            config=_cfg,
+                            persist_user_message=msg_text,
+                            sanitize_messages_for_api=_sanitize_messages_for_api,
+                            output_bridge=_output_bridge,
+                            logger=logger,
+                            retrying_log_message='[webui] self-heal: retrying stream after credential refresh',
+                            retry_failed_log_message='[webui] self-heal: retry also failed: %s',
                         )
-                        if _heal_rt is not None:
-                            logger.info('[webui] self-heal: retrying stream after credential refresh')
-                            _rebuilt = _rebuild_agent_for_credential_self_heal(
-                                agent_factory=_AIAgent,
-                                agent_kwargs=_agent_kwargs,
-                                agent_params=_agent_params,
-                                heal_runtime=_heal_rt,
-                                resolved_model=resolved_model,
-                                resolved_provider=resolved_provider,
-                                resolved_base_url=resolved_base_url,
-                                custom_provider_resolver=resolve_custom_provider_connection,
-                                session_id=session_id,
-                                stream_id=stream_id,
-                                agent_instances=AGENT_INSTANCES,
-                                streams_lock=STREAMS_LOCK,
-                                ephemeral=ephemeral,
-                                agent_sig=_agent_sig,
-                            )
+                        if _heal_retry is not None:
+                            _rebuilt = _heal_retry.rebuilt
                             _rt = _rebuilt.runtime
                             resolved_api_key = _rebuilt.resolved_api_key
                             resolved_provider = _rebuilt.resolved_provider
                             resolved_base_url = _rebuilt.resolved_base_url
                             _agent_kwargs = _rebuilt.agent_kwargs
                             agent = _rebuilt.agent
-                            # Retry the conversation once with fresh credentials
                             _self_healed = True
-                            _output_bridge.token_sent = False
-                            try:
-                                _heal_result = agent.run_conversation(
-                                    user_message=user_message,
-                                    system_message=workspace_system_msg,
-                                    conversation_history=_sanitize_messages_for_api(_previous_context_messages, cfg=_cfg),
-                                    task_id=session_id,
-                                    persist_user_message=msg_text,
-                                )
-                                _heal_all_msgs = _heal_result.get('messages') or []
+                            if _heal_retry.result is not None:
+                                _heal_all_msgs = _heal_retry.result.get('messages') or []
                                 _heal_ok = _has_new_assistant_reply(_heal_all_msgs, _prev_len) or _output_bridge.token_sent
-                            except Exception as _retry_exc:
-                                logger.warning(
-                                    '[webui] self-heal: retry also failed: %s', _retry_exc,
-                                )
+                            else:
                                 _heal_ok = False
-                            if _heal_ok and _heal_result is not None:
+                            if _heal_ok and _heal_retry.result is not None:
                                 # Retry succeeded — replace result and skip error
-                                result = _heal_result
+                                result = _heal_retry.result
                                 # Fall through past the error-emission block;
                                 # the post-result persistence code below will
                                 # process ``result`` normally.  We jump past
@@ -1374,45 +1369,42 @@ def _run_agent_streaming(
         if _exc_is_auth:
             if not _self_healed:
                 # ── Credential self-heal on 401 (#1401) ──
-                _heal_rt = _attempt_credential_self_heal(
-                    resolved_provider or '', session_id, _agent_lock,
+                _heal_retry = _retry_conversation_after_credential_self_heal(
+                    provider_id=resolved_provider or '',
+                    session_id=session_id,
+                    agent_lock=_agent_lock,
+                    agent_factory=_AIAgent,
+                    agent_kwargs=dict(_agent_kwargs) if '_agent_kwargs' in dir() else {},
+                    agent_params=_agent_params,
+                    resolved_model=resolved_model,
+                    resolved_provider=resolved_provider,
+                    resolved_base_url=resolved_base_url,
+                    custom_provider_resolver=resolve_custom_provider_connection,
+                    stream_id=stream_id,
+                    agent_instances=AGENT_INSTANCES,
+                    streams_lock=STREAMS_LOCK,
+                    ephemeral=ephemeral,
+                    agent_sig=_agent_sig,
+                    user_message=user_message,
+                    system_message=workspace_system_msg,
+                    previous_context_messages=_previous_context_messages,
+                    config=_cfg,
+                    persist_user_message=msg_text,
+                    sanitize_messages_for_api=_sanitize_messages_for_api,
+                    output_bridge=_output_bridge,
+                    logger=logger,
+                    retrying_log_message='[webui] self-heal (except path): retrying stream after credential refresh',
+                    retry_failed_log_message='[webui] self-heal (except path): retry failed: %s',
                 )
-                if _heal_rt is not None:
-                    logger.info('[webui] self-heal (except path): retrying stream after credential refresh')
+                if _heal_retry is not None:
                     _self_healed = True
-                    _rebuilt = _rebuild_agent_for_credential_self_heal(
-                        agent_factory=_AIAgent,
-                        agent_kwargs=dict(_agent_kwargs) if '_agent_kwargs' in dir() else {},
-                        agent_params=_agent_params,
-                        heal_runtime=_heal_rt,
-                        resolved_model=resolved_model,
-                        resolved_provider=resolved_provider,
-                        resolved_base_url=resolved_base_url,
-                        custom_provider_resolver=resolve_custom_provider_connection,
-                        session_id=session_id,
-                        stream_id=stream_id,
-                        agent_instances=AGENT_INSTANCES,
-                        streams_lock=STREAMS_LOCK,
-                        ephemeral=ephemeral,
-                        agent_sig=_agent_sig,
-                    )
+                    _rebuilt = _heal_retry.rebuilt
                     _rt = _rebuilt.runtime
                     resolved_api_key = _rebuilt.resolved_api_key
                     resolved_provider = _rebuilt.resolved_provider
                     resolved_base_url = _rebuilt.resolved_base_url
                     _agent_kwargs = _rebuilt.agent_kwargs
-                    _heal_agent = _rebuilt.agent
-                    # Retry the conversation
-                    if _output_bridge is not None:
-                        _output_bridge.token_sent = False
-                    try:
-                        _heal_result = _heal_agent.run_conversation(
-                            user_message=user_message,
-                            system_message=workspace_system_msg,
-                            conversation_history=_sanitize_messages_for_api(_previous_context_messages, cfg=_cfg),
-                            task_id=session_id,
-                            persist_user_message=msg_text,
-                        )
+                    if _heal_retry.result is not None:
                         # Retry succeeded — persist the result normally
                         if s is not None:
                             _stop_checkpoint_thread(_checkpoint_stop, _ckpt_thread)
@@ -1430,15 +1422,13 @@ def _run_agent_streaming(
                                     s,
                                     _previous_messages,
                                     _previous_context_messages,
-                                    _heal_result.get('messages'),
+                                    _heal_retry.result.get('messages'),
                                     msg_text,
                                 )
                                 s.save()
                         logger.info('[webui] self-heal (except path): retry succeeded')
                         return  # skip error emission
-                    except Exception as _retry_exc2:
-                        logger.warning('[webui] self-heal (except path): retry failed: %s', _retry_exc2)
-                        # Fall through to emit the original error
+                    # Fall through to emit the original error when retry failed.
 
         _exc_label, _exc_type, _exc_hint = _exception_error_copy(_classification)
 

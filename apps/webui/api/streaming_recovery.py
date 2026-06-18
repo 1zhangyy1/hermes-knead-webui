@@ -18,6 +18,13 @@ class RebuiltCredentialAgent:
     resolved_base_url: str | None
 
 
+@dataclass
+class CredentialSelfHealRetry:
+    rebuilt: RebuiltCredentialAgent
+    result: dict[str, Any] | None
+    error: Exception | None
+
+
 def materialize_pending_user_turn_before_error(session) -> bool:
     """Persist the pending user prompt before clearing runtime stream state.
 
@@ -187,3 +194,81 @@ def rebuild_agent_for_credential_self_heal(
         resolved_provider=resolved_provider,
         resolved_base_url=resolved_base_url,
     )
+
+
+def retry_conversation_after_credential_self_heal(
+    *,
+    provider_id: str,
+    session_id: str,
+    agent_lock,
+    agent_factory,
+    agent_kwargs: dict[str, Any],
+    agent_params,
+    resolved_model: str | None,
+    resolved_provider: str | None,
+    resolved_base_url: str | None,
+    custom_provider_resolver,
+    stream_id: str,
+    agent_instances,
+    streams_lock,
+    ephemeral: bool,
+    agent_sig: str | None,
+    user_message,
+    system_message,
+    previous_context_messages,
+    config,
+    persist_user_message,
+    sanitize_messages_for_api,
+    output_bridge=None,
+    logger,
+    retrying_log_message: str,
+    retry_failed_log_message: str,
+    attempt_self_heal_fn=attempt_credential_self_heal,
+    rebuild_agent_fn=rebuild_agent_for_credential_self_heal,
+) -> CredentialSelfHealRetry | None:
+    """Refresh credentials, rebuild the agent, and retry the current turn once."""
+    heal_runtime = attempt_self_heal_fn(
+        provider_id,
+        session_id,
+        agent_lock,
+        logger=logger,
+    )
+    if heal_runtime is None:
+        return None
+
+    logger.info(retrying_log_message)
+    rebuilt = rebuild_agent_fn(
+        agent_factory=agent_factory,
+        agent_kwargs=agent_kwargs,
+        agent_params=agent_params,
+        heal_runtime=heal_runtime,
+        resolved_model=resolved_model,
+        resolved_provider=resolved_provider,
+        resolved_base_url=resolved_base_url,
+        custom_provider_resolver=custom_provider_resolver,
+        session_id=session_id,
+        stream_id=stream_id,
+        agent_instances=agent_instances,
+        streams_lock=streams_lock,
+        ephemeral=ephemeral,
+        agent_sig=agent_sig,
+    )
+    if output_bridge is not None:
+        output_bridge.token_sent = False
+
+    try:
+        result = rebuilt.agent.run_conversation(
+            user_message=user_message,
+            system_message=system_message,
+            conversation_history=sanitize_messages_for_api(
+                previous_context_messages,
+                cfg=config,
+            ),
+            task_id=session_id,
+            persist_user_message=persist_user_message,
+        )
+    except Exception as exc:
+        logger.warning(retry_failed_log_message, exc)
+        return CredentialSelfHealRetry(rebuilt=rebuilt, result=None, error=exc)
+
+    return CredentialSelfHealRetry(rebuilt=rebuilt, result=result, error=None)
