@@ -26,6 +26,41 @@ def attachment_name(att) -> str:
     return str(att or '').strip()
 
 
+def tag_matching_user_message_attachments(
+    messages,
+    msg_text: str,
+    attachments,
+    *,
+    attachment_name_fn=attachment_name,
+) -> bool:
+    """Tag the current-turn user message with display attachment names."""
+    if not attachments:
+        return False
+
+    display_attachments = []
+    for att in attachments:
+        name = attachment_name_fn(att)
+        if name:
+            display_attachments.append(name)
+    if not display_attachments:
+        return False
+
+    if '\n\n[Attached files:' in msg_text:
+        base_text = msg_text.split('\n\n[Attached files:', 1)[0].strip()
+    else:
+        base_text = msg_text
+
+    for message in reversed(messages or []):
+        if not isinstance(message, dict) or message.get('role') != 'user':
+            continue
+        content = str(message.get('content', ''))
+        if base_text[:60] in content or content[:60] in msg_text:
+            message['attachments'] = display_attachments
+            return True
+
+    return False
+
+
 def is_valid_image(path: Path, mime: str) -> bool:
     """Check that the file's first bytes match the expected image MIME type."""
     if not mime.startswith('image/'):
