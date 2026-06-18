@@ -68,9 +68,7 @@ from api.streaming_gateway import (
 from api.streaming_gateway_notifications import register_streaming_gateway_notifications as _register_streaming_gateway_notifications
 from api.streaming_goal import run_post_turn_goal_hook as _run_post_turn_goal_hook
 from api.streaming_error_writeback import (
-    classify_silent_failure_error as _classify_silent_failure_error,
     emit_and_persist_exception_streaming_error as _emit_and_persist_exception_streaming_error,
-    emit_and_persist_silent_failure_error as _emit_and_persist_silent_failure_error,
 )
 from api.streaming_ephemeral import handle_completed_conversation_post_run as _handle_completed_conversation_post_run
 from api.streaming_attachments import (
@@ -205,7 +203,6 @@ from api.streaming_title_refresh import (
 from api.streaming_recovery import (
     attempt_credential_self_heal as _attempt_credential_self_heal_impl,
     handle_exception_credential_self_heal as _handle_exception_credential_self_heal,
-    handle_silent_failure_credential_self_heal as _handle_silent_failure_credential_self_heal,
     last_resort_sync_from_core as _last_resort_sync_from_core_impl,
     materialize_pending_user_turn_before_error as _materialize_pending_user_turn_before_error_impl,
 )
@@ -224,6 +221,7 @@ from api.streaming_runtime_prompt import (
     configure_agent_runtime_prompt as _configure_agent_runtime_prompt,
 )
 from api.streaming_compression import apply_streaming_context_compression_side_effects as _apply_streaming_context_compression_side_effects
+from api.streaming_silent_failure import handle_silent_failure_after_merge as _handle_silent_failure_after_merge
 
 # Global lock for os.environ writes. Per-session locks (_agent_lock) prevent
 # concurrent runs of the SAME session, but two DIFFERENT sessions can still
@@ -948,88 +946,64 @@ def _run_agent_streaming(
                     token_sent=_output_bridge.token_sent,
                     assistant_reply_added_after_current_turn=_assistant_reply_added_after_current_turn,
                 )
-                _assistant_added = _silent_failure.assistant_added
-                _prev_len = _silent_failure.previous_context_count
-                if _silent_failure.should_handle:
-                    if cancel_event.is_set():
-                        _finalize_cancelled_turn(s, ephemeral=ephemeral)
-                        if not ephemeral:
-                            _append_interrupted_turn_event(s.session_id, stream_id, logger=logger)
-                        _put_cancel()
-                        return
-                    _silent_error = _classify_silent_failure_error(
-                        agent,
-                        result,
-                        classify_provider_error=_classify_provider_error,
-                    )
-                    if _silent_error.is_auth and not _self_healed:
-                        # ── Credential self-heal on 401 (#1401) ──
-                        # Before emitting the error, try re-reading credentials
-                        # and retrying once with a fresh agent.
-                        _silent_self_heal = _handle_silent_failure_credential_self_heal(
-                            should_attempt=True,
-                            provider_id=resolved_provider or '',
-                            session_id=session_id,
-                            agent_lock=_agent_lock,
-                            agent_factory=_AIAgent,
-                            agent_kwargs=_agent_kwargs,
-                            agent_params=_agent_params,
-                            resolved_model=resolved_model,
-                            resolved_provider=resolved_provider,
-                            resolved_base_url=resolved_base_url,
-                            custom_provider_resolver=resolve_custom_provider_connection,
-                            stream_id=stream_id,
-                            agent_instances=AGENT_INSTANCES,
-                            streams_lock=STREAMS_LOCK,
-                            ephemeral=ephemeral,
-                            agent_sig=_agent_sig,
-                            user_message=user_message,
-                            system_message=workspace_system_msg,
-                            previous_context_messages=_previous_context_messages,
-                            config=_cfg,
-                            persist_user_message=msg_text,
-                            sanitize_messages_for_api=_sanitize_messages_for_api,
-                            output_bridge=_output_bridge,
-                            prev_len=_prev_len,
-                            session=s,
-                            msg_text=msg_text,
-                            has_new_assistant_reply=_has_new_assistant_reply,
-                            apply_agent_result_to_session=_apply_agent_result_to_session,
-                            logger=logger,
-                        )
-                        if _silent_self_heal.self_healed:
-                            _rt = _silent_self_heal.runtime
-                            resolved_api_key = _silent_self_heal.resolved_api_key
-                            resolved_provider = _silent_self_heal.resolved_provider
-                            resolved_base_url = _silent_self_heal.resolved_base_url
-                            _agent_kwargs = _silent_self_heal.agent_kwargs
-                            agent = _silent_self_heal.agent
-                            _self_healed = True
-                            if _silent_self_heal.succeeded and _silent_self_heal.result is not None:
-                                result = _silent_self_heal.result
-                                # Skip the error block; the retried result has
-                                # already been merged into the session.
-                                _assistant_added = True  # prevent re-entering guard
-                    # Skip error emission if credential self-heal succeeded
-                    # (#1401) — _assistant_added is set True on successful retry.
-                    if _assistant_added:
-                        # Self-heal succeeded: messages are already merged into s,
-                        # fall through to normal post-result persistence below.
-                        pass
-                    else:
-                        _emit_and_persist_silent_failure_error(
-                            s,
-                            _silent_error,
-                            put=put,
-                            provider_error_payload=_provider_error_payload,
-                            finalize_product_turn=_finalize_product_turn,
-                            materialize_pending_user_turn=_materialize_pending_user_turn_before_error,
-                            logger=logger,
-                        )
-                        # Legacy #373 source tests and clients look for the
-                        # no_response type; #1765 keeps that type but improves
-                        # the catch-all label, hint, and provider details.
-                        return  # apperror already closes the stream on the client side
+                _silent_result = _handle_silent_failure_after_merge(
+                    _silent_failure,
+                    agent=agent,
+                    result=result,
+                    self_healed=_self_healed,
+                    session=s,
+                    stream_id=stream_id,
+                    cancel_event=cancel_event,
+                    finalize_cancelled_turn=_finalize_cancelled_turn,
+                    append_interrupted_turn_event=_append_interrupted_turn_event,
+                    put_cancel=_put_cancel,
+                    ephemeral=ephemeral,
+                    classify_provider_error=_classify_provider_error,
+                    provider_error_payload=_provider_error_payload,
+                    finalize_product_turn=_finalize_product_turn,
+                    materialize_pending_user_turn=_materialize_pending_user_turn_before_error,
+                    put=put,
+                    provider_id=resolved_provider or '',
+                    session_id=session_id,
+                    agent_lock=_agent_lock,
+                    agent_factory=_AIAgent,
+                    agent_kwargs=_agent_kwargs,
+                    agent_params=_agent_params,
+                    resolved_model=resolved_model,
+                    resolved_provider=resolved_provider,
+                    resolved_base_url=resolved_base_url,
+                    custom_provider_resolver=resolve_custom_provider_connection,
+                    agent_instances=AGENT_INSTANCES,
+                    streams_lock=STREAMS_LOCK,
+                    agent_sig=_agent_sig,
+                    user_message=user_message,
+                    system_message=workspace_system_msg,
+                    previous_messages=_previous_messages,
+                    previous_context_messages=_previous_context_messages,
+                    config=_cfg,
+                    persist_user_message=msg_text,
+                    sanitize_messages_for_api=_sanitize_messages_for_api,
+                    output_bridge=_output_bridge,
+                    msg_text=msg_text,
+                    has_new_assistant_reply=_has_new_assistant_reply,
+                    apply_agent_result_to_session=_apply_agent_result_to_session,
+                    logger=logger,
+                )
+                if _silent_result.self_healed:
+                    _rt = _silent_result.runtime
+                    resolved_api_key = _silent_result.resolved_api_key
+                    resolved_provider = _silent_result.resolved_provider
+                    resolved_base_url = _silent_result.resolved_base_url
+                    _agent_kwargs = _silent_result.agent_kwargs
+                    agent = _silent_result.agent
+                    _self_healed = True
+                    if _silent_result.result is not None:
+                        result = _silent_result.result
+                # Legacy #373 source tests and clients look for the no_response type.
+                # The helper preserves that type while improving the
+                # catch-all label, hint, and provider details.
+                if _silent_result.should_return:
+                    return  # apperror already closes the stream on the client side
 
                 # ── Handle context compression side effects ──
                 # If compression fired inside run_conversation, the agent may have

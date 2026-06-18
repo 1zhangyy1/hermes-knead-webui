@@ -14,6 +14,7 @@ STREAMING = pathlib.Path(__file__).parent.parent / 'api' / 'streaming.py'
 STREAMING_CONTEXT = pathlib.Path(__file__).parent.parent / 'api' / 'streaming_context.py'
 STREAMING_ERRORS = pathlib.Path(__file__).parent.parent / 'api' / 'streaming_errors.py'
 STREAMING_ERROR_WRITEBACK = pathlib.Path(__file__).parent.parent / 'api' / 'streaming_error_writeback.py'
+STREAMING_SILENT_FAILURE = pathlib.Path(__file__).parent.parent / 'api' / 'streaming_silent_failure.py'
 STREAMING_TERMINAL = pathlib.Path(__file__).parent.parent / 'api' / 'streaming_terminal.py'
 STREAMING_TITLE_REFRESH = pathlib.Path(__file__).parent.parent / 'api' / 'streaming_title_refresh.py'
 MESSAGES_JS = pathlib.Path(__file__).parent.parent / 'static' / 'messages.js'
@@ -22,6 +23,7 @@ streaming_src = STREAMING.read_text(encoding='utf-8')
 streaming_context_src = STREAMING_CONTEXT.read_text(encoding='utf-8')
 streaming_errors_src = STREAMING_ERRORS.read_text(encoding='utf-8')
 streaming_error_writeback_src = STREAMING_ERROR_WRITEBACK.read_text(encoding='utf-8')
+streaming_silent_failure_src = STREAMING_SILENT_FAILURE.read_text(encoding='utf-8')
 streaming_terminal_src = STREAMING_TERMINAL.read_text(encoding='utf-8')
 streaming_title_refresh_src = STREAMING_TITLE_REFRESH.read_text(encoding='utf-8')
 messages_js_src = MESSAGES_JS.read_text(encoding='utf-8')
@@ -72,7 +74,8 @@ class TestErrorPersistence:
 
     def test_silent_failure_appends_error_message(self):
         """Silent-failure path appends an _error-marked message before returning."""
-        assert "_emit_and_persist_silent_failure_error(" in streaming_src
+        assert "_handle_silent_failure_after_merge(" in streaming_src
+        assert "emit_and_persist_silent_failure_error_fn(" in streaming_silent_failure_src
         assert "emit_and_persist_streaming_error(" in streaming_error_writeback_src
         assert "persist_streaming_error_message(" in streaming_error_writeback_src
         assert "session.messages.append(" in streaming_error_writeback_src
@@ -80,11 +83,12 @@ class TestErrorPersistence:
 
     def test_silent_failure_calls_save_before_return(self):
         """save() must be called after appending the error message."""
-        silent_idx = streaming_src.find("# ── Detect silent agent failure")
-        assert silent_idx != -1
-        helper_idx = streaming_src.find("_emit_and_persist_silent_failure_error(", silent_idx)
+        helper_idx = streaming_src.find("_handle_silent_failure_after_merge(")
         return_idx = streaming_src.find("return  # apperror already closes the stream", helper_idx)
         assert helper_idx != -1 and return_idx != -1 and helper_idx < return_idx
+        emit_idx = streaming_silent_failure_src.find("emit_and_persist_silent_failure_error_fn(")
+        handled_return_idx = streaming_silent_failure_src.find("should_return=True", emit_idx)
+        assert emit_idx != -1 and handled_return_idx != -1 and emit_idx < handled_return_idx
         assert "session.messages.append(error_message)" in streaming_error_writeback_src
         assert "session.save()" in streaming_error_writeback_src
 

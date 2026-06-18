@@ -123,10 +123,10 @@ class TestCancelledTurnPersistenceGuards:
         assert "persist_cancel_stream_writeback_fn(" in cancellation_src
 
     def test_silent_failure_path_checks_cancel_event_before_persisting_provider_error(self):
-        src = _read("api/streaming.py")
-        silent_idx = src.find("# ── Detect silent agent failure")
+        src = _read("api/streaming_silent_failure.py")
+        silent_idx = src.find("def handle_silent_failure_after_merge(")
         assert silent_idx != -1, "silent-failure block not found"
-        apperror_idx = src.find("_emit_and_persist_silent_failure_error(", silent_idx)
+        apperror_idx = src.find("emit_and_persist_silent_failure_error_fn(", silent_idx)
         assert apperror_idx != -1, "silent-failure apperror emission not found"
         block = src[silent_idx:apperror_idx]
 
