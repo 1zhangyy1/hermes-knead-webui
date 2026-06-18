@@ -41,6 +41,7 @@ def test_auto_compression_running_sse_uses_active_session_running_card():
 def test_auto_compression_running_sse_is_emitted_from_agent_lifecycle_status():
     src = _read("api/streaming.py")
     block = _read("api/streaming_agent_status.py")
+    run_state = _read("api/streaming_run_state.py")
     agent_config = _read("api/streaming_agent_config.py")
     agent_cache = _read("api/streaming_agent_cache.py")
 
@@ -51,10 +52,11 @@ def test_auto_compression_running_sse_is_emitted_from_agent_lifecycle_status():
     assert "'compressing'" in block
     assert "'compacting context'" in block
     assert "'context too large'" in block
-    assert "_agent_status_callback = _make_agent_status_callback" in src
+    assert "status_callback_factory=make_agent_status_callback" in run_state
+    assert "state.agent_status_callback = status_callback_factory(" in run_state
     assert "'status_callback' in agent_params" in agent_config
     assert "kwargs['status_callback'] = status_callback" in agent_config
-    assert "status_callback=_agent_status_callback" in src
+    assert "status_callback=_run_state.agent_status_callback" in src
     assert "_get_agent_for_turn(" in src
     assert "get_cached_or_new_agent_for_turn(" in agent_cache
     assert "refresh_for_turn_fn(agent, agent_kwargs" in agent_cache
@@ -119,14 +121,16 @@ def test_auto_compression_done_sse_refreshes_context_indicator_usage():
 
 def test_auto_compression_done_payload_includes_live_usage_snapshot():
     src = _read("api/streaming.py")
-    start = src.find("put('compressed'")
+    compression = _read("api/streaming_compression.py")
+    start = compression.find("put('compressed'")
     assert start != -1, "compressed SSE payload not found"
-    end = src.find("})", start)
+    end = compression.find("})", start)
     assert end != -1, "compressed SSE payload end not found"
-    block = src[start:end]
+    block = compression[start:end]
 
-    assert "'session_id': s.session_id" in block
-    assert "'usage': _live_usage_snapshot()" in block
+    assert "'session_id': session.session_id" in block
+    assert "'usage': usage_snapshot()" in block
+    assert "usage_snapshot=_run_state.live_usage_snapshot" in src
 
 
 def test_auto_compression_card_reuses_compression_card_renderer():
