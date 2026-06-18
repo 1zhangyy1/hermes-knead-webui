@@ -32,6 +32,15 @@ class StreamingProcessEnvSnapshot:
     runtime_env_snapshot: dict
 
 
+def prewarm_skill_tool_modules(module_names=('tools.skills_tool', 'tools.skill_manager_tool')) -> None:
+    """Import skill tool modules before process-env locks are acquired."""
+    for module_name in module_names:
+        try:
+            __import__(module_name)
+        except ImportError:
+            pass
+
+
 def build_agent_thread_env(profile_runtime_env: dict | None, workspace: str, session_id: str, profile_home: str) -> dict:
     """Build thread-local agent env with per-run values overriding profile defaults."""
     env = dict(profile_runtime_env or {})

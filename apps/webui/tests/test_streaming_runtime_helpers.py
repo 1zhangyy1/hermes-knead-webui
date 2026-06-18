@@ -1,3 +1,4 @@
+import builtins
 import os
 import sys
 import types
@@ -5,6 +6,7 @@ import types
 from api.streaming_runtime_helpers import (
     apply_streaming_profile_process_env,
     discover_mcp_tools_for_profile,
+    prewarm_skill_tool_modules,
     restore_agent_process_env,
     restore_env_snapshot,
     resolve_streaming_profile_runtime,
@@ -22,6 +24,23 @@ class DummyLock:
 
     def __exit__(self, exc_type, exc, tb):
         self.exited = True
+
+
+def test_prewarm_skill_tool_modules_imports_best_effort(monkeypatch):
+    imported = []
+    real_import = builtins.__import__
+
+    def fake_import(name, *args, **kwargs):
+        imported.append(name)
+        if name == 'missing.module':
+            raise ImportError(name)
+        return real_import('types')
+
+    monkeypatch.setattr(builtins, '__import__', fake_import)
+
+    prewarm_skill_tool_modules(('tools.skills_tool', 'missing.module', 'tools.skill_manager_tool'))
+
+    assert imported == ['tools.skills_tool', 'missing.module', 'tools.skill_manager_tool']
 
 
 def test_restore_env_snapshot_restores_and_removes_values(monkeypatch):

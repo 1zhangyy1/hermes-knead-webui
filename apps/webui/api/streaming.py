@@ -229,6 +229,7 @@ from api.streaming_runtime_helpers import (
     clarify_timeout_seconds as _clarify_timeout_seconds_impl,
     discover_mcp_tools_for_profile as _discover_mcp_tools_for_profile,
     has_new_assistant_reply as _has_new_assistant_reply_impl,
+    prewarm_skill_tool_modules as _prewarm_skill_tool_modules,
     restore_agent_process_env as _restore_agent_process_env,
     resolve_streaming_profile_runtime as _resolve_streaming_profile_runtime,
     webui_clarify_callback as _webui_clarify_callback_impl,
@@ -249,29 +250,6 @@ from api.streaming_compression import handle_context_compression_side_effects as
 # in _run_agent_streaming (line ~2719) and profile_env_for_background_worker
 # (api/profiles.py:715).
 _ENV_LOCK = threading.Lock()
-
-
-def _prewarm_skill_tool_modules():
-    """Import tools.skills_tool and tools.skill_manager_tool outside any lock.
-
-    First-time module imports can trigger heavy initialisation (disk I/O,
-    transitive imports, plugin discovery).  Performing those imports while
-    holding ``_ENV_LOCK`` serialises every concurrent session behind the
-    slowest import.  Prewarming ensures the modules are already in
-    ``sys.modules`` before the lock is acquired, so the lock body only
-    does lightweight attribute patching.
-
-    We cannot place these at module top-level because ``tools.*`` lives
-    in the hermes-agent package which may not be on ``sys.path`` at
-    import time (Docker volume-mount ordering).  A dedicated helper
-    keeps the lazy-import try/except in one place and makes the intent
-    explicit.
-    """
-    for _mod_name in ('tools.skills_tool', 'tools.skill_manager_tool'):
-        try:
-            __import__(_mod_name)
-        except ImportError:
-            pass
 
 
 # Lazy import to avoid circular deps -- hermes-agent is on sys.path via api/config.py
