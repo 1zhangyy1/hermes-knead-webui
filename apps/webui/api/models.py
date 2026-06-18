@@ -54,38 +54,35 @@ from api.project_registry import (
     load_projects as _load_projects_impl,
     save_projects as _save_projects_impl,
 )
-from api.claude_code_sessions import (
+from api.external_session_bridge import (
     CLAUDE_CODE_MAX_CONTENT_CHARS,
     CLAUDE_CODE_MAX_FILE_BYTES,
     CLAUDE_CODE_MAX_FILES,
     CLAUDE_CODE_MAX_MESSAGES_PER_FILE,
     CLAUDE_CODE_SOURCE,
     CLAUDE_CODE_SOURCE_LABEL,
-    default_projects_dir as _default_claude_code_projects_dir_impl,
-    extract_text as _extract_claude_code_text_impl,
-    get_session_messages as _get_claude_code_session_messages_impl,
-    get_sessions as _get_claude_code_sessions_impl,
-    iter_jsonl_files as _iter_claude_code_jsonl_files_impl,
-    parse_jsonl as _parse_claude_code_jsonl_impl,
-    parse_timestamp as _parse_claude_code_timestamp_impl,
-    session_id_for_path as _claude_code_session_id_impl,
-    title_from_messages as _claude_code_title_impl,
-)
-from api.cli_state_store import (
-    count_conversation_rounds as _count_cli_conversation_rounds_impl,
-    delete_session as _delete_cli_session_impl,
-    get_session_messages as _get_cli_state_session_messages_impl,
-    json_loads_if_string as _json_loads_if_string_impl,
-)
-from api.cli_session_list import (
     clear_cache as _clear_cli_sessions_cache_impl,
     copy_sessions as _copy_cli_sessions_impl,
-    get_sessions as _get_cli_sessions_impl,
-    load_uncached as _load_cli_sessions_uncached_impl,
+    count_conversation_rounds as _count_cli_conversation_rounds_impl,
+    default_projects_dir as _default_claude_code_projects_dir_impl,
+    delete_cli_session as _delete_cli_session_impl,
+    extract_text as _extract_claude_code_text_impl,
+    get_claude_code_session_messages as _get_claude_code_session_messages_impl,
+    get_claude_code_sessions as _get_claude_code_sessions_impl,
+    get_cli_session_messages as _get_cli_session_messages_impl,
+    get_cli_sessions as _get_cli_sessions_impl,
+    import_cli_session as _import_cli_session_impl,
+    iter_jsonl_files as _iter_claude_code_jsonl_files_impl,
+    json_loads_if_string as _json_loads_if_string_impl,
+    load_cli_sessions_uncached as _load_cli_sessions_uncached_impl,
     path_cache_key as _path_cache_key_impl,
     path_stat_cache_key as _path_stat_cache_key_impl,
-    resolve_context as _resolve_cli_sessions_context_impl,
+    parse_jsonl as _parse_claude_code_jsonl_impl,
+    parse_timestamp as _parse_claude_code_timestamp_impl,
+    resolve_cli_sessions_context as _resolve_cli_sessions_context_impl,
+    session_id_for_path as _claude_code_session_id_impl,
     sqlite_file_stat_cache_key as _sqlite_file_stat_cache_key_impl,
+    title_from_messages as _claude_code_title_impl,
     ttl_seconds as _cli_sessions_ttl_seconds_impl,
 )
 from api.session_repair import (
@@ -588,16 +585,11 @@ def import_cli_session(
     updated_at=None,
     parent_session_id=None,
 ):
-    """Create a new WebUI session populated with CLI/agent messages.
-
-    Preserve parent_session_id from state.db so imported continuation segments
-    keep their lineage in the WebUI store and sidebar instead of reappearing as
-    detached orphan chats.
-    """
-    s = Session(
+    return _import_cli_session_impl(
+        session_cls=Session,
+        get_workspace=get_last_workspace,
         session_id=session_id,
         title=title,
-        workspace=get_last_workspace(),
         model=model,
         messages=messages,
         profile=profile,
@@ -605,8 +597,6 @@ def import_cli_session(
         updated_at=updated_at,
         parent_session_id=parent_session_id,
     )
-    s.save(touch_updated_at=False)
-    return s
 
 
 # ── CLI session bridge ──────────────────────────────────────────────────────
@@ -647,28 +637,18 @@ def _claude_code_title(messages: list[dict], summary_title: str | None) -> str:
 
 
 def get_claude_code_sessions(projects_dir: Path | str | None = None, *, max_files: int = CLAUDE_CODE_MAX_FILES, max_file_bytes: int = CLAUDE_CODE_MAX_FILE_BYTES) -> list:
-    """Read Claude Code JSONL sessions as read-only external-agent rows.
-
-    The bridge is additive and defensive: it skips symlinks, oversized files,
-    malformed lines, and per-file errors rather than crashing WebUI session
-    listing. Tests pass ``projects_dir`` fixtures so Michael's real ~/.claude is
-    never read during test runs.
-    """
     return _get_claude_code_sessions_impl(
         projects_dir,
         get_workspace=get_last_workspace,
-        default_projects_dir_fn=_default_claude_code_projects_dir,
         max_files=max_files,
         max_file_bytes=max_file_bytes,
     )
 
 
 def get_claude_code_session_messages(sid, projects_dir: Path | str | None = None) -> list:
-    """Return messages for one read-only Claude Code JSONL session."""
     return _get_claude_code_session_messages_impl(
         sid,
         projects_dir,
-        default_projects_dir_fn=_default_claude_code_projects_dir,
     )
 
 
@@ -698,28 +678,10 @@ def _sqlite_file_stat_cache_key(db_path: Path):
 
 
 def _resolve_cli_sessions_context():
-    # Use the active WebUI profile's HERMES_HOME to find state.db.
-    # The active profile is determined by what the user has selected in the UI
-    # (stored in the server's runtime config). This means:
-    #   - default profile  -> ~/.hermes/state.db
-    #   - named profile X  -> ~/.hermes/profiles/X/state.db
-    # We resolve the active profile's home directory rather than just using
-    # HERMES_HOME (which is the server's launch profile, not necessarily the
-    # active one after a profile switch).
-    def _active_hermes_home():
-        from api.profiles import get_active_hermes_home
-        return get_active_hermes_home()
-
-    def _active_profile_name():
-        from api.profiles import get_active_profile_name
-        return get_active_profile_name()
-
     return _resolve_cli_sessions_context_impl(
-        get_active_hermes_home=_active_hermes_home,
-        get_active_profile_name=_active_profile_name,
-        fallback_hermes_home=Path(os.getenv('HERMES_HOME', str(HOME / '.hermes'))),
-        default_projects_dir=_default_claude_code_projects_dir,
+        home=HOME,
         session_index_file=SESSION_INDEX_FILE,
+        default_projects_dir_fn=_default_claude_code_projects_dir,
     )
 
 
@@ -728,7 +690,7 @@ def _load_cli_sessions_uncached(hermes_home: Path, db_path: Path, _cli_profile) 
         hermes_home=hermes_home,
         db_path=db_path,
         cli_profile=_cli_profile,
-        get_claude_code_sessions=get_claude_code_sessions,
+        get_claude_code_sessions_fn=get_claude_code_sessions,
         read_importable_agent_session_rows=read_importable_agent_session_rows,
         ensure_cron_project=ensure_cron_project,
         is_cron_session=is_cron_session,
@@ -740,30 +702,14 @@ def _load_cli_sessions_uncached(hermes_home: Path, db_path: Path, _cli_profile) 
 
 
 def get_cli_sessions() -> list:
-    """Read CLI sessions from the agent's SQLite store and return them as
-    dicts in a format the WebUI sidebar can render alongside local sessions.
-
-    Returns empty list if the SQLite DB is missing or any error occurs -- the
-    bridge is purely additive and never crashes the WebUI.
-    """
-    hermes_home, db_path, cli_profile, cache_key = _resolve_cli_sessions_context()
-    ttl = _cli_sessions_cache_ttl_seconds()
-
-    try:
-        return _get_cli_sessions_impl(
-            cache=_CLI_SESSIONS_CACHE,
-            cache_lock=_CLI_SESSIONS_CACHE_LOCK,
-            cache_key=cache_key,
-            ttl=ttl,
-            now=time.monotonic,
-            load_uncached=lambda: _load_cli_sessions_uncached(hermes_home, db_path, cli_profile),
-        )
-    except Exception as _cli_err:
-        logger.warning(
-            "get_cli_sessions() failed — check state.db schema or path (%s): %s",
-            db_path, _cli_err,
-        )
-        return []
+    return _get_cli_sessions_impl(
+        cache=_CLI_SESSIONS_CACHE,
+        cache_lock=_CLI_SESSIONS_CACHE_LOCK,
+        ttl_seconds_value=_CLI_SESSIONS_CACHE_TTL_SECONDS,
+        resolve_context=_resolve_cli_sessions_context,
+        load_uncached=_load_cli_sessions_uncached,
+        logger=logger,
+    )
 
 
 def _json_loads_if_string(value):
@@ -771,43 +717,15 @@ def _json_loads_if_string(value):
 
 
 def get_cli_session_messages(sid) -> list:
-    """Read messages for a single CLI/external-agent session.
-
-    Preserve tool-call/result and reasoning metadata from the agent state.db so
-    CLI-origin transcripts render with the same tool cards as WebUI-native
-    sessions. When the requested session is the tip of a compression/CLI-close
-    continuation chain, return the stitched full transcript across all segments
-    in chronological order. Returns empty list on any error.
-    """
-    if str(sid or '').startswith(f'{CLAUDE_CODE_SOURCE}_'):
-        return get_claude_code_session_messages(sid)
-    return _get_cli_state_session_messages_impl(
+    return _get_cli_session_messages_impl(
         sid,
         db_path=_active_state_db_path(),
         is_continuation_session=_is_continuation_session,
+        get_claude_code_session_messages_fn=get_claude_code_session_messages,
     )
 
 
 def count_conversation_rounds(sid: str, since: float | None = None) -> int:
-    """Count conversation rounds for a session from state.db.
-
-    A "round" = one user message + one agent reply.  Consecutive user
-    messages are merged into a single round so that multi-part questions
-    don't inflate the count.
-
-    Parameters
-    ----------
-    sid : str
-        Gateway session ID (e.g. ``20260430_151231_7209a0``).
-    since : float | None
-        Unix timestamp.  If provided, only messages **after** this
-        timestamp are counted.
-
-    Returns
-    -------
-    int
-        Number of complete conversation rounds.
-    """
     return _count_cli_conversation_rounds_impl(
         sid,
         db_path=_active_state_db_path(),
@@ -819,7 +737,4 @@ CONVERSATION_ROUND_THRESHOLD = 10
 
 
 def delete_cli_session(sid) -> bool:
-    """Delete a CLI session from state.db (messages + session row).
-    Returns True if deleted, False if not found or error.
-    """
     return _delete_cli_session_impl(sid, db_path=_active_state_db_path())

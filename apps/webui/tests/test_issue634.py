@@ -13,9 +13,9 @@ Fixes:
 import pathlib
 import re
 
-MODELS_PY = pathlib.Path(__file__).parent.parent / 'api' / 'models.py'
+EXTERNAL_SESSION_BRIDGE_PY = pathlib.Path(__file__).parent.parent / 'api' / 'external_session_bridge.py'
 AGENT_SESSIONS_PY = pathlib.Path(__file__).parent.parent / 'api' / 'agent_sessions.py'
-src = MODELS_PY.read_text(encoding='utf-8')
+src = EXTERNAL_SESSION_BRIDGE_PY.read_text(encoding='utf-8')
 agent_src = AGENT_SESSIONS_PY.read_text(encoding='utf-8')
 combined_src = src + "\n" + agent_src
 
@@ -39,7 +39,7 @@ class TestCliSessionsErrorSurface:
     def test_exception_path_logs_warning(self):
         """The except clause must call logger.warning, not silently pass."""
         # Find the exception handler in get_cli_sessions
-        func_start = src.find("def get_cli_sessions()")
+        func_start = src.find("def get_cli_sessions(")
         func_end = src.find("\ndef ", func_start + 1)
         func_body = src[func_start:func_end] if func_end != -1 else src[func_start:]
         assert "warning(" in func_body, \
@@ -47,7 +47,7 @@ class TestCliSessionsErrorSurface:
 
     def test_exception_path_includes_db_path(self):
         """The warning must include the db_path for diagnosability."""
-        func_start = src.find("def get_cli_sessions()")
+        func_start = src.find("def get_cli_sessions(")
         func_end = src.find("\ndef ", func_start + 1)
         func_body = src[func_start:func_end] if func_end != -1 else src[func_start:]
         # db_path should appear in the warning call
@@ -59,7 +59,7 @@ class TestCliSessionsErrorSurface:
     def test_still_returns_empty_on_error(self):
         """Function must still return [] after logging (graceful degradation)."""
         # After the warning, it should return cli_sessions (the empty list) not raise
-        func_start = src.find("def get_cli_sessions()")
+        func_start = src.find("def get_cli_sessions(")
         func_end = src.find("\ndef ", func_start + 1)
         func_body = src[func_start:func_end] if func_end != -1 else src[func_start:]
         # Must have a 'return' after the warning call
