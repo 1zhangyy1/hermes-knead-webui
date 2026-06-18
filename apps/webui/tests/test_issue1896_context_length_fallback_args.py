@@ -25,6 +25,8 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 STREAMING_PY = (REPO / "api" / "streaming.py").read_text(encoding="utf-8")
 CONTEXT_WINDOW_PY = (REPO / "api" / "streaming_context_window.py").read_text(encoding="utf-8")
+TURN_WRITEBACK_PY = (REPO / "api" / "streaming_turn_writeback.py").read_text(encoding="utf-8")
+TERMINAL_PY = (REPO / "api" / "streaming_terminal.py").read_text(encoding="utf-8")
 
 
 # The fallback helper must pass these kwargs into get_model_context_length.
@@ -43,8 +45,10 @@ def _fallback_helper():
 
 
 def test_streaming_uses_context_window_helper_for_both_paths():
-    assert "_persist_context_window_on_session(" in STREAMING_PY
-    assert "_apply_context_window_to_usage(" in STREAMING_PY
+    assert "persist_context_window_on_session(" in TURN_WRITEBACK_PY
+    assert "_apply_completed_turn_writeback_state(" in STREAMING_PY
+    assert "apply_context_window_to_usage=_apply_context_window_to_usage" in STREAMING_PY
+    assert "apply_context_window_to_usage(" in TERMINAL_PY
 
 
 def test_helper_passes_config_context_length():

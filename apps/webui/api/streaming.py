@@ -81,7 +81,6 @@ from api.streaming_attachments import (
     attachment_name as _attachment_name,
     build_native_multimodal_message as _build_native_multimodal_message,
     is_valid_image as _is_valid_image,
-    tag_matching_user_message_attachments as _tag_matching_user_message_attachments,
 )
 from api.streaming_context import (
     API_SAFE_MSG_KEYS as _API_SAFE_MSG_KEYS_IMPL,
@@ -110,7 +109,6 @@ from api.streaming_context import (
 )
 from api.streaming_context_window import (
     apply_context_window_to_usage as _apply_context_window_to_usage,
-    persist_context_window_on_session as _persist_context_window_on_session,
 )
 from api.streaming_checkpoint import (
     start_periodic_checkpoint as _start_periodic_checkpoint,
@@ -118,7 +116,6 @@ from api.streaming_checkpoint import (
 )
 from api.streaming_tool_calls import (
     TOOL_RESULT_SNIPPET_MAX as _TOOL_RESULT_SNIPPET_MAX,
-    extract_tool_calls_from_messages as _extract_tool_calls_from_messages,
     nearest_assistant_msg_idx as _nearest_assistant_msg_idx,
     strip_xml_tool_calls_from_assistant_messages as _strip_xml_tool_calls_from_assistant_messages,
     tool_result_snippet as _tool_result_snippet,
@@ -162,14 +159,8 @@ from api.streaming_turn_journal import (
 from api.streaming_terminal import (
     emit_completed_turn_done as _emit_completed_turn_done,
 )
-from api.streaming_turn_metadata import (
-    apply_completed_turn_metadata as _apply_completed_turn_metadata,
-    attach_reasoning_trace_to_last_assistant as _attach_reasoning_trace_to_last_assistant,
-)
-from api.streaming_usage import (
-    apply_agent_token_usage_to_session as _apply_agent_token_usage_to_session,
-    build_done_usage_payload as _build_done_usage_payload,
-)
+from api.streaming_turn_writeback import apply_completed_turn_writeback_state as _apply_completed_turn_writeback_state
+from api.streaming_usage import build_done_usage_payload as _build_done_usage_payload
 from api.streaming_titles import (
     LEGACY_WORKSPACE_PREFIX_ANY_RE as _LEGACY_WORKSPACE_PREFIX_ANY_RE,
     LEGACY_WORKSPACE_PREFIX_RE as _LEGACY_WORKSPACE_PREFIX_RE,
@@ -213,7 +204,6 @@ from api.streaming_title_refresh import (
     run_background_title_refresh as _run_background_title_refresh_impl,
     run_background_title_update as _run_background_title_update_impl,
 )
-from api.streaming_title_writeback import prepare_completed_turn_title as _prepare_completed_turn_title
 # Source-guard anchor: MiniMax title calls set reasoning_split in
 # streaming_title_generation while streaming.py keeps the public wrappers.
 from api.streaming_recovery import (
@@ -1273,48 +1263,23 @@ def _run_agent_streaming(
                     logger=logger,
                 )
 
-                _title_plan = _prepare_completed_turn_title(
+                _completed_turn_state = _apply_completed_turn_writeback_state(
                     s,
+                    agent,
+                    result,
+                    msg_text=msg_text,
+                    attachments=attachments,
+                    live_tool_calls=_live_tool_calls,
+                    reasoning_text=_output_bridge.reasoning_text,
+                    turn_started_at=_turn_started_at,
+                    requested_model=resolved_model or model,
+                    requested_provider=resolved_provider or '',
+                    config=_cfg,
                     title_from_fn=title_from,
                     is_provisional_title=_is_provisional_title,
                     looks_invalid_generated_title=_looks_invalid_generated_title,
                     first_exchange_snippets=_first_exchange_snippets,
-                )
-                _token_usage = _apply_agent_token_usage_to_session(s, agent)
-                output_tokens = _token_usage.output_tokens
-                # Persist tool-call summaries even when the final message history only
-                # kept bare tool rows and omitted explicit assistant tool_call IDs.
-                tool_calls = _extract_tool_calls_from_messages(
-                    s.messages,
-                    live_tool_calls=_live_tool_calls,
-                )
-                s.tool_calls = tool_calls
-                s.active_stream_id = None
-                s.pending_user_message = None
-                s.pending_attachments = []
-                s.pending_started_at = None
-                _tag_matching_user_message_attachments(s.messages, msg_text, attachments)
-                # Persist reasoning trace in the session so it survives reload.
-                # Must run BEFORE s.save() — otherwise the mutation lives only in
-                # memory until the next turn's save, and the last-turn thinking card
-                # is lost when the user reloads immediately after a response.
-                _attach_reasoning_trace_to_last_assistant(s.messages, _output_bridge.reasoning_text)
-                _turn_metadata = _apply_completed_turn_metadata(
-                    s,
-                    agent,
-                    result,
-                    turn_started_at=_turn_started_at,
-                    output_tokens=output_tokens,
-                    requested_model=resolved_model or model,
-                    requested_provider=resolved_provider,
                     extract_gateway_routing_metadata=_extract_gateway_routing_metadata,
-                )
-                _persist_context_window_on_session(
-                    s,
-                    agent,
-                    _cfg,
-                    resolved_model=resolved_model or '',
-                    resolved_provider=resolved_provider or '',
                 )
                 if not ephemeral and s.messages:
                     _append_assistant_started_turn_event(
@@ -1344,8 +1309,8 @@ def _run_agent_streaming(
             _emit_completed_turn_done(
                 s,
                 original_session_id=session_id,
-                token_usage=_token_usage,
-                turn_metadata=_turn_metadata,
+                token_usage=_completed_turn_state.token_usage,
+                turn_metadata=_completed_turn_state.turn_metadata,
                 config=_cfg,
                 resolved_model=resolved_model or '',
                 resolved_provider=resolved_provider or '',
@@ -1354,8 +1319,8 @@ def _run_agent_streaming(
                 goal_related=goal_related,
                 put=put,
                 pending_goal_continuation=PENDING_GOAL_CONTINUATION,
-                tool_calls=tool_calls,
-                title_plan=_title_plan,
+                tool_calls=_completed_turn_state.tool_calls,
+                title_plan=_completed_turn_state.title_plan,
                 redact_session_data=redact_session_data,
                 build_done_usage_payload=_build_done_usage_payload,
                 apply_context_window_to_usage=_apply_context_window_to_usage,

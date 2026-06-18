@@ -21,6 +21,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 STREAMING = ROOT / "api" / "streaming.py"
+TURN_WRITEBACK = ROOT / "api" / "streaming_turn_writeback.py"
 CONTEXT_WINDOW = ROOT / "api" / "streaming_context_window.py"
 SESSION_MODEL = ROOT / "api" / "session_model.py"
 ROUTES = ROOT / "api" / "routes.py"
@@ -30,11 +31,12 @@ def test_streaming_persists_context_fields_on_session_before_save():
     """The post-merge per-turn save block must write the three fields to the
     session BEFORE calling s.save(), otherwise the values never reach disk."""
     src = STREAMING.read_text(encoding="utf-8")
+    writeback_src = TURN_WRITEBACK.read_text(encoding="utf-8")
 
     # Find the post-merge save block — anchored on the unique reasoning trace
     # helper call right above the persistence block.
-    block_start = src.find("_attach_reasoning_trace_to_last_assistant(")
-    assert block_start != -1, "Reasoning-trace helper call not found in streaming.py"
+    block_start = src.find("_apply_completed_turn_writeback_state(")
+    assert block_start != -1, "completed-turn writeback helper call not found in streaming.py"
 
     # Save call follows shortly after
     save_call = src.find("\n                s.save()", block_start)
@@ -49,11 +51,10 @@ def test_streaming_persists_context_fields_on_session_before_save():
         "If you've added a new pre-save mutation block here, bump this limit."
     )
 
-    block = src[block_start:save_call]
     helper = CONTEXT_WINDOW.read_text(encoding="utf-8")
 
-    assert "_persist_context_window_on_session(" in block, (
-        "streaming.py must persist context fields before s.save() in the post-merge block"
+    assert "persist_context_window_on_session(" in writeback_src, (
+        "streaming_turn_writeback.py must persist context fields before streaming.py saves"
     )
 
     # The three fields must all be assigned in the helper invoked by this block.
