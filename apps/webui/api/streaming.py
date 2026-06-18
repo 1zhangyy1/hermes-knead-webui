@@ -91,6 +91,10 @@ from api.streaming_context import (
     session_context_messages as _session_context_messages_impl,
     strip_native_image_parts_from_content as _strip_native_image_parts_from_content_impl,
 )
+from api.streaming_context_window import (
+    apply_context_window_to_usage as _apply_context_window_to_usage,
+    persist_context_window_on_session as _persist_context_window_on_session,
+)
 from api.streaming_tool_calls import (
     TOOL_RESULT_SNIPPET_MAX as _TOOL_RESULT_SNIPPET_MAX,
     extract_tool_calls_from_messages as _extract_tool_calls_from_messages,
@@ -1901,83 +1905,13 @@ def _run_agent_streaming(
                             if _gateway_routing:
                                 _dm['_gatewayRouting'] = _gateway_routing
                             break
-                # Persist context window data on the session so the context-ring
-                # indicator survives a page reload (#1318). Must run BEFORE
-                # s.save() for the same reason as the reasoning trace above.
-                # The fields are captured into the SSE usage payload below; this
-                # block writes them to the session itself so GET /api/session
-                # returns them on reload instead of falling back to 0.
-                _cc_for_save = getattr(agent, 'context_compressor', None)
-                if _cc_for_save:
-                    s.context_length = getattr(_cc_for_save, 'context_length', 0) or 0
-                    s.threshold_tokens = getattr(_cc_for_save, 'threshold_tokens', 0) or 0
-                    s.last_prompt_tokens = getattr(_cc_for_save, 'last_prompt_tokens', 0) or 0
-                # Fallback: if the compressor didn't report a context_length
-                # (fresh agent, interrupted stream, or compressor missing the
-                # attribute), resolve it from the model's static metadata so
-                # the indicator can still show a meaningful percentage.
-                # Sourced from PR #1344 (@jasonjcwu) — extracted to a focused
-                # follow-up after PR #1344 was closed as superseded by #1341.
-                #
-                # #1896: pass config_context_length, provider, and
-                # custom_providers so explicit config overrides win over the
-                # 256K default fallback. Without these, users on 1M-context
-                # models who set `model.context_length: 1048576` (or rely on
-                # a `custom_providers` per-model override) get a 256K
-                # window in the persisted session and the SSE payload —
-                # which then trips LCM auto-compress at ~25% of the wrong
-                # value, cascading into 429 floods.
-                if not getattr(s, 'context_length', 0):
-                    try:
-                        from agent.model_metadata import get_model_context_length
-                        _cfg_ctx_len = None
-                        _cfg_custom_providers = None
-                        try:
-                            _model_cfg_for_ctx = _cfg.get('model', {}) if isinstance(_cfg, dict) else {}
-                            if isinstance(_model_cfg_for_ctx, dict):
-                                _raw_cfg_ctx = _model_cfg_for_ctx.get('context_length')
-                                if _raw_cfg_ctx is not None:
-                                    try:
-                                        _parsed_cfg_ctx = int(_raw_cfg_ctx)
-                                        if _parsed_cfg_ctx > 0:
-                                            _cfg_ctx_len = _parsed_cfg_ctx
-                                    except (TypeError, ValueError):
-                                        # Invalid config — let the resolver fall
-                                        # through to provider/registry probing.
-                                        pass
-                            _raw_cp = _cfg.get('custom_providers') if isinstance(_cfg, dict) else None
-                            if isinstance(_raw_cp, list):
-                                _cfg_custom_providers = _raw_cp
-                        except Exception:
-                            pass
-                        _resolved_cl = get_model_context_length(
-                            getattr(agent, 'model', resolved_model or '') or '',
-                            getattr(agent, 'base_url', '') or '',
-                            config_context_length=_cfg_ctx_len,
-                            provider=resolved_provider or '',
-                            custom_providers=_cfg_custom_providers,
-                        )
-                        if _resolved_cl:
-                            s.context_length = _resolved_cl
-                    except TypeError:
-                        # Older hermes-agent builds whose get_model_context_length
-                        # signature pre-dates the config_context_length /
-                        # custom_providers kwargs. Retry with the legacy 2-arg
-                        # form so the indicator still resolves *something*.
-                        try:
-                            from agent.model_metadata import get_model_context_length as _legacy_cl
-                            _resolved_cl = _legacy_cl(
-                                getattr(agent, 'model', resolved_model or '') or '',
-                                getattr(agent, 'base_url', '') or '',
-                            )
-                            if _resolved_cl:
-                                s.context_length = _resolved_cl
-                        except Exception:
-                            pass
-                    except Exception:
-                        # Older hermes-agent builds may not expose this helper.
-                        # Better to leave context_length=0 than crash the save.
-                        pass
+                _persist_context_window_on_session(
+                    s,
+                    agent,
+                    _cfg,
+                    resolved_model=resolved_model or '',
+                    resolved_provider=resolved_provider or '',
+                )
                 if not ephemeral and s.messages:
                     _append_assistant_started_turn_event(
                         s.session_id,
@@ -2027,70 +1961,14 @@ def _run_agent_streaming(
                 usage['tps'] = _turn_tps
             if _gateway_routing:
                 usage['gateway_routing'] = _gateway_routing
-            # Include context window data from the agent's compressor for the UI indicator.
-            # The session-level persistence happens above (before s.save()) so the values
-            # survive a page reload; this block only populates the live SSE usage payload.
-            _cc = getattr(agent, 'context_compressor', None)
-            if _cc:
-                usage['context_length'] = getattr(_cc, 'context_length', 0) or 0
-                usage['threshold_tokens'] = getattr(_cc, 'threshold_tokens', 0) or 0
-                usage['last_prompt_tokens'] = getattr(_cc, 'last_prompt_tokens', 0) or 0
-            # Fallback: when the compressor is absent or reports context_length=0,
-            # resolve the model's context window from metadata so the UI indicator
-            # shows the correct percentage rather than overflowing against the 128K
-            # JS default.  Mirrors the session-save fallback above (lines ~2205-2217).
-            #
-            # #1896: pass config_context_length, provider, and custom_providers so
-            # explicit config overrides win over the 256K default fallback. The
-            # SSE payload's `context_length` is what feeds the live token-usage
-            # indicator, so a stale 256K here surfaces as the same wrong-window
-            # display that motivates this fix.
-            if not usage.get('context_length'):
-                try:
-                    from agent.model_metadata import get_model_context_length as _get_cl
-                    _cfg_ctx_len = None
-                    _cfg_custom_providers = None
-                    try:
-                        _model_cfg_for_ctx = _cfg.get('model', {}) if isinstance(_cfg, dict) else {}
-                        if isinstance(_model_cfg_for_ctx, dict):
-                            _raw_cfg_ctx = _model_cfg_for_ctx.get('context_length')
-                            if _raw_cfg_ctx is not None:
-                                try:
-                                    _parsed_cfg_ctx = int(_raw_cfg_ctx)
-                                    if _parsed_cfg_ctx > 0:
-                                        _cfg_ctx_len = _parsed_cfg_ctx
-                                except (TypeError, ValueError):
-                                    pass
-                        _raw_cp = _cfg.get('custom_providers') if isinstance(_cfg, dict) else None
-                        if isinstance(_raw_cp, list):
-                            _cfg_custom_providers = _raw_cp
-                    except Exception:
-                        pass
-                    try:
-                        _fb_cl = _get_cl(
-                            getattr(agent, 'model', resolved_model or '') or '',
-                            getattr(agent, 'base_url', '') or '',
-                            config_context_length=_cfg_ctx_len,
-                            provider=resolved_provider or '',
-                            custom_providers=_cfg_custom_providers,
-                        )
-                    except TypeError:
-                        # Older hermes-agent builds: fall back to legacy 2-arg form.
-                        _fb_cl = _get_cl(
-                            getattr(agent, 'model', resolved_model or '') or '',
-                            getattr(agent, 'base_url', '') or '',
-                        )
-                    if _fb_cl:
-                        usage['context_length'] = _fb_cl
-                except Exception:
-                    pass
-            # Fallback: when last_prompt_tokens is missing (no compressor), use the
-            # session-persisted value rather than letting the frontend fall back to
-            # the cumulative input_tokens counter, which overflows for long sessions.
-            if not usage.get('last_prompt_tokens'):
-                _sess_lpt = getattr(s, 'last_prompt_tokens', 0) or 0
-                if _sess_lpt:
-                    usage['last_prompt_tokens'] = _sess_lpt
+            _apply_context_window_to_usage(
+                usage,
+                s,
+                agent,
+                _cfg,
+                resolved_model=resolved_model or '',
+                resolved_provider=resolved_provider or '',
+            )
             # (reasoning trace already attached + saved above, before s.save())
             # Leftover-steer delivery: if a /steer was queued (via
             # api/chat/steer) but the agent finished its turn before

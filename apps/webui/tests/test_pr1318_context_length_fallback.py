@@ -21,6 +21,7 @@ import re
 from pathlib import Path
 
 STREAMING = Path(__file__).resolve().parent.parent / "api" / "streaming.py"
+CONTEXT_WINDOW = Path(__file__).resolve().parent.parent / "api" / "streaming_context_window.py"
 
 
 def _persistence_block():
@@ -35,9 +36,29 @@ def _persistence_block():
     return src[start:end]
 
 
+def _context_window_source():
+    return CONTEXT_WINDOW.read_text(encoding="utf-8")
+
+
+def _context_window_fallback_section():
+    src = _context_window_source()
+    start = src.find("def resolve_context_length_fallback(")
+    assert start != -1, "resolve_context_length_fallback helper not found"
+    end = src.find("\ndef ", start + 1)
+    return src[start:end if end != -1 else len(src)]
+
+
+def _context_window_persist_section():
+    src = _context_window_source()
+    start = src.find("def persist_context_window_on_session(")
+    assert start != -1, "persist_context_window_on_session helper not found"
+    end = src.find("\ndef ", start + 1)
+    return src[start:end if end != -1 else len(src)]
+
+
 def test_fallback_uses_model_metadata():
     """Block must import and call get_model_context_length on missing compressor data."""
-    block = _persistence_block()
+    block = _context_window_fallback_section()
     assert "from agent.model_metadata import get_model_context_length" in block, (
         "Fallback must import get_model_context_length from agent.model_metadata"
     )
@@ -52,17 +73,17 @@ def test_fallback_gates_on_falsy_context_length():
     The gate must check s.context_length (not _cc_for_save) — if the compressor
     set context_length but it was 0, we still want the fallback to fire.
     """
-    block = _persistence_block()
+    block = _context_window_persist_section()
     # The conditional must reference s.context_length (or getattr(s, 'context_length', 0))
     assert (
-        "if not getattr(s, 'context_length'" in block
-        or "if not s.context_length" in block
+        "if not getattr(session, 'context_length'" in block
+        or "if not session.context_length" in block
     ), "Fallback must gate on s.context_length being falsy"
 
 
 def test_fallback_passes_model_and_base_url():
     """Fallback must source the model and base_url from the agent itself."""
-    block = _persistence_block()
+    block = _context_window_source()
     # Must reference both agent.model and agent.base_url in the call
     assert "agent, 'model'" in block, "Fallback must read agent.model"
     assert "agent, 'base_url'" in block, "Fallback must read agent.base_url"
@@ -71,9 +92,8 @@ def test_fallback_passes_model_and_base_url():
 def test_fallback_exception_is_swallowed():
     """If get_model_context_length raises (older agent build, network error,
     bad provider config), the fallback must not break s.save()."""
-    block = _persistence_block()
     # Must wrap the import + call in try/except
-    fallback_section = block[block.find("Fallback"):]
+    fallback_section = _context_window_fallback_section()
     assert "try:" in fallback_section, "Fallback must use try/except"
     # except Exception: pass-style — old agent builds may not have this helper at all
     assert "except Exception:" in fallback_section, (
@@ -84,7 +104,7 @@ def test_fallback_exception_is_swallowed():
 def test_fallback_runs_before_save():
     """The fallback must mutate s.context_length BEFORE s.save() so the value lands on disk."""
     block = _persistence_block()
-    fallback_idx = block.find("get_model_context_length")
+    fallback_idx = block.find("_persist_context_window_on_session")
     save_idx = block.rfind("s.save()")
     assert fallback_idx != -1 and save_idx != -1
     assert fallback_idx < save_idx, (
@@ -95,10 +115,9 @@ def test_fallback_runs_before_save():
 
 def test_fallback_assigns_context_length_when_resolved():
     """The fallback must assign s.context_length when get_model_context_length returns a non-zero value."""
-    block = _persistence_block()
-    fallback_section = block[block.find("Fallback"):]
+    fallback_section = _context_window_persist_section()
     # Must have an `if _resolved_cl:` guard followed by `s.context_length = _resolved_cl`
-    assert "_resolved_cl" in fallback_section, "Fallback must capture the result"
-    assert "s.context_length = _resolved_cl" in fallback_section, (
+    assert "resolved" in fallback_section, "Fallback must capture the result"
+    assert "session.context_length = resolved" in fallback_section, (
         "Fallback must assign the resolved value to s.context_length"
     )
