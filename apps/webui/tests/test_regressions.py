@@ -680,8 +680,10 @@ def test_streaming_bridge_accepts_current_tool_progress_callback_signature(clean
     """
     streaming_src = (REPO_ROOT / "api/streaming.py").read_text()
     bridge_src = (REPO_ROOT / "api/streaming_tool_bridge.py").read_text()
-    assert "def on_tool(*cb_args, **cb_kwargs):" in streaming_src, \
-        "streaming.py must accept variable callback args for tool progress events"
+    assert "def on_tool(self, *cb_args, **cb_kwargs):" in bridge_src, \
+        "streaming tool bridge must accept variable callback args for tool progress events"
+    assert "tool_progress_callback=_tool_bridge.on_tool" in streaming_src, \
+        "streaming.py must wire the agent's tool progress callback into the tool bridge"
     assert "reasoning_callback=_output_bridge.on_reasoning" in streaming_src, \
         "streaming.py must wire the agent's reasoning callback into the SSE bridge"
     assert "put('tool_complete'" in bridge_src or 'put("tool_complete"' in bridge_src, \
