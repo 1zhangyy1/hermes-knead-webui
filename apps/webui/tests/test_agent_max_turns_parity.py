@@ -11,12 +11,13 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 STREAMING_PY = (REPO / "api" / "streaming.py").read_text(encoding="utf-8")
+STREAMING_AGENT_CONFIG_PY = (REPO / "api" / "streaming_agent_config.py").read_text(encoding="utf-8")
 
 
 def test_streaming_agent_reads_agent_max_turns_from_config():
-    assert "_agent_cfg_for_iterations" in STREAMING_PY
-    assert "_agent_cfg_for_iterations.get('max_turns')" in STREAMING_PY
-    assert "_cfg.get('max_turns')" in STREAMING_PY
+    assert "_agent_cfg_for_iterations" in STREAMING_AGENT_CONFIG_PY
+    assert "_agent_cfg_for_iterations.get('max_turns')" in STREAMING_AGENT_CONFIG_PY
+    assert "_cfg.get('max_turns')" in STREAMING_AGENT_CONFIG_PY
 
 
 def test_streaming_agent_passes_max_iterations_to_aiagent():
