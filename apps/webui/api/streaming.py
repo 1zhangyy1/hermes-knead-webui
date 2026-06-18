@@ -11,7 +11,6 @@ import re
 import threading
 import time
 import traceback
-import copy
 from pathlib import Path
 from typing import Optional
 
@@ -61,7 +60,28 @@ from api.streaming_attachments import (
     attachment_name as _attachment_name,
     build_native_multimodal_message as _build_native_multimodal_message,
     is_valid_image as _is_valid_image,
-    resolve_image_input_mode as _resolve_image_input_mode,
+)
+from api.streaming_context import (
+    API_SAFE_MSG_KEYS as _API_SAFE_MSG_KEYS_IMPL,
+    api_safe_message_positions as _api_safe_message_positions_impl,
+    assistant_reply_added_after_current_turn as _assistant_reply_added_after_current_turn_impl,
+    compact_summary_text as _compact_summary_text_impl,
+    compression_anchor_message_key as _compression_anchor_message_key_impl,
+    compression_summary_from_messages as _compression_summary_from_messages_impl,
+    context_messages_for_new_turn as _context_messages_for_new_turn_impl,
+    drop_checkpointed_current_user_from_context as _drop_checkpointed_current_user_from_context_impl,
+    find_current_user_turn as _find_current_user_turn_impl,
+    has_task_resume_compaction_marker as _has_task_resume_compaction_marker_impl,
+    is_casual_fresh_chat_message as _is_casual_fresh_chat_message_impl,
+    is_context_compression_marker as _is_context_compression_marker_impl,
+    merge_display_messages_after_agent_result as _merge_display_messages_after_agent_result_impl,
+    message_identity as _message_identity_impl,
+    messages_have_prefix as _messages_have_prefix_impl,
+    normalize_fresh_chat_text as _normalize_fresh_chat_text_impl,
+    restore_reasoning_metadata as _restore_reasoning_metadata_impl,
+    sanitize_messages_for_api as _sanitize_messages_for_api_impl,
+    session_context_messages as _session_context_messages_impl,
+    strip_native_image_parts_from_content as _strip_native_image_parts_from_content_impl,
 )
 from api.streaming_tool_calls import (
     TOOL_RESULT_SNIPPET_MAX as _TOOL_RESULT_SNIPPET_MAX,
@@ -88,8 +108,6 @@ from api.streaming_titles import (
     is_provisional_title as _is_provisional_title_impl,
     latest_exchange_snippets as _latest_exchange_snippets,
     looks_invalid_generated_title as _looks_invalid_generated_title,
-    looks_like_current_user_turn as _looks_like_current_user_turn,
-    message_text as _message_text,
     sanitize_generated_title as _sanitize_generated_title,
     strip_thinking_markup as _strip_thinking_markup,
     strip_workspace_prefix as _strip_workspace_prefix,
@@ -325,7 +343,7 @@ from api.workspace import set_last_workspace
 # Fields that are safe to send to LLM provider APIs.
 # Everything else (attachments, timestamp, _ts, etc.) is display-only
 # metadata added by the webui and must be stripped before the API call.
-_API_SAFE_MSG_KEYS = {'role', 'content', 'tool_calls', 'tool_call_id', 'name', 'refusal', 'reasoning_content'}
+_API_SAFE_MSG_KEYS = _API_SAFE_MSG_KEYS_IMPL
 
 def _build_agent_thread_env(profile_runtime_env: dict | None, workspace: str, session_id: str, profile_home: str) -> dict:
     """Build thread-local agent env with per-run values overriding profile defaults.
@@ -841,374 +859,71 @@ def _maybe_schedule_title_refresh(session, put_event, agent):
 
 
 def _strip_native_image_parts_from_content(content):
-    """Return provider-safe content with native image parts removed.
-
-    Text-only provider endpoints (for example DeepSeek/OpenAI-compatible text
-    models) reject historical OpenAI-style ``image_url`` parts before the agent
-    can recover.  When WebUI is configured for text-mode image handling, preserve
-    textual content from mixed content arrays and drop only the native image
-    blocks from replayed history.
-    """
-    if not isinstance(content, list):
-        return content
-    clean_parts = []
-    for part in content:
-        if not isinstance(part, dict):
-            continue
-        if part.get('type') == 'image_url' or 'image_url' in part:
-            continue
-        clean_parts.append(copy.deepcopy(part))
-    if not clean_parts:
-        return ''
-    if len(clean_parts) == 1 and clean_parts[0].get('type') == 'text':
-        return str(clean_parts[0].get('text') or '')
-    return clean_parts
+    return _strip_native_image_parts_from_content_impl(content)
 
 
 def _sanitize_messages_for_api(messages, *, cfg: dict = None):
-    """Return a deep copy of messages with only API-safe fields.
-
-    The webui stores extra metadata on messages (attachments, timestamp, _ts)
-    for display purposes. Some providers (e.g. Z.AI/GLM) reject unknown fields
-    instead of ignoring them, causing HTTP 400 errors on subsequent messages.
-
-    Also strips orphaned tool-role messages whose tool_call_id cannot be linked
-    to a preceding assistant message with tool_calls. Strictly-conformant providers
-    (Mercury-2/Inception, newer OpenAI models) reject histories containing dangling
-    tool results with a 400 error: "Message has tool role, but there was no previous
-    assistant message with a tool call."
-
-    If ``agent.image_input_mode`` resolves to ``text``, native historical
-    ``image_url`` content parts are stripped too.  Current-turn uploads already
-    respect text mode in ``_build_native_multimodal_message``; this closes the
-    remaining replay gap where an older native image in the saved transcript kept
-    causing 400s on every later text-only turn (#2297).
-    """
-    strip_native_images = cfg is not None and _resolve_image_input_mode(cfg) == "text"
-    # First pass: collect all tool_call_ids declared by assistant messages.
-    # Handles both OpenAI ('id') and Anthropic ('call_id') field names.
-    valid_tool_call_ids: set = set()
-    for msg in messages:
-        if not isinstance(msg, dict):
-            continue
-        if msg.get('role') == 'assistant':
-            for tc in msg.get('tool_calls') or []:
-                if isinstance(tc, dict):
-                    tid = tc.get('id') or tc.get('call_id') or ''
-                    if tid:
-                        valid_tool_call_ids.add(tid)
-
-    # Second pass: build the sanitized list, dropping orphaned tool messages.
-    clean = []
-    for msg in messages:
-        if not isinstance(msg, dict):
-            continue
-        # Skip persisted error markers — never send them to the LLM as prior context.
-        if msg.get('_error'):
-            continue
-        role = msg.get('role')
-        if role == 'tool':
-            tid = msg.get('tool_call_id') or ''
-            if not tid or tid not in valid_tool_call_ids:
-                # Orphaned tool result — skip to avoid 400 from strict providers.
-                continue
-        sanitized = {k: v for k, v in msg.items() if k in _API_SAFE_MSG_KEYS}
-        if strip_native_images and 'content' in sanitized:
-            sanitized['content'] = _strip_native_image_parts_from_content(sanitized.get('content'))
-        if sanitized.get('role'):
-            clean.append(sanitized)
-    return clean
+    return _sanitize_messages_for_api_impl(messages, cfg=cfg)
 
 
 def _api_safe_message_positions(messages):
-    """Return [(original_index, sanitized_message)] for API-safe messages."""
-    valid_tool_call_ids: set = set()
-    for msg in messages:
-        if not isinstance(msg, dict):
-            continue
-        if msg.get('role') == 'assistant':
-            for tc in msg.get('tool_calls') or []:
-                if isinstance(tc, dict):
-                    tid = tc.get('id') or tc.get('call_id') or ''
-                    if tid:
-                        valid_tool_call_ids.add(tid)
-
-    out = []
-    for idx, msg in enumerate(messages):
-        if not isinstance(msg, dict):
-            continue
-        role = msg.get('role')
-        if role == 'tool':
-            tid = msg.get('tool_call_id') or ''
-            if not tid or tid not in valid_tool_call_ids:
-                continue
-        sanitized = {k: v for k, v in msg.items() if k in _API_SAFE_MSG_KEYS}
-        if sanitized.get('role'):
-            out.append((idx, sanitized))
-    return out
+    return _api_safe_message_positions_impl(messages)
 
 
 def _restore_reasoning_metadata(previous_messages, updated_messages):
-    """Carry forward display-only metadata lost during API-safe history sanitization.
-
-    The provider-facing history strips WebUI-only fields like `reasoning`. When the
-    agent returns its new full message history, prior assistant messages come back
-    without that metadata unless we merge it back in by API-history position.
-
-    This also preserves existing timestamps for unchanged historical messages.
-    Without that, older turns that come back from the agent without `_ts` /
-    `timestamp` can be re-stamped with the current time on every new assistant
-    response, making prior messages appear to "move" in time.
-    """
-    if not previous_messages or not updated_messages:
-        return updated_messages
-    updated_messages = list(updated_messages)
-    prev_safe = _api_safe_message_positions(previous_messages)
-
-    def _safe_projection(msg):
-        if not isinstance(msg, dict):
-            return None
-        return {k: v for k, v in msg.items() if k in _API_SAFE_MSG_KEYS and msg.get('role')}
-
-    def _reasoning_only_assistant(msg):
-        if not isinstance(msg, dict) or msg.get('role') != 'assistant' or not msg.get('reasoning'):
-            return False
-        if msg.get('tool_calls'):
-            return False
-        return not _message_text(msg.get('content'))
-
-    safe_pos = 0
-    while safe_pos < len(prev_safe):
-        prev_idx, _ = prev_safe[safe_pos]
-        prev_msg = previous_messages[prev_idx]
-        cur_msg = updated_messages[safe_pos] if safe_pos < len(updated_messages) else None
-
-        if isinstance(prev_msg, dict) and isinstance(cur_msg, dict) and _safe_projection(prev_msg) == _safe_projection(cur_msg):
-            if prev_msg.get('role') == 'assistant' and prev_msg.get('reasoning') and not cur_msg.get('reasoning'):
-                cur_msg['reasoning'] = prev_msg['reasoning']
-            if prev_msg.get('timestamp') and not cur_msg.get('timestamp'):
-                cur_msg['timestamp'] = prev_msg['timestamp']
-            elif prev_msg.get('_ts') and not cur_msg.get('_ts') and not cur_msg.get('timestamp'):
-                cur_msg['_ts'] = prev_msg['_ts']
-            safe_pos += 1
-            continue
-
-        if _reasoning_only_assistant(prev_msg):
-            updated_messages.insert(safe_pos, copy.deepcopy(prev_msg))
-            safe_pos += 1
-            continue
-
-        safe_pos += 1
-    return updated_messages
+    return _restore_reasoning_metadata_impl(previous_messages, updated_messages)
 
 
 def _session_context_messages(session):
-    """Return model-facing history without assuming it matches the UI transcript."""
-    context_messages = getattr(session, 'context_messages', None)
-    if isinstance(context_messages, list) and context_messages:
-        return context_messages
-    return session.messages or []
+    return _session_context_messages_impl(session)
 
 
 def _message_identity(msg):
-    if not isinstance(msg, dict):
-        return None
-    role = str(msg.get('role') or '')
-    content = msg.get('content', '')
-    text = _message_text(content)
-    if role == 'user':
-        # WebUI sends the model a workspace-prefixed user_message while the
-        # visible optimistic bubble contains only the human text. Treat them as
-        # the same turn for merge/dedup purposes; otherwise compaction results
-        # render two adjacent user bubbles ("Ok" and "[Workspace...]\nOk").
-        text = _strip_workspace_prefix(text, include_legacy=True)
-    if not text and not msg.get('tool_call_id') and not msg.get('tool_calls'):
-        return None
-    return (
-        role,
-        " ".join(str(text or '').split())[:500],
-        str(msg.get('tool_call_id') or ''),
-        json.dumps(msg.get('tool_calls') or [], sort_keys=True, ensure_ascii=False),
-    )
+    return _message_identity_impl(msg)
 
 
 def _messages_have_prefix(messages, prefix):
-    if len(messages or []) < len(prefix or []):
-        return False
-    for idx, expected in enumerate(prefix or []):
-        if _message_identity((messages or [])[idx]) != _message_identity(expected):
-            return False
-    return True
+    return _messages_have_prefix_impl(messages, prefix)
 
 
 def _is_context_compression_marker(msg):
-    if not isinstance(msg, dict):
-        return False
-    text = _message_text(msg.get('content', '')).lower()
-    return (
-        'context compaction' in text
-        or 'context compression' in text
-        or 'context was auto-compressed' in text
-        or 'active task list was preserved across context compression' in text
-    )
+    return _is_context_compression_marker_impl(msg)
 
 
 def _compact_summary_text(raw_text: str | None, limit: int = 320) -> str | None:
-    """Normalize a text blob used in compression summary cards."""
-    if not isinstance(raw_text, str):
-        return None
-    txt = raw_text.strip()
-    if not txt:
-        return None
-    txt = re.sub(r"\s+", " ", txt).strip()
-    if len(txt) > limit:
-        txt = f"{txt[: limit - 6]}…"
-    return txt
+    return _compact_summary_text_impl(raw_text, limit)
 
 
 def _compression_anchor_message_key(message):
-    if not isinstance(message, dict):
-        return None
-    role = str(message.get('role') or '')
-    if not role or role == 'tool':
-        return None
-    content = message.get('content', '')
-    text = _message_text(content)
-    if len(text) > 160:
-        text = text[:160]
-    ts = message.get('_ts') or message.get('timestamp')
-    attachments = message.get('attachments')
-    attach_count = len(attachments) if isinstance(attachments, list) else 0
-    if not text and not attach_count and not ts:
-        return None
-    return {'role': role, 'ts': ts, 'text': text, 'attachments': attach_count}
+    return _compression_anchor_message_key_impl(message)
 
 
 def _compression_summary_from_messages(messages):
-    for m in reversed(messages or []):
-        if not isinstance(m, dict):
-            continue
-        if not _is_context_compression_marker(m):
-            continue
-        text = _message_text(m.get('content'))
-        if text:
-            return text
-    return None
+    return _compression_summary_from_messages_impl(messages)
 
 
 def _find_current_user_turn(messages, msg_text):
-    needle = " ".join(str(msg_text or '').split())
-    fallback = None
-    for idx, msg in enumerate(messages or []):
-        if not isinstance(msg, dict) or msg.get('role') != 'user':
-            continue
-        fallback = idx
-        if _looks_like_current_user_turn(msg, msg_text):
-            return idx
-        text = " ".join(
-            _strip_workspace_prefix(
-                _message_text(msg.get('content', '')),
-                include_legacy=True,
-            ).split()
-        )
-        if needle and (needle in text or text in needle):
-            return idx
-    return fallback
+    return _find_current_user_turn_impl(messages, msg_text)
 
 
 def _drop_checkpointed_current_user_from_context(messages, msg_text):
-    """Return model history without an eager-checkpointed current user turn."""
-    history = list(messages or [])
-    if not history:
-        return history
-    current_user_key = _message_identity({'role': 'user', 'content': msg_text})
-    if current_user_key and _message_identity(history[-1]) == current_user_key:
-        return history[:-1]
-    return history
+    return _drop_checkpointed_current_user_from_context_impl(messages, msg_text)
 
 
 def _normalize_fresh_chat_text(text):
-    text = _strip_workspace_prefix(str(text or ''), include_legacy=True)
-    text = re.sub(r"\s+", " ", text).strip().lower()
-    return text.strip(" \t\r\n.!?。！？,，~～")
+    return _normalize_fresh_chat_text_impl(text)
 
 
 def _is_casual_fresh_chat_message(msg_text):
-    """Return True for short opener messages that should not resume old tasks."""
-    text = _normalize_fresh_chat_text(msg_text)
-    if not text or len(text) > 24:
-        return False
-    continuation_terms = (
-        "continue",
-        "resume",
-        "carry on",
-        "go on",
-        # CJK continuation terms (zh-CN): jixu, jiezhe, wangxia, xiayibu.
-        # Encoded as Python escape sequences (not literal CJK) so api/streaming.py
-        # passes tests/test_title_sanitization.py::test_title_generation_source_has_no_cjk_literals,
-        # which scans this file for any U+4E00-U+9FFF code points. Runtime
-        # comparisons still use the real CJK strings — Python decodes the
-        # escapes at compile time.
-        "\u7ee7\u7eed",
-        "\u63a5\u7740",
-        "\u5f80\u4e0b",
-        "\u4e0b\u4e00\u6b65",
-    )
-    if any(term in text for term in continuation_terms):
-        return False
-    return text in {
-        "hi",
-        "hello",
-        "hey",
-        "hello there",
-        "hi there",
-        # CJK greetings (zh-CN): nihao, ninhao, hai, haluo, zaima, zaime.
-        # Same escape-sequence rationale as the continuation block above.
-        "\u4f60\u597d",         # nihao
-        "\u60a8\u597d",         # ninhao
-        "\u55e8",               # hai (was \u5616 = "click of tongue", not a greeting)
-        "\u54c8\u55bd",         # haluo (was \u54c8\u5582 = uncommon "ha-wei" variant)
-        "\u5728\u5417",         # zaima
-        "\u5728\u4e48",         # zaime
-    }
+    return _is_casual_fresh_chat_message_impl(msg_text)
 
 
 def _has_task_resume_compaction_marker(messages):
-    """Detect compacted model context that tells the agent to resume an old task."""
-    for msg in messages or []:
-        if not isinstance(msg, dict):
-            continue
-        text = _message_text(msg.get('content', '')).lower()
-        if not text:
-            continue
-        if "context compaction" not in text and "context compression" not in text:
-            continue
-        if (
-            "active task" in text
-            or "resume exactly" in text
-            or "current task" in text
-            or "task list was preserved" in text
-            or "in_progress" in text
-        ):
-            return True
-    return False
+    return _has_task_resume_compaction_marker_impl(messages)
 
 
 def _context_messages_for_new_turn(session, msg_text):
-    """Return provider-facing history for a new user turn.
-
-    Compacted agent sessions can carry a hidden "resume the active task" summary
-    long after the visible UI looks like normal chat.  A short greeting should
-    not silently reactivate that old task; explicit continuation prompts still
-    keep the full compacted context.
-    """
-    history = _drop_checkpointed_current_user_from_context(
-        _session_context_messages(session),
-        msg_text,
-    )
-    if _is_casual_fresh_chat_message(msg_text) and _has_task_resume_compaction_marker(history):
-        return []
-    return history
+    return _context_messages_for_new_turn_impl(session, msg_text)
 
 
 def _stream_writeback_is_current(session, stream_id):
@@ -1222,124 +937,19 @@ def _stream_writeback_is_current(session, stream_id):
 
 
 def _merge_display_messages_after_agent_result(previous_display, previous_context, result_messages, msg_text):
-    """Keep UI transcript durable while allowing model context to compact.
-
-    If Hermes Agent returns a normal append-only history, append that delta to
-    the UI transcript. If the model/context history was compacted and no longer
-    has the prior context as a prefix, keep the previous UI transcript and append
-    only compaction marker messages plus the current user turn onward.
-    """
-    previous_display = list(previous_display or [])
-    previous_context = list(previous_context or [])
-    result_messages = list(result_messages or [])
-    if not result_messages:
-        return previous_display
-
-    if _messages_have_prefix(result_messages, previous_context):
-        candidates = result_messages[len(previous_context):]
-    else:
-        current_user_idx = _find_current_user_turn(result_messages, msg_text)
-        marker_candidates = [
-            m for m in result_messages[:current_user_idx if current_user_idx is not None else len(result_messages)]
-            if _is_context_compression_marker(m)
-        ]
-        turn_candidates = result_messages[current_user_idx:] if current_user_idx is not None else []
-        candidates = marker_candidates + turn_candidates
-
-    merged = previous_display[:]
-    seen = {_message_identity(m) for m in merged}
-    current_user_key = _message_identity({'role': 'user', 'content': msg_text})
-    current_user_in_candidates = any(
-        _message_identity(m) == current_user_key or _looks_like_current_user_turn(m, msg_text)
-        for m in candidates
+    return _merge_display_messages_after_agent_result_impl(
+        previous_display,
+        previous_context,
+        result_messages,
+        msg_text,
     )
-    current_user_already_checkpointed = bool(
-        merged
-        and (
-            _message_identity(merged[-1]) == current_user_key
-            or _looks_like_current_user_turn(merged[-1], msg_text)
-        )
-    )
-    if (
-        current_user_key is not None
-        and not current_user_in_candidates
-        and not current_user_already_checkpointed
-        and any(
-            isinstance(m, dict) and m.get('role') in ('assistant', 'tool')
-            for m in candidates
-        )
-    ):
-        # Some provider retry/fallback paths can return an assistant/tool delta
-        # without echoing the current user turn. In deferred session-save mode
-        # the prompt exists only in pending_user_message, so appending that delta
-        # directly would make the assistant bubble appear attached to the prior
-        # exchange and then clear the pending prompt. Materialize the current
-        # turn at the transcript boundary before the assistant/tool response.
-        current_user_msg = {'role': 'user', 'content': msg_text}
-        insert_at = 0
-        while insert_at < len(candidates) and _is_context_compression_marker(candidates[insert_at]):
-            insert_at += 1
-        candidates = candidates[:insert_at] + [current_user_msg] + candidates[insert_at:]
-
-    for msg in candidates:
-        key = _message_identity(msg)
-        is_current_user_turn = _looks_like_current_user_turn(msg, msg_text)
-        if (
-            ((key is not None and key == current_user_key) or is_current_user_turn)
-            and merged
-            and (
-                _message_identity(merged[-1]) == current_user_key
-                or _looks_like_current_user_turn(merged[-1], msg_text)
-            )
-        ):
-            # Eager session-save mode can checkpoint the current user turn
-            # before the agent runs. When the agent returns that same user turn
-            # in result_messages, keep the durable checkpoint and append only
-            # the assistant/tool delta.
-            continue
-        if (
-            key is not None
-            and isinstance(msg, dict)
-            and msg.get('role') == 'assistant'
-            and merged
-            and _message_identity(merged[-1]) == key
-        ):
-            # Some provider/result replay paths can include the same assistant
-            # message twice in the current delta. Treat only adjacent identity
-            # matches as replay duplicates so identical answers in separate
-            # user turns remain visible.
-            continue
-        if _is_context_compression_marker(msg) and key is not None and key in seen:
-            continue
-        display_msg = msg
-        if (
-            ((key is not None and key == current_user_key) or is_current_user_turn)
-            and isinstance(msg, dict)
-            and msg.get('role') == 'user'
-        ):
-            display_msg = copy.deepcopy(msg)
-            display_msg['content'] = msg_text
-        merged.append(copy.deepcopy(display_msg))
-        if key is not None:
-            seen.add(key)
-    return merged
 
 
 def _assistant_reply_added_after_current_turn(result_messages, previous_context, msg_text) -> bool:
-    """Return True only when the just-finished turn produced assistant text."""
-    result_messages = list(result_messages or [])
-    previous_context = list(previous_context or [])
-    if _messages_have_prefix(result_messages, previous_context):
-        candidates = result_messages[len(previous_context):]
-    else:
-        current_user_idx = _find_current_user_turn(result_messages, msg_text)
-        candidates = result_messages[current_user_idx + 1:] if current_user_idx is not None else result_messages
-    return any(
-        isinstance(m, dict)
-        and m.get('role') == 'assistant'
-        and not m.get('_error')
-        and str(m.get('content') or '').strip()
-        for m in candidates
+    return _assistant_reply_added_after_current_turn_impl(
+        result_messages,
+        previous_context,
+        msg_text,
     )
 
 

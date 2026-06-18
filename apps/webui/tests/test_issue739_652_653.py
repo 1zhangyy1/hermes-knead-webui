@@ -11,9 +11,13 @@ import re
 import pathlib
 
 STREAMING = pathlib.Path(__file__).parent.parent / 'api' / 'streaming.py'
+STREAMING_CONTEXT = pathlib.Path(__file__).parent.parent / 'api' / 'streaming_context.py'
+STREAMING_ERRORS = pathlib.Path(__file__).parent.parent / 'api' / 'streaming_errors.py'
 MESSAGES_JS = pathlib.Path(__file__).parent.parent / 'static' / 'messages.js'
 
 streaming_src = STREAMING.read_text(encoding='utf-8')
+streaming_context_src = STREAMING_CONTEXT.read_text(encoding='utf-8')
+streaming_errors_src = STREAMING_ERRORS.read_text(encoding='utf-8')
 messages_js_src = MESSAGES_JS.read_text(encoding='utf-8')
 
 
@@ -24,7 +28,7 @@ class TestQuotaDetection:
 
     def test_quota_patterns_present_in_silent_failure_path(self):
         """The silent-failure path checks for credit/quota strings."""
-        block = streaming_src
+        block = streaming_errors_src
         assert 'insufficient credit' in block
         assert 'credit balance' in block
         assert 'credits exhausted' in block
@@ -84,10 +88,10 @@ class TestErrorPersistence:
 
     def test_sanitize_skips_error_messages(self):
         """_sanitize_messages_for_api must not send _error messages to the LLM."""
-        assert "msg.get('_error')" in streaming_src or 'msg.get("_error")' in streaming_src
+        assert "msg.get('_error')" in streaming_context_src or 'msg.get("_error")' in streaming_context_src
         # The skip must come before the role/tool filtering logic
-        error_skip_pos = streaming_src.find("msg.get('_error')")
-        tool_filter_pos = streaming_src.find("if role == 'tool':")
+        error_skip_pos = streaming_context_src.find("msg.get('_error')")
+        tool_filter_pos = streaming_context_src.find("if role == 'tool':")
         assert error_skip_pos < tool_filter_pos, \
             "_error skip must appear before the tool-role filter in _sanitize_messages_for_api"
 
