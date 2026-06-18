@@ -355,9 +355,11 @@ class TestStreamingApprovalScoping:
             "startup helper should register gateway notifications through the helper"
 
     def test_finally_unregisters_gateway_notifications(self):
-        src = read(REPO / "api/streaming.py")
-        assert "_gateway_notifications.unregister(session_id)" in src, \
-            "finally block must unregister gateway notifications"
+        streaming_src = read(REPO / "api/streaming.py")
+        cleanup_src = read(REPO / "api/streaming_cleanup.py")
+        assert "_finalize_streaming_run_attempt(" in streaming_src
+        assert "gateway_notifications.unregister(session_id)" in cleanup_src, \
+            "run-attempt cleanup must unregister gateway notifications"
 
     def test_gateway_helper_initialises_flags_safely(self):
         src = read(REPO / "api/streaming_gateway_notifications.py")

@@ -1,6 +1,7 @@
 import api.config as cfg
 from api.streaming_cleanup import (
     cleanup_stream_registries,
+    finalize_streaming_run_attempt,
     finalize_streaming_worker_exit,
     finalize_webui_streaming_worker_exit,
 )
@@ -68,6 +69,36 @@ def test_cleanup_stream_registries_does_not_require_existing_keys():
 class _Session:
     active_stream_id = 'stream-1'
     pending_user_message = 'hello'
+
+
+def test_finalize_streaming_run_attempt_stops_ticker_unregisters_gateway_and_restores_env():
+    events = []
+
+    class Ticker:
+        def stop(self):
+            events.append('stop-ticker')
+
+    class GatewayNotifications:
+        def unregister(self, session_id):
+            events.append(('unregister-gateway', session_id))
+
+    finalize_streaming_run_attempt(
+        run_state=type('RunState', (), {'metering_ticker': Ticker()})(),
+        gateway_notifications=GatewayNotifications(),
+        session_id='sid-1',
+        profile_env_snapshot={'PROFILE_KEY': 'old'},
+        runtime_env_snapshot={'HERMES_HOME': 'old-home'},
+        env_lock='lock',
+        restore_agent_process_env_fn=lambda profile_env, runtime_env, *, env_lock: events.append(
+            ('restore-env', profile_env, runtime_env, env_lock)
+        ),
+    )
+
+    assert events == [
+        'stop-ticker',
+        ('unregister-gateway', 'sid-1'),
+        ('restore-env', {'PROFILE_KEY': 'old'}, {'HERMES_HOME': 'old-home'}, 'lock'),
+    ]
 
 
 def test_finalize_streaming_worker_exit_stops_checkpoint_before_recovery_and_cleans_registries():
