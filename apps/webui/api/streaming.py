@@ -105,6 +105,7 @@ from api.streaming_agent_config import (
 from api.streaming_agent_status import make_agent_status_callback as _make_agent_status_callback
 from api.streaming_event_sink import StreamingEventSink as _StreamingEventSink
 from api.streaming_live_usage import LiveUsageTracker as _LiveUsageTracker
+from api.streaming_metering import StreamingMeteringTicker as _StreamingMeteringTicker
 from api.streaming_product_turn import ProductTurnFinalizer as _ProductTurnFinalizer
 from api.streaming_titles import (
     LEGACY_WORKSPACE_PREFIX_ANY_RE as _LEGACY_WORKSPACE_PREFIX_ANY_RE,
@@ -1132,29 +1133,6 @@ def _run_agent_streaming(
     def _live_usage_snapshot():
         return _live_usage_tracker.snapshot()
 
-    # Register this stream with the global streaming meter
-    meter().begin_session(stream_id)
-
-    # Metering ticker — emits a metering event at 1 Hz while sessions are active.
-    # When get_interval() returns >= 10.0 (no active sessions), the ticker exits
-    # so no idle readings are emitted and the SSE consumer sees nothing.
-    _metering_stop = threading.Event()
-
-    def _metering_ticker():
-        while True:
-            interval = meter().get_interval()
-            if interval >= 10.0:
-                break  # nothing active — stop the ticker
-            if _metering_stop.wait(interval):
-                break  # stream was cancelled or ended — exit
-            stats = meter().get_stats()
-            stats['session_id'] = session_id
-            stats['usage'] = _live_usage_snapshot()
-            put('metering', stats)
-
-    _metering_thread = threading.Thread(target=_metering_ticker, daemon=True)
-    _metering_thread.start()
-
     _event_sink = _StreamingEventSink(
         stream_id=stream_id,
         queue=q,
@@ -1166,6 +1144,13 @@ def _run_agent_streaming(
 
     def put(event, data):
         _event_sink.put(event, data)
+
+    _metering_ticker = _StreamingMeteringTicker(
+        stream_id=stream_id,
+        session_id=session_id,
+        usage_snapshot=_live_usage_snapshot,
+        put=put,
+    ).start()
 
     _agent_status_callback = _make_agent_status_callback(session_id=session_id, put=put)
 
@@ -2747,7 +2732,7 @@ def _run_agent_streaming(
                 _maybe_schedule_title_refresh(s, put, agent)
         finally:
             # Stop the live metering ticker
-            _metering_stop.set()
+            _metering_ticker.stop()
             # Unregister the gateway approval callback and unblock any threads
             # still waiting on approval (e.g. stream cancelled mid-approval).
             if _approval_registered and _unreg_notify is not None:
