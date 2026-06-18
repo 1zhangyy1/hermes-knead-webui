@@ -102,6 +102,7 @@ from api.streaming_agent_config import (
     resolve_max_tokens_config as _resolve_max_tokens_config_impl,
     resolve_reasoning_config as _resolve_reasoning_config_impl,
 )
+from api.streaming_event_sink import StreamingEventSink as _StreamingEventSink
 from api.streaming_live_usage import LiveUsageTracker as _LiveUsageTracker
 from api.streaming_titles import (
     LEGACY_WORKSPACE_PREFIX_ANY_RE as _LEGACY_WORKSPACE_PREFIX_ANY_RE,
@@ -1176,30 +1177,17 @@ def _run_agent_streaming(
     _metering_thread = threading.Thread(target=_metering_ticker, daemon=True)
     _metering_thread.start()
 
+    _event_sink = _StreamingEventSink(
+        stream_id=stream_id,
+        queue=q,
+        cancel_event=cancel_event,
+        run_journal=run_journal,
+        last_event_ids=STREAM_LAST_EVENT_ID,
+        logger=logger,
+    )
+
     def put(event, data):
-        # If cancelled, drop all further events except the cancel event itself
-        if cancel_event.is_set() and event not in ('cancel', 'error'):
-            return
-        if run_journal is not None:
-            try:
-                journaled = run_journal.append_sse_event(event, data)
-                # Stage-364: propagate journal event_id via a side-channel dict
-                # (STREAM_LAST_EVENT_ID) instead of changing the queue tuple
-                # shape — keeping the 2-tuple shape preserves backward
-                # compatibility for tests and any non-SSE queue consumer. The
-                # SSE handler reads this dict at emit time to populate `id:`
-                # on every live frame, which lets the frontend's cursor
-                # advance during live streaming and prevents replay from
-                # double-rendering tokens after a mid-stream error→reconnect.
-                event_id = (journaled or {}).get('event_id') if isinstance(journaled, dict) else None
-                if event_id:
-                    STREAM_LAST_EVENT_ID[stream_id] = event_id
-            except Exception:
-                logger.debug("Failed to append run journal event %s for stream %s", event, stream_id, exc_info=True)
-        try:
-            q.put_nowait((event, data))
-        except Exception:
-            logger.debug("Failed to put event to queue")
+        _event_sink.put(event, data)
 
     def _agent_status_callback(kind, message):
         """Bridge Agent lifecycle compression status into WebUI SSE."""
