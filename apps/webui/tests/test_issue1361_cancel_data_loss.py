@@ -460,6 +460,10 @@ def test_materialize_helper_called_immediately_before_error_path_clears():
     """
     from pathlib import Path
     src = Path(__file__).parent.parent.joinpath('api', 'streaming.py').read_text(encoding='utf-8')
+    completed_writeback_src = Path(__file__).parent.parent.joinpath(
+        'api',
+        'streaming_completed_writeback.py',
+    ).read_text(encoding='utf-8')
     writeback_src = Path(__file__).parent.parent.joinpath(
         'api',
         'streaming_error_writeback.py',
@@ -475,10 +479,12 @@ def test_materialize_helper_called_immediately_before_error_path_clears():
 
     assert 'session.pending_user_message = None' in writeback_src
 
-    silent_idx = src.find("_handle_silent_failure_after_merge(")
-    silent_return_idx = src.find("if _silent_result.should_return:", silent_idx)
+    silent_idx = src.find("_handle_completed_conversation_writeback(")
+    silent_return_idx = src.find("if _writeback_result.should_return:", silent_idx)
     silent_block = src[silent_idx:silent_return_idx]
     assert "materialize_pending_user_turn=_materialize_pending_user_turn_before_error" in silent_block
+    assert "handle_silent_failure_after_merge_fn(" in completed_writeback_src
+    assert "materialize_pending_user_turn=materialize_pending_user_turn" in completed_writeback_src
     assert "emit_and_persist_silent_failure_error_fn(" in silent_failure_src
     assert "materialize_pending_user_turn=materialize_pending_user_turn" in silent_failure_src
     assert "persist_streaming_error_message(" in writeback_src

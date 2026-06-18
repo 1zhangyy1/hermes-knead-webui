@@ -166,17 +166,19 @@ class TestCancelledTurnPersistenceGuards:
 
     def test_post_run_cancel_guard_runs_before_normal_success_merge(self):
         src = _read("api/streaming.py")
+        completed_src = _read("api/streaming_completed_writeback.py")
         cancellation_src = _read("api/streaming_cancellation.py")
         ephemeral_src = _read("api/streaming_ephemeral.py")
         run_idx = src.find("result = agent.run_conversation(")
-        merge_idx = src.find("_apply_agent_result_to_session(", run_idx)
-        assert run_idx != -1 and merge_idx != -1, "run/merge path not found"
-        block = src[run_idx:merge_idx]
+        writeback_idx = src.find("_handle_completed_conversation_writeback(", run_idx)
+        assert run_idx != -1 and writeback_idx != -1, "run/writeback path not found"
+        block = src[run_idx:writeback_idx]
 
         assert "_handle_completed_conversation_post_run(" in block, (
             "If cancellation arrives after tokens streamed but before run_conversation returns, "
             "the worker must emit/persist cancel before normal merge/save/completed handling."
         )
+        assert "apply_agent_result_to_session_fn(" in completed_src
         assert "handle_post_run_cancel(" in ephemeral_src
         assert "cancel_event.is_set()" in cancellation_src
         assert "put_cancel_fn()" in cancellation_src

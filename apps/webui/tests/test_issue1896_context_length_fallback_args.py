@@ -46,7 +46,9 @@ def _fallback_helper():
 
 def test_streaming_uses_context_window_helper_for_both_paths():
     assert "persist_context_window_on_session(" in TURN_WRITEBACK_PY
-    assert "_apply_completed_turn_writeback_state(" in STREAMING_PY
+    completed_writeback = (Path(__file__).parent.parent / "api" / "streaming_completed_writeback.py").read_text(encoding="utf-8")
+    assert "_handle_completed_conversation_writeback(" in STREAMING_PY
+    assert "apply_completed_turn_writeback_state_fn(" in completed_writeback
     assert "apply_context_window_to_usage=_apply_context_window_to_usage" in STREAMING_PY
     assert "apply_context_window_to_usage(" in TERMINAL_PY
 

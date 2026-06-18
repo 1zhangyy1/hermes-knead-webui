@@ -107,7 +107,6 @@ from api.streaming_checkpoint import (
 from api.streaming_tool_calls import (
     TOOL_RESULT_SNIPPET_MAX as _TOOL_RESULT_SNIPPET_MAX,
     nearest_assistant_msg_idx as _nearest_assistant_msg_idx,
-    strip_xml_tool_calls_from_assistant_messages as _strip_xml_tool_calls_from_assistant_messages,
     tool_result_snippet as _tool_result_snippet,
     truncate_tool_args as _truncate_tool_args,
 )
@@ -142,12 +141,6 @@ from api.streaming_terminal import (
     emit_completed_turn_done as _emit_completed_turn_done,
 )
 from api.streaming_turn_start import prepare_streaming_turn_input as _prepare_streaming_turn_input
-from api.streaming_turn_writeback import (
-    apply_completed_turn_writeback_state as _apply_completed_turn_writeback_state,
-    detect_silent_failure_after_merge as _detect_silent_failure_after_merge,
-    prepare_success_turn_writeback as _prepare_success_turn_writeback,
-    save_completed_turn_and_journal as _save_completed_turn_and_journal,
-)
 from api.streaming_usage import build_done_usage_payload as _build_done_usage_payload
 from api.streaming_titles import (
     LEGACY_WORKSPACE_PREFIX_ANY_RE as _LEGACY_WORKSPACE_PREFIX_ANY_RE,
@@ -213,9 +206,8 @@ from api.streaming_runtime_prompt import (
     build_workspace_system_message as _build_workspace_system_message,
     configure_agent_runtime_prompt as _configure_agent_runtime_prompt,
 )
-from api.streaming_compression import apply_streaming_context_compression_side_effects as _apply_streaming_context_compression_side_effects
+from api.streaming_completed_writeback import handle_completed_conversation_writeback as _handle_completed_conversation_writeback
 from api.streaming_exception_handling import handle_streaming_exception as _handle_streaming_exception
-from api.streaming_silent_failure import handle_silent_failure_after_merge as _handle_silent_failure_after_merge
 
 # Global lock for os.environ writes. Per-session locks (_agent_lock) prevent
 # concurrent runs of the SAME session, but two DIFFERENT sessions can still
@@ -911,142 +903,76 @@ def _run_agent_streaming(
                 logger=logger,
             ):
                 return
-            with _agent_lock:
-                if not _prepare_success_turn_writeback(
-                    s,
-                    stream_id=stream_id,
-                    ephemeral=ephemeral,
-                    stream_writeback_is_current=_stream_writeback_is_current,
-                    cancel_event=cancel_event,
-                    finalize_cancelled_turn=_finalize_cancelled_turn,
-                    put_cancel=_put_cancel,
-                    logger=logger,
-                ):
-                    return
-                _result_messages = _apply_agent_result_to_session(
-                    s,
-                    _previous_messages,
-                    _previous_context_messages,
-                    result.get('messages'),
-                    msg_text,
-                    strip_xml_tool_calls_fn=_strip_xml_tool_calls_from_assistant_messages,
-                )
-
-                # ── Detect silent agent failure (no assistant reply produced) ──
-                _silent_failure = _detect_silent_failure_after_merge(
-                    result,
-                    _previous_context_messages,
-                    msg_text=msg_text,
-                    token_sent=_output_bridge.token_sent,
-                    assistant_reply_added_after_current_turn=_assistant_reply_added_after_current_turn,
-                )
-                _silent_result = _handle_silent_failure_after_merge(
-                    _silent_failure,
-                    agent=agent,
-                    result=result,
-                    self_healed=_self_healed,
-                    session=s,
-                    stream_id=stream_id,
-                    cancel_event=cancel_event,
-                    finalize_cancelled_turn=_finalize_cancelled_turn,
-                    append_interrupted_turn_event=_append_interrupted_turn_event,
-                    put_cancel=_put_cancel,
-                    ephemeral=ephemeral,
-                    classify_provider_error=_classify_provider_error,
-                    provider_error_payload=_provider_error_payload,
-                    finalize_product_turn=_finalize_product_turn,
-                    materialize_pending_user_turn=_materialize_pending_user_turn_before_error,
-                    put=put,
-                    provider_id=resolved_provider or '',
-                    session_id=session_id,
-                    agent_lock=_agent_lock,
-                    agent_factory=_AIAgent,
-                    agent_kwargs=_agent_kwargs,
-                    agent_params=_agent_params,
-                    resolved_model=resolved_model,
-                    resolved_provider=resolved_provider,
-                    resolved_base_url=resolved_base_url,
-                    custom_provider_resolver=resolve_custom_provider_connection,
-                    agent_instances=AGENT_INSTANCES,
-                    streams_lock=STREAMS_LOCK,
-                    agent_sig=_agent_sig,
-                    user_message=user_message,
-                    system_message=workspace_system_msg,
-                    previous_messages=_previous_messages,
-                    previous_context_messages=_previous_context_messages,
-                    config=_cfg,
-                    persist_user_message=msg_text,
-                    sanitize_messages_for_api=_sanitize_messages_for_api,
-                    output_bridge=_output_bridge,
-                    msg_text=msg_text,
-                    has_new_assistant_reply=_has_new_assistant_reply,
-                    apply_agent_result_to_session=_apply_agent_result_to_session,
-                    logger=logger,
-                )
-                if _silent_result.self_healed:
-                    _rt = _silent_result.runtime
-                    resolved_api_key = _silent_result.resolved_api_key
-                    resolved_provider = _silent_result.resolved_provider
-                    resolved_base_url = _silent_result.resolved_base_url
-                    _agent_kwargs = _silent_result.agent_kwargs
-                    agent = _silent_result.agent
-                    _self_healed = True
-                    if _silent_result.result is not None:
-                        result = _silent_result.result
-                # Legacy #373 source tests and clients look for the no_response type.
-                # The helper preserves that type while improving the
-                # catch-all label, hint, and provider details.
-                if _silent_result.should_return:
-                    return  # apperror already closes the stream on the client side
-
-                # ── Handle context compression side effects ──
-                # If compression fired inside run_conversation, the agent may have
-                # rotated its session_id. Detect and fix the mismatch so the WebUI
-                # continues writing to the correct session file.
-                _apply_streaming_context_compression_side_effects(
-                    s,
-                    agent,
-                    original_session_id=session_id,
-                    resolved_profile_name=_resolved_profile_name,
-                    agent_lock=_agent_lock,
-                    pre_compression_count=_pre_compression_count,
-                    preserve_pre_compression_snapshot=_preserve_pre_compression_snapshot,
-                    compression_anchor_message_key=_compression_anchor_message_key,
-                    compact_summary_text=_compact_summary_text,
-                    compression_summary_from_messages=_compression_summary_from_messages,
-                    put=put,
-                    usage_snapshot=_run_state.live_usage_snapshot,
-                    logger=logger,
-                )
-
-                _completed_turn_state = _apply_completed_turn_writeback_state(
-                    s,
-                    agent,
-                    result,
-                    msg_text=msg_text,
-                    attachments=attachments,
-                    live_tool_calls=_live_tool_calls,
-                    reasoning_text=_output_bridge.reasoning_text,
-                    turn_started_at=_turn_started_at,
-                    requested_model=resolved_model or model,
-                    requested_provider=resolved_provider or '',
-                    config=_cfg,
-                    title_from_fn=title_from,
-                    is_provisional_title=_is_provisional_title,
-                    looks_invalid_generated_title=_looks_invalid_generated_title,
-                    first_exchange_snippets=_first_exchange_snippets,
-                    extract_gateway_routing_metadata=_extract_gateway_routing_metadata,
-                )
-                if not _save_completed_turn_and_journal(
-                    s,
-                    agent,
-                    stream_id=stream_id,
-                    cancel_event=cancel_event,
-                    finalize_cancelled_turn=_finalize_cancelled_turn,
-                    put_cancel=_put_cancel,
-                    logger=logger,
-                ):
-                    return
+            _writeback_result = _handle_completed_conversation_writeback(
+                result,
+                session=s,
+                agent=agent,
+                self_healed=_self_healed,
+                stream_id=stream_id,
+                session_id=session_id,
+                cancel_event=cancel_event,
+                agent_lock=_agent_lock,
+                ephemeral=ephemeral,
+                previous_messages=_previous_messages,
+                previous_context_messages=_previous_context_messages,
+                msg_text=msg_text,
+                output_bridge=_output_bridge,
+                live_tool_calls=_live_tool_calls,
+                turn_started_at=_turn_started_at,
+                attachments=attachments,
+                model=model,
+                resolved_model=resolved_model,
+                resolved_provider=resolved_provider,
+                resolved_base_url=resolved_base_url,
+                resolved_profile_name=_resolved_profile_name,
+                config=_cfg,
+                pre_compression_count=_pre_compression_count,
+                usage_snapshot=_run_state.live_usage_snapshot,
+                agent_factory=_AIAgent,
+                agent_kwargs=_agent_kwargs,
+                agent_params=_agent_params,
+                agent_sig=_agent_sig,
+                user_message=user_message,
+                system_message=workspace_system_msg,
+                custom_provider_resolver=resolve_custom_provider_connection,
+                agent_instances=AGENT_INSTANCES,
+                streams_lock=STREAMS_LOCK,
+                put=put,
+                finalize_cancelled_turn=_finalize_cancelled_turn,
+                append_interrupted_turn_event=_append_interrupted_turn_event,
+                put_cancel=_put_cancel,
+                stream_writeback_is_current=_stream_writeback_is_current,
+                classify_provider_error=_classify_provider_error,
+                provider_error_payload=_provider_error_payload,
+                finalize_product_turn=_finalize_product_turn,
+                materialize_pending_user_turn=_materialize_pending_user_turn_before_error,
+                sanitize_messages_for_api=_sanitize_messages_for_api,
+                has_new_assistant_reply=_has_new_assistant_reply,
+                assistant_reply_added_after_current_turn=_assistant_reply_added_after_current_turn,
+                preserve_pre_compression_snapshot=_preserve_pre_compression_snapshot,
+                compression_anchor_message_key=_compression_anchor_message_key,
+                compact_summary_text=_compact_summary_text,
+                compression_summary_from_messages=_compression_summary_from_messages,
+                title_from_fn=title_from,
+                is_provisional_title=_is_provisional_title,
+                looks_invalid_generated_title=_looks_invalid_generated_title,
+                first_exchange_snippets=_first_exchange_snippets,
+                extract_gateway_routing_metadata=_extract_gateway_routing_metadata,
+                logger=logger,
+            )
+            if _writeback_result.self_healed:
+                _rt = _writeback_result.runtime
+                resolved_api_key = _writeback_result.resolved_api_key
+                resolved_provider = _writeback_result.resolved_provider
+                resolved_base_url = _writeback_result.resolved_base_url
+                _agent_kwargs = _writeback_result.agent_kwargs
+                agent = _writeback_result.agent
+                _self_healed = True
+                if _writeback_result.result is not None:
+                    result = _writeback_result.result
+            if _writeback_result.should_return:
+                return
+            _completed_turn_state = _writeback_result.completed_turn_state
             # (reasoning trace already attached before completed-turn save)
             _emit_completed_turn_done(
                 s,

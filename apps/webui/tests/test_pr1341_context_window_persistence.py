@@ -31,15 +31,16 @@ def test_streaming_persists_context_fields_on_session_before_save():
     """The post-merge per-turn save block must write the three fields to the
     session BEFORE calling s.save(), otherwise the values never reach disk."""
     src = STREAMING.read_text(encoding="utf-8")
+    completed_src = (STREAMING.parent / "streaming_completed_writeback.py").read_text(encoding="utf-8")
     writeback_src = TURN_WRITEBACK.read_text(encoding="utf-8")
 
     # Find the post-merge save block — anchored on the unique reasoning trace
     # helper call right above the persistence block.
-    block_start = src.find("_apply_completed_turn_writeback_state(")
-    assert block_start != -1, "completed-turn writeback helper call not found in streaming.py"
+    block_start = completed_src.find("apply_completed_turn_writeback_state_fn(")
+    assert block_start != -1, "completed-turn writeback helper call not found in completed writeback module"
 
     # Durable save helper call follows shortly after
-    save_call = src.find("_save_completed_turn_and_journal(", block_start)
+    save_call = completed_src.find("save_completed_turn_and_journal_fn(", block_start)
     assert save_call != -1, "completed-turn save helper not found after the post-merge marker"
     # Limit bumped to 9000 by cancellation finalization guards: the block now also
     # checks for a late user cancel immediately before the durable final save,
@@ -50,6 +51,7 @@ def test_streaming_persists_context_fields_on_session_before_save():
         "s.save() should be close to the post-merge marker — block expanded unexpectedly. "
         "If you've added a new pre-save mutation block here, bump this limit."
     )
+    assert "_handle_completed_conversation_writeback(" in src
 
     helper = CONTEXT_WINDOW.read_text(encoding="utf-8")
 

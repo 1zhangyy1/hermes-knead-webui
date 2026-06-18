@@ -10,6 +10,7 @@ import re
 
 REPO = pathlib.Path(__file__).parent.parent
 STREAMING_PY = (REPO / "api" / "streaming.py").read_text(encoding="utf-8")
+STREAMING_COMPLETED_WRITEBACK_PY = (REPO / "api" / "streaming_completed_writeback.py").read_text(encoding="utf-8")
 STREAMING_ERRORS_PY = (REPO / "api" / "streaming_errors.py").read_text(encoding="utf-8")
 STREAMING_SILENT_FAILURE_PY = (REPO / "api" / "streaming_silent_failure.py").read_text(encoding="utf-8")
 CONFIG_PY    = (REPO / "api" / "config.py").read_text(encoding="utf-8")
@@ -25,9 +26,10 @@ class TestSilentErrorDetection:
 
     def test_streaming_detects_no_assistant_reply(self):
         """streaming.py must check if any assistant message was produced."""
-        assert "_detect_silent_failure_after_merge(" in STREAMING_PY, (
-            "streaming.py must detect whether an assistant message was produced (#373)"
+        assert "_handle_completed_conversation_writeback(" in STREAMING_PY, (
+            "streaming.py must route completed turns through the writeback helper (#373)"
         )
+        assert "detect_silent_failure_after_merge_fn(" in STREAMING_COMPLETED_WRITEBACK_PY
         assert "assistant_added" in STREAMING_SILENT_FAILURE_PY
 
     def test_streaming_emits_apperror_on_no_response(self):
@@ -39,12 +41,12 @@ class TestSilentErrorDetection:
     def test_streaming_returns_early_after_apperror(self):
         """streaming.py must return after emitting apperror (not also emit done)."""
         # The return statement must come after the put('apperror') for no_response
-        no_resp_pos = STREAMING_PY.find("no_response type")
+        no_resp_pos = STREAMING_COMPLETED_WRITEBACK_PY.find("no_response type")
         # Comment updated: "apperror already closes the stream on the client side"
-        return_pos = STREAMING_PY.find("return  # apperror already closes the stream", no_resp_pos)
-        assert no_resp_pos != -1, "no_response path marker not found in streaming.py"
+        return_pos = STREAMING_COMPLETED_WRITEBACK_PY.find("apperror already closes the stream", no_resp_pos)
+        assert no_resp_pos != -1, "no_response path marker not found in completed writeback helper"
         assert return_pos != -1, (
-            "streaming.py must return after emitting apperror to prevent also emitting done (#373)"
+            "completed writeback must return after emitting apperror to prevent also emitting done (#373)"
         )
         assert return_pos > no_resp_pos
 
