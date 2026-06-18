@@ -156,6 +156,7 @@ from api.streaming_turn_journal import (
 from api.streaming_terminal import (
     emit_completed_turn_done as _emit_completed_turn_done,
 )
+from api.streaming_turn_start import prepare_streaming_turn_input as _prepare_streaming_turn_input
 from api.streaming_turn_writeback import apply_completed_turn_writeback_state as _apply_completed_turn_writeback_state
 from api.streaming_usage import build_done_usage_payload as _build_done_usage_payload
 from api.streaming_titles import (
@@ -944,46 +945,32 @@ def _run_agent_streaming(
             ):
                 return
 
-            # Prepend workspace context so the agent always knows which directory
-            # to use for file operations, regardless of session age or AGENTS.md defaults.
-            workspace_ctx = _workspace_context_prefix(str(s.workspace))
-            workspace_system_msg = _build_workspace_system_message(s.workspace)
-            # Pass WebUI-only runtime guidance via ephemeral_system_prompt
-            # (agent's own mechanism). This preserves any selected personality
-            # while making long tool runs emit real user-visible interim text
-            # through interim_assistant_callback instead of frontend guesses.
-            _configure_agent_runtime_prompt(
-                agent,
+            _turn_input = _prepare_streaming_turn_input(
+                session=s,
+                agent=agent,
+                msg_text=msg_text,
+                attachments=attachments,
+                workspace=workspace,
                 config=_cfg,
-                personality_name=getattr(s, 'personality', None),
                 product_context=product_context,
+                agent_lock=_agent_lock,
+                checkpoint_activity=_checkpoint_activity,
+                session_id=session_id,
+                personality_name=getattr(s, 'personality', None),
                 webui_ephemeral_system_prompt=_webui_ephemeral_system_prompt,
                 logger=logger,
             )
-            _turn_start = _capture_turn_start_snapshot(s, agent, msg_text)
+            workspace_system_msg = _turn_input.system_message
+            user_message = _turn_input.user_message
+            _turn_start = _turn_input.turn_start
             _turn_started_at = _turn_start.started_at
             _previous_messages = _turn_start.previous_messages
             _previous_context_messages = _turn_start.previous_context_messages
             _pre_compression_count = _turn_start.pre_compression_count
-
-            # Persist the user message BEFORE streaming starts so it's durable even if
-            # the server crashes before the first checkpoint fires (every 15s).
-            with _agent_lock:
-                s.save(touch_updated_at=True, skip_index=False)
-
-            _checkpoint_runner = _start_periodic_checkpoint(
-                s,
-                agent_lock=_agent_lock,
-                checkpoint_activity=_checkpoint_activity,
-                session_id=session_id,
-                logger=logger,
-            )
+            _checkpoint_runner = _turn_input.checkpoint_runner
             _checkpoint_stop = _checkpoint_runner.stop_event
             _ckpt_thread = _checkpoint_runner.thread
 
-            _process_notifications = _drain_webui_process_notifications(session_id)
-            _agent_msg_text = _message_text_with_process_notifications(msg_text, _process_notifications)
-            user_message = _build_native_multimodal_message(workspace_ctx, _agent_msg_text, attachments, workspace, cfg=_cfg)
             result = agent.run_conversation(
                 user_message=user_message,
                 system_message=workspace_system_msg,
