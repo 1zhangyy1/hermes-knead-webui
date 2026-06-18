@@ -1,26 +1,25 @@
-"""Test for PR #1339 — streaming.py must support both single-dict `fallback_model`
+"""Test for PR #1339 — streaming agent config must support both single-dict `fallback_model`
 and list-form `fallback_providers` config without crashing on `.get()`.
 
 Before the fix, when config had `fallback_providers: [{provider, model, ...}, ...]`,
 streaming.py read it as if it were a dict and called `.get('model', '')` on a list,
 which would raise `AttributeError: 'list' object has no attribute 'get'`.
 
-The fix makes streaming.py handle both legacy dict form and new list form, picking
+The fix makes streaming agent config handle both legacy dict form and new list form, picking
 the first entry from the list when given a list.
 """
-import re
 from pathlib import Path
 
-STREAMING_PY = Path(__file__).resolve().parent.parent / "api" / "streaming.py"
+STREAMING_AGENT_CONFIG_PY = Path(__file__).resolve().parent.parent / "api" / "streaming_agent_config.py"
 
 
 def _extract_fallback_block():
     """Return the source range that handles fallback_model/fallback_providers."""
-    src = STREAMING_PY.read_text(encoding="utf-8")
+    src = STREAMING_AGENT_CONFIG_PY.read_text(encoding="utf-8")
     # Locate the resolved-fallback region
     idx = src.find("# Fallback model from profile config")
-    assert idx != -1, "Fallback block marker not found in streaming.py"
-    end = src.find("# Build kwargs defensively", idx)
+    assert idx != -1, "Fallback block marker not found in streaming_agent_config.py"
+    end = src.find("return _fallback_resolved", idx)
     assert end != -1, "End-of-block marker not found"
     return src[idx:end]
 

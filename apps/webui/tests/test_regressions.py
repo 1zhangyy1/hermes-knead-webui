@@ -696,11 +696,13 @@ def test_streaming_reads_reasoning_effort_from_config_dict(cleanup_test_sessions
     regardless of what `/reasoning <level>` had been set to.  This static
     source assertion pins the fix because the runtime symptom is silent.
     """
-    src = (REPO_ROOT / "api/streaming.py").read_text()
+    streaming_src = (REPO_ROOT / "api/streaming.py").read_text()
+    config_src = (REPO_ROOT / "api/streaming_agent_config.py").read_text()
+    src = streaming_src + "\n" + config_src
     assert "_cfg.cfg" not in src, \
         "get_config() returns a dict; accessing _cfg.cfg drops reasoning_config to None"
     assert "_cfg.get('agent', {})" in src or '_cfg.get("agent", {})' in src, \
-        "streaming.py must read agent.reasoning_effort via the config dict"
+        "streaming agent config must read agent.reasoning_effort via the config dict"
 
 
 def test_streaming_agent_cache_signature_includes_reasoning_config(cleanup_test_sessions):

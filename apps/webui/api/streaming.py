@@ -95,6 +95,12 @@ from api.streaming_agent_runtime import (
     refresh_cached_agent_primary_runtime_snapshot as _refresh_cached_agent_primary_runtime_snapshot,
     refresh_cached_agent_runtime as _refresh_cached_agent_runtime,
 )
+from api.streaming_agent_config import (
+    resolve_fallback_config as _resolve_fallback_config_impl,
+    resolve_max_iterations_config as _resolve_max_iterations_config_impl,
+    resolve_max_tokens_config as _resolve_max_tokens_config_impl,
+    resolve_reasoning_config as _resolve_reasoning_config_impl,
+)
 from api.streaming_titles import (
     LEGACY_WORKSPACE_PREFIX_ANY_RE as _LEGACY_WORKSPACE_PREFIX_ANY_RE,
     LEGACY_WORKSPACE_PREFIX_RE as _LEGACY_WORKSPACE_PREFIX_RE,
@@ -1762,28 +1768,7 @@ def _run_agent_streaming(
             except Exception as _ts_err:
                 print(f"[webui] WARNING: failed to read per-session toolsets for {session_id}: {_ts_err}", flush=True)
 
-            # Fallback model from profile config (e.g. for rate-limit recovery)
-            _fallback = _cfg.get('fallback_model') or _cfg.get('fallback_providers') or None
-            _fallback_resolved = None
-            if _fallback:
-                # Normalize: support both single dict (legacy) and list (chained fallback).
-                # Use the first valid entry as the fallback passed to AIAgent.
-                _fb_entry = None
-                if isinstance(_fallback, list):
-                    for _entry in _fallback:
-                        if isinstance(_entry, dict) and _entry.get('model'):
-                            _fb_entry = _entry
-                            break
-                elif isinstance(_fallback, dict) and _fallback.get('model'):
-                    _fb_entry = _fallback
-                if _fb_entry:
-                    _fallback_resolved = {
-                        'model': _fb_entry.get('model', ''),
-                        'provider': _fb_entry.get('provider', ''),
-                        'base_url': _fb_entry.get('base_url'),
-                        'api_key': _fb_entry.get('api_key'),
-                        'key_env': _fb_entry.get('key_env'),
-                    }
+            _fallback_resolved = _resolve_fallback_config_impl(_cfg)
 
             # Build kwargs defensively — guard newer params so the WebUI
             # degrades gracefully when run against an older hermes-agent build.
@@ -1792,57 +1777,11 @@ def _run_agent_streaming(
             import inspect as _inspect
             _agent_params = set(_inspect.signature(_AIAgent.__init__).parameters)
 
-            # CLI-parity max-iteration budget: read config.yaml's
-            # agent.max_turns and pass it to AIAgent when supported. Without
-            # this WebUI-created agents silently use AIAgent's constructor
-            # default (90), so long browser-originated tasks hit the
-            # "maximum number of tool-calling iterations" summary path even
-            # after the operator raises Hermes' global turn budget.
-            _max_iterations_cfg = None
-            try:
-                _raw_max_iterations = None
-                _agent_cfg_for_iterations = _cfg.get('agent', {}) if isinstance(_cfg, dict) else {}
-                if isinstance(_agent_cfg_for_iterations, dict):
-                    _raw_max_iterations = _agent_cfg_for_iterations.get('max_turns')
-                if _raw_max_iterations is None and isinstance(_cfg, dict):
-                    # Back-compat for older Hermes config files that used a
-                    # root-level max_turns key.
-                    _raw_max_iterations = _cfg.get('max_turns')
-                if _raw_max_iterations is not None:
-                    _parsed_max_iterations = int(_raw_max_iterations)
-                    if _parsed_max_iterations > 0:
-                        _max_iterations_cfg = _parsed_max_iterations
-            except Exception:
-                _max_iterations_cfg = None
-
-            # CLI-parity max output cap: read config.yaml's max_tokens and pass
-            # it to AIAgent when supported. Without this WebUI-created agents use
-            # provider-native output ceilings (e.g. Claude via OpenRouter can
-            # request 64k), which may turn an otherwise usable fallback into a
-            # 402 "more credits / fewer max_tokens" failure.
-            _max_tokens_cfg = None
-            try:
-                _raw_max_tokens = _cfg.get('max_tokens')
-                if _raw_max_tokens is None:
-                    _agent_cfg_for_tokens = _cfg.get('agent', {})
-                    if isinstance(_agent_cfg_for_tokens, dict):
-                        _raw_max_tokens = _agent_cfg_for_tokens.get('max_tokens')
-                if _raw_max_tokens is not None:
-                    _parsed_max_tokens = int(_raw_max_tokens)
-                    if _parsed_max_tokens > 0:
-                        _max_tokens_cfg = _parsed_max_tokens
-            except Exception:
-                _max_tokens_cfg = None
-
-            # CLI-parity reasoning effort: read agent.reasoning_effort from the
-            # active profile's config.yaml (the same key the CLI writes via
-            # `/reasoning <level>`) and hand the parsed dict to AIAgent.  When
-            # the key is absent or invalid, pass None → agent uses its default.
+            _max_iterations_cfg = _resolve_max_iterations_config_impl(_cfg)
+            _max_tokens_cfg = _resolve_max_tokens_config_impl(_cfg)
             try:
                 from api.config import parse_reasoning_effort as _parse_reff
-                _effort_cfg = _cfg.get('agent', {}) if isinstance(_cfg, dict) else {}
-                _effort_raw = _effort_cfg.get('reasoning_effort') if isinstance(_effort_cfg, dict) else None
-                _reasoning_config = _parse_reff(_effort_raw)
+                _reasoning_config = _resolve_reasoning_config_impl(_cfg, _parse_reff)
             except Exception:
                 _reasoning_config = None
 
