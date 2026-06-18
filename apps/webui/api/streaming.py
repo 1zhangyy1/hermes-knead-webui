@@ -155,6 +155,13 @@ from api.streaming_title_generation import (
     generate_title_raw_via_agent as _generate_title_raw_via_agent_impl,
     generate_title_raw_via_aux as _generate_title_raw_via_aux_impl,
 )
+from api.streaming_title_refresh import (
+    get_title_refresh_interval as _get_title_refresh_interval_impl,
+    maybe_schedule_title_refresh as _maybe_schedule_title_refresh_impl,
+    put_title_status as _put_title_status_impl,
+    run_background_title_refresh as _run_background_title_refresh_impl,
+    run_background_title_update as _run_background_title_update_impl,
+)
 # Source-guard anchor: MiniMax title calls set reasoning_split in
 # streaming_title_generation while streaming.py keeps the public wrappers.
 from api.streaming_recovery import (
@@ -342,14 +349,7 @@ def _drain_webui_process_notifications(session_id: str) -> list[str]:
 
 
 def _get_title_refresh_interval() -> int:
-    """Read the auto_title_refresh_every setting (0 = disabled)."""
-    try:
-        from api.config import load_settings
-        settings = load_settings()
-        val = settings.get('auto_title_refresh_every', '0')
-        return int(val) if str(val).strip().isdigit() and int(val) > 0 else 0
-    except Exception:
-        return 0
+    return _get_title_refresh_interval_impl()
 
 
 def _is_provisional_title(current_title: str, messages) -> bool:
@@ -430,171 +430,59 @@ def _generate_llm_session_title_via_aux(user_text: str, assistant_text: str, age
 
 
 def _put_title_status(put_event, session_id: str, status: str, reason: str = '', title: str = '', raw_preview: str = '') -> None:
-    payload = {'session_id': session_id, 'status': status}
-    if reason:
-        payload['reason'] = reason
-    if title:
-        payload['title'] = title
-    if raw_preview:
-        payload['raw_preview'] = raw_preview
-    put_event('title_status', payload)
-    logger.info(
-        "title_status session=%s status=%s reason=%s title=%r raw_preview=%r",
+    _put_title_status_impl(
+        put_event,
         session_id,
         status,
-        reason or '-',
-        title or '',
-        (raw_preview or '')[:120],
+        reason,
+        title,
+        raw_preview,
+        logger=logger,
     )
 
 
 def _run_background_title_update(session_id: str, user_text: str, assistant_text: str, placeholder_title: str, put_event, agent=None):
-    """Generate and publish a better title after `done`, then end the stream."""
-    try:
-        try:
-            s = get_session(session_id)
-        except KeyError:
-            _put_title_status(put_event, session_id, 'skipped', 'missing_session')
-            return
-        # Allow self-heal when a previously generated title leaked thinking text.
-        _invalid_existing = _looks_invalid_generated_title(s.title)
-        if getattr(s, 'llm_title_generated', False) and not _invalid_existing:
-            _put_title_status(put_event, session_id, 'skipped', 'already_generated', str(s.title or ''))
-            return
-        current = str(s.title or '').strip()
-        still_auto = (
-            current == placeholder_title
-            or current in ('Untitled', 'New Chat', '')
-            or _is_provisional_title(current, s.messages)
-            or _invalid_existing
-        )
-        if not still_auto:
-            _put_title_status(put_event, session_id, 'skipped', 'manual_title', current)
-            return
-        from api import profiles as profiles_api
-
-        with profiles_api.profile_env_for_background_worker(s, "background title", logger_override=logger):
-            aux_title_configured = _aux_title_configured()
-            if agent and not aux_title_configured:
-                next_title, llm_status, raw_preview = _generate_llm_session_title_for_agent(agent, user_text, assistant_text)
-                if not next_title and llm_status in ('llm_error', 'llm_invalid'):
-                    next_title, llm_status, raw_preview = _generate_llm_session_title_via_aux(user_text, assistant_text, agent=agent, use_agent_model=True)
-            else:
-                next_title, llm_status, raw_preview = _generate_llm_session_title_via_aux(user_text, assistant_text)
-                if not next_title and agent and llm_status in ('llm_error_aux', 'llm_invalid_aux'):
-                    next_title, llm_status, raw_preview = _generate_llm_session_title_for_agent(agent, user_text, assistant_text)
-            source = llm_status
-            if not next_title:
-                fallback_title = _fallback_title_from_exchange(user_text, assistant_text)
-                if fallback_title and not _is_generic_fallback_title(fallback_title):
-                    logger.debug("Using local fallback for session title generation")
-                    next_title = fallback_title
-                    source = 'fallback'
-                elif fallback_title:
-                    logger.debug("Skipping generic local fallback for session title generation: %r", fallback_title)
-        fallback_reason = (
-            f'local_summary:{llm_status}'
-            if source == 'fallback' and llm_status
-            else 'local_summary'
-        )
-        wrote_title = False
-        effective_title = current
-        if next_title:
-            with _get_session_agent_lock(session_id):
-                with LOCK:
-                    s = SESSIONS.get(session_id, s)
-                    effective_title = str(s.title or '').strip()
-                    invalid_existing_now = _looks_invalid_generated_title(s.title)
-                    still_auto = (
-                        effective_title == placeholder_title
-                        or effective_title in ('Untitled', 'New Chat', '')
-                        or _is_provisional_title(effective_title, s.messages)
-                        or invalid_existing_now
-                    )
-                if not still_auto:
-                    _put_title_status(put_event, session_id, 'skipped', 'manual_title', effective_title)
-                    return
-                if next_title != effective_title:
-                    s.title = next_title
-                    s.llm_title_generated = True
-                    # Keep chronological ordering stable in the sidebar.
-                    s.save(touch_updated_at=False)
-                    effective_title = s.title
-                    wrote_title = True
-
-        if wrote_title:
-            if source == 'fallback':
-                _put_title_status(put_event, session_id, source, fallback_reason, effective_title, raw_preview)
-            else:
-                _put_title_status(put_event, session_id, source, llm_status, effective_title, raw_preview)
-            put_event('title', {'session_id': session_id, 'title': effective_title})
-        else:
-            _put_title_status(put_event, session_id, 'skipped', source or 'unchanged', effective_title, raw_preview)
-    finally:
-        put_event('stream_end', {'session_id': session_id})
+    return _run_background_title_update_impl(
+        session_id,
+        user_text,
+        assistant_text,
+        placeholder_title,
+        put_event,
+        agent,
+        get_session=get_session,
+        put_title_status_fn=_put_title_status,
+        looks_invalid_generated_title=_looks_invalid_generated_title,
+        is_provisional_title=_is_provisional_title,
+        aux_title_configured=_aux_title_configured,
+        generate_title_for_agent=_generate_llm_session_title_for_agent,
+        generate_title_via_aux=_generate_llm_session_title_via_aux,
+        fallback_title_from_exchange=_fallback_title_from_exchange,
+        is_generic_fallback_title=_is_generic_fallback_title,
+        get_session_agent_lock=_get_session_agent_lock,
+        lock=LOCK,
+        sessions=SESSIONS,
+        logger=logger,
+    )
 
 
 def _run_background_title_refresh(session_id: str, user_text: str, assistant_text: str, current_title: str, put_event, agent=None):
-    """Refresh an existing LLM-generated title using the latest exchange text.
-
-    Unlike _run_background_title_update, this does NOT guard on
-    llm_title_generated — it assumes the title was already LLM-generated
-    and the session has progressed enough to warrant a refresh.
-    It does NOT emit stream_end (the caller already did).
-    """
-    try:
-        try:
-            s = get_session(session_id)
-        except KeyError:
-            return
-        # Safety: skip if user manually renamed since the check
-        effective = str(s.title or '').strip()
-        if effective != current_title:
-            _put_title_status(put_event, session_id, 'skipped', 'manual_title', effective)
-            return
-        if not effective or effective in ('Untitled', 'New Chat'):
-            return
-        from api import profiles as profiles_api
-
-        with profiles_api.profile_env_for_background_worker(s, "background title", logger_override=logger):
-            aux_title_configured = _aux_title_configured()
-            if agent and not aux_title_configured:
-                next_title, llm_status, raw_preview = _generate_llm_session_title_for_agent(agent, user_text, assistant_text)
-                if not next_title and llm_status in ('llm_error', 'llm_invalid'):
-                    next_title, llm_status, raw_preview = _generate_llm_session_title_via_aux(user_text, assistant_text, agent=agent, use_agent_model=True)
-            else:
-                next_title, llm_status, raw_preview = _generate_llm_session_title_via_aux(user_text, assistant_text)
-                if not next_title and agent and llm_status in ('llm_error_aux', 'llm_invalid_aux'):
-                    next_title, llm_status, raw_preview = _generate_llm_session_title_for_agent(agent, user_text, assistant_text)
-        if not next_title:
-            _put_title_status(put_event, session_id, 'refresh_skipped', llm_status or 'empty', effective, raw_preview)
-            return
-        # Skip if the new title is essentially the same (after normalization)
-        normalized_current = re.sub(r'\s+', ' ', effective).strip().lower()
-        normalized_new = re.sub(r'\s+', ' ', next_title).strip().lower()
-        if normalized_current == normalized_new:
-            _put_title_status(put_event, session_id, 'refresh_skipped', 'same_title', effective, raw_preview)
-            return
-        with _get_session_agent_lock(session_id):
-            with LOCK:
-                s = SESSIONS.get(session_id, s)
-                # Re-check: user may have renamed while we were generating
-                if str(s.title or '').strip() != current_title:
-                    _put_title_status(put_event, session_id, 'skipped', 'manual_title', str(s.title or '').strip())
-                    return
-                s.title = next_title
-                s.llm_title_generated = True
-                effective_title = s.title
-            # Session.save() calls _write_session_index(), which acquires LOCK.
-            # Keep the per-session agent lock for mutation serialization, but
-            # release the global session LOCK before persisting to avoid a
-            # self-deadlock in the background title-refresh thread.
-            s.save(touch_updated_at=False)
-        _put_title_status(put_event, session_id, 'refreshed', llm_status, effective_title, raw_preview)
-        put_event('title', {'session_id': session_id, 'title': effective_title})
-        logger.info("Adaptive title refresh: session=%s new_title=%r", session_id, effective_title)
-    except Exception:
-        logger.debug("Background title refresh failed for session %s", session_id, exc_info=True)
+    return _run_background_title_refresh_impl(
+        session_id,
+        user_text,
+        assistant_text,
+        current_title,
+        put_event,
+        agent,
+        get_session=get_session,
+        put_title_status_fn=_put_title_status,
+        aux_title_configured=_aux_title_configured,
+        generate_title_for_agent=_generate_llm_session_title_for_agent,
+        generate_title_via_aux=_generate_llm_session_title_via_aux,
+        get_session_agent_lock=_get_session_agent_lock,
+        lock=LOCK,
+        sessions=SESSIONS,
+        logger=logger,
+    )
 
 
 def _preserve_pre_compression_snapshot(s, old_sid: str) -> None:
@@ -688,26 +576,16 @@ def _preserve_pre_compression_snapshot(s, old_sid: str) -> None:
 
 
 def _maybe_schedule_title_refresh(session, put_event, agent):
-    """Check if the session is due for an adaptive title refresh and schedule it."""
-    refresh_interval = _get_title_refresh_interval()
-    if refresh_interval <= 0:
-        return
-    current_title = str(session.title or '').strip()
-    if not current_title or current_title in ('Untitled', 'New Chat'):
-        return
-    if not getattr(session, 'llm_title_generated', False):
-        return
-    exchange_count = _count_exchanges(session.messages)
-    if exchange_count <= 0 or exchange_count % refresh_interval != 0:
-        return
-    last_u, last_a = _latest_exchange_snippets(session.messages)
-    if not last_u and not last_a:
-        return
-    threading.Thread(
-        target=_run_background_title_refresh,
-        args=(session.session_id, last_u, last_a, current_title, put_event, agent),
-        daemon=True,
-    ).start()
+    return _maybe_schedule_title_refresh_impl(
+        session,
+        put_event,
+        agent,
+        get_title_refresh_interval_fn=_get_title_refresh_interval,
+        count_exchanges=_count_exchanges,
+        latest_exchange_snippets=_latest_exchange_snippets,
+        run_background_title_refresh_fn=_run_background_title_refresh,
+        thread_factory=threading.Thread,
+    )
 
 
 def _strip_native_image_parts_from_content(content):
