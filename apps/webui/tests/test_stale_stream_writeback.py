@@ -13,6 +13,7 @@ from api.models import Session
 WEBUI_ROOT = Path(__file__).parent.parent
 STREAMING_SRC = WEBUI_ROOT / "api/streaming.py"
 STREAMING_RECOVERY_SRC = WEBUI_ROOT / "api/streaming_recovery.py"
+STREAMING_TURN_WRITEBACK_SRC = WEBUI_ROOT / "api/streaming_turn_writeback.py"
 
 
 @pytest.fixture(autouse=True)
@@ -81,16 +82,19 @@ def test_cancel_stream_does_not_append_marker_after_stream_ownership_rotated():
 
 def test_success_path_checks_stream_ownership_before_persisting_result():
     src = STREAMING_SRC.read_text(encoding="utf-8")
-    guard = "if not ephemeral and not _stream_writeback_is_current(s, stream_id):"
-    guard_pos = src.find(guard)
+    writeback_src = STREAMING_TURN_WRITEBACK_SRC.read_text(encoding="utf-8")
+    helper_call = "_prepare_success_turn_writeback("
+    helper_pos = src.find(helper_call)
     result_merge_pos = src.find("_apply_agent_result_to_session(")
     compression_pos = src.find("Handle context compression side effects")
+    guard = "if not ephemeral and not stream_writeback_is_current(session, stream_id):"
 
-    assert guard_pos != -1
+    assert helper_pos != -1
     assert result_merge_pos != -1
     assert compression_pos != -1
-    assert guard_pos < result_merge_pos
-    assert guard_pos < compression_pos
+    assert guard in writeback_src
+    assert helper_pos < result_merge_pos
+    assert helper_pos < compression_pos
 
 
 def test_self_heal_retry_success_checks_stream_ownership_before_writeback():
