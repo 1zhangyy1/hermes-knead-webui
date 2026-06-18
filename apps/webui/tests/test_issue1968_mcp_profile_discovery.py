@@ -17,7 +17,6 @@ from pathlib import Path
 import re
 
 ROOT = Path(__file__).resolve().parents[1]
-STREAMING_PY = (ROOT / "api" / "streaming.py").read_text(encoding="utf-8")
 RUNTIME_HELPERS_PY = (ROOT / "api" / "streaming_runtime_helpers.py").read_text(encoding="utf-8")
 
 
@@ -34,11 +33,11 @@ def test_discover_mcp_tools_called_after_hermes_home_mutation():
     `HERMES_HOME = _profile_home` assignment, otherwise non-default profile
     MCP servers are never discovered.
     """
-    home_set_line = _line_of(STREAMING_PY, r"_apply_streaming_profile_process_env\(", "api/streaming.py")
-    discover_call_line = _line_of(STREAMING_PY, r"_discover_mcp_tools_for_profile\(\)\s*$", "api/streaming.py")
+    home_set_line = _line_of(RUNTIME_HELPERS_PY, r"apply_profile_process_env_fn\(", "api/streaming_runtime_helpers.py")
+    discover_call_line = _line_of(RUNTIME_HELPERS_PY, r"discover_mcp_tools_fn\(\)\s*$", "api/streaming_runtime_helpers.py")
     assert "os.environ['HERMES_HOME'] = profile_home" in RUNTIME_HELPERS_PY
     assert discover_call_line > home_set_line, (
-        f"_discover_mcp_tools_for_profile() at line {discover_call_line} must be AFTER the "
+        f"discover_mcp_tools_fn() at line {discover_call_line} must be AFTER the "
         f"profile env application at line {home_set_line} (issue #1968). "
         "Otherwise non-default profile MCP servers never load."
     )
@@ -53,10 +52,10 @@ def test_discover_mcp_tools_called_after_env_lock_release():
     Lexical check: the discover call must come after the process-env lock release
     marker that follows process env application.
     """
-    lock_release_marker = _line_of(STREAMING_PY, r"# Process env lock released", "api/streaming.py")
-    discover_call_line = _line_of(STREAMING_PY, r"_discover_mcp_tools_for_profile\(\)\s*$", "api/streaming.py")
+    lock_release_marker = _line_of(RUNTIME_HELPERS_PY, r"# Process env lock released", "api/streaming_runtime_helpers.py")
+    discover_call_line = _line_of(RUNTIME_HELPERS_PY, r"discover_mcp_tools_fn\(\)\s*$", "api/streaming_runtime_helpers.py")
     assert discover_call_line > lock_release_marker, (
-        f"_discover_mcp_tools_for_profile() at line {discover_call_line} should run AFTER "
+        f"discover_mcp_tools_fn() at line {discover_call_line} should run AFTER "
         f"the _ENV_LOCK release at line {lock_release_marker}, not inside the "
         "lock block (which would serialize MCP discovery across sessions)."
     )
@@ -70,12 +69,12 @@ def test_discover_mcp_tools_only_called_once_in_streaming():
     later refactor reintroduces a pre-mutation call site, this test catches it.
     """
     call_lines = [
-        line for line in STREAMING_PY.splitlines()
-        if "_discover_mcp_tools_for_profile()" in line
+        line for line in RUNTIME_HELPERS_PY.splitlines()
+        if "discover_mcp_tools_fn()" in line
         and not line.lstrip().startswith("#")
     ]
     assert len(call_lines) == 1, (
-        f"Expected exactly 1 `_discover_mcp_tools_for_profile()` call line in api/streaming.py "
+        f"Expected exactly 1 `discover_mcp_tools_fn()` call line in streaming_runtime_helpers.py "
         f"(comments excluded), found {len(call_lines)}: {call_lines!r}.  A "
         "duplicate call site would re-introduce the #1968 bug if placed before "
         "the HERMES_HOME mutation."

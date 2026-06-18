@@ -32,6 +32,14 @@ class StreamingProcessEnvSnapshot:
     runtime_env_snapshot: dict
 
 
+@dataclass(frozen=True)
+class StreamingProfileActivation:
+    profile_home: str
+    resolved_profile_name: str | None
+    profile_env_snapshot: dict
+    runtime_env_snapshot: dict
+
+
 def prewarm_skill_tool_modules(module_names=('tools.skills_tool', 'tools.skill_manager_tool')) -> None:
     """Import skill tool modules before process-env locks are acquired."""
     for module_name in module_names:
@@ -163,6 +171,57 @@ def discover_mcp_tools_for_profile() -> bool:
         return True
     except Exception:
         return False
+
+
+def activate_streaming_profile_runtime(
+    session,
+    *,
+    workspace: str,
+    session_id: str,
+    set_thread_env: Callable[..., None],
+    env_lock,
+    resolve_profile_runtime_fn=resolve_streaming_profile_runtime,
+    build_thread_env_fn=build_agent_thread_env,
+    prewarm_skill_tool_modules_fn=prewarm_skill_tool_modules,
+    apply_profile_process_env_fn=apply_streaming_profile_process_env,
+    discover_mcp_tools_fn=discover_mcp_tools_for_profile,
+) -> StreamingProfileActivation:
+    """Activate per-profile thread/process env before constructing the agent."""
+    _profile_runtime = resolve_profile_runtime_fn(session)
+    _profile_home = _profile_runtime.profile_home
+    _profile_runtime_env = _profile_runtime.profile_runtime_env
+    _resolved_profile_name = _profile_runtime.resolved_profile_name
+    patch_skill_home_modules = _profile_runtime.patch_skill_home_modules
+
+    _thread_env = build_thread_env_fn(
+        _profile_runtime_env,
+        str(workspace),
+        session_id,
+        _profile_home,
+    )
+    set_thread_env(**_thread_env)
+    # Prewarm skill-tool imports *before* acquiring the lock so that
+    # first-time module initialisation (which can be slow) does not
+    # block other concurrent sessions waiting on the process env lock (#2024).
+    prewarm_skill_tool_modules_fn()
+    _process_env_snapshot = apply_profile_process_env_fn(
+        profile_runtime_env=_profile_runtime_env,
+        workspace=str(workspace),
+        session_id=session_id,
+        profile_home=_profile_home,
+        patch_skill_home_modules=patch_skill_home_modules,
+        env_lock=env_lock,
+    )
+    # Process env lock released — agent runs without holding it.
+    # MCP discovery must run after the per-session HERMES_HOME mutation so
+    # non-default profile MCP servers are loaded from the right config.
+    discover_mcp_tools_fn()
+    return StreamingProfileActivation(
+        profile_home=_profile_home,
+        resolved_profile_name=_resolved_profile_name,
+        profile_env_snapshot=_process_env_snapshot.profile_env_snapshot,
+        runtime_env_snapshot=_process_env_snapshot.runtime_env_snapshot,
+    )
 
 
 def clarify_timeout_seconds(get_config_fn, default: int = 120) -> int:
