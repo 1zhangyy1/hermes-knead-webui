@@ -86,17 +86,19 @@ from api.external_session_bridge import (
     ttl_seconds as _cli_sessions_ttl_seconds_impl,
 )
 from api.session_repair import (
-    append_journaled_partial_output as _append_journaled_partial_output_impl,
-    append_recovered_pending_turn as _append_recovered_pending_turn_impl,
     append_recovered_turn_to_context as _append_recovered_turn_to_context_impl,
-    apply_core_sync_or_error_marker as _apply_core_sync_or_error_marker_impl,
     find_existing_assistant_for_journal_content as _find_existing_assistant_for_journal_content_impl,
-    interrupted_recovery_marker as _interrupted_recovery_marker_impl,
     journal_tool_already_present as _journal_tool_already_present_impl,
     normalize_journal_recovery_text as _normalize_journal_recovery_text_impl,
-    repair_stale_pending as _repair_stale_pending_impl,
-    run_journal_has_visible_output as _run_journal_has_visible_output_impl,
     truncate_journal_tool_args as _truncate_journal_tool_args_impl,
+)
+from api.session_repair_runtime import (
+    append_journaled_partial_output as _append_journaled_partial_output_runtime,
+    append_recovered_pending_turn as _append_recovered_pending_turn_runtime,
+    apply_core_sync_or_error_marker as _apply_core_sync_or_error_marker_runtime,
+    interrupted_recovery_marker as _interrupted_recovery_marker_runtime,
+    repair_stale_pending as _repair_stale_pending_runtime,
+    run_journal_has_visible_output as _run_journal_has_visible_output_runtime,
 )
 from api.session_projection import (
     is_streaming_session as _is_streaming_session_impl,
@@ -162,10 +164,9 @@ def _append_recovered_turn_to_context(session, recovered: dict) -> None:
 
 
 def _append_recovered_pending_turn(session, *, timestamp: int | None = None) -> dict | None:
-    return _append_recovered_pending_turn_impl(
+    return _append_recovered_pending_turn_runtime(
         session,
         timestamp=timestamp,
-        now=time.time,
         append_recovered_turn_to_context=_append_recovered_turn_to_context,
     )
 
@@ -211,10 +212,7 @@ def _get_profile_home(profile) -> Path:
 
 
 def _interrupted_recovery_marker(*, recovered_output: bool = False) -> dict:
-    return _interrupted_recovery_marker_impl(
-        recovered_output=recovered_output,
-        now=time.time,
-    )
+    return _interrupted_recovery_marker_runtime(recovered_output=recovered_output)
 
 
 def _truncate_journal_tool_args(args, limit: int = 4) -> dict:
@@ -234,15 +232,7 @@ def _journal_tool_already_present(session, name: str, preview: str) -> bool:
 
 
 def _run_journal_has_visible_output(session, stream_id: str | None) -> bool:
-    try:
-        from api.run_journal import read_run_events
-    except Exception:
-        return False
-    return _run_journal_has_visible_output_impl(
-        session,
-        stream_id,
-        read_run_events=read_run_events,
-    )
+    return _run_journal_has_visible_output_runtime(session, stream_id)
 
 
 def _append_journaled_partial_output(
@@ -251,29 +241,10 @@ def _append_journaled_partial_output(
     *,
     dedupe_existing: bool = False,
 ) -> bool:
-    """Recover already-emitted visible output from a dead stream journal.
-
-    This repair path is intentionally conservative: it restores user-visible
-    assistant text and tool-card metadata that had already been emitted over
-    SSE before the WebUI process died. It does not restore hidden reasoning and
-    it does not try to continue execution.
-    """
-    try:
-        from api.run_journal import read_run_events
-    except Exception:
-        logger.debug(
-            "Session %s: failed to read run journal for stream %s",
-            getattr(session, 'session_id', '?'),
-            stream_id,
-            exc_info=True,
-        )
-        return False
-    return _append_journaled_partial_output_impl(
+    return _append_journaled_partial_output_runtime(
         session,
         stream_id,
-        read_run_events=read_run_events,
         logger=logger,
-        now=time.time,
         find_existing_assistant_for_journal_content=_find_existing_assistant_for_journal_content,
         journal_tool_already_present=_journal_tool_already_present,
         truncate_journal_tool_args=_truncate_journal_tool_args,
@@ -289,22 +260,7 @@ def _apply_core_sync_or_error_marker(
     require_stream_dead=True,
     touch_updated_at=True,
 ) -> bool:
-    """Inner repair logic. Must be called with the per-session lock already held.
-
-    Re-checks session state under the lock, then either syncs messages from the
-    core transcript (if present and non-empty) or restores the pending user
-    message as a recovered user turn and appends an error marker.
-
-    stream_id_for_recheck: when provided, repair bails if session.active_stream_id
-    changed (e.g. context compression rotated it).  The cache-miss repair path
-    also requires the stream to be absent from active streams; the streaming
-    thread's final fallback passes require_stream_dead=False because it runs
-    before its own stream is removed from STREAMS.
-
-    Returns True if repair was applied, False if the re-check bailed out.
-    Must never raise — caller is responsible for exception handling.
-    """
-    return _apply_core_sync_or_error_marker_impl(
+    return _apply_core_sync_or_error_marker_runtime(
         session,
         core_path,
         stream_id_for_recheck=stream_id_for_recheck,
@@ -314,11 +270,9 @@ def _apply_core_sync_or_error_marker(
         append_recovered_pending_turn=_append_recovered_pending_turn,
         append_recovered_turn_to_context=_append_recovered_turn_to_context,
         append_journaled_partial_output=_append_journaled_partial_output,
-        interrupted_recovery_marker=_interrupted_recovery_marker,
         normalize_journal_recovery_text=_normalize_journal_recovery_text,
         run_journal_has_visible_output=_run_journal_has_visible_output,
         logger=logger,
-        now=time.time,
     )
 
 
@@ -343,27 +297,13 @@ _REPAIR_STALE_PENDING_GRACE_SECONDS = 30
 
 
 def _repair_stale_pending(session) -> bool:
-    """Recover a sidecar stuck with messages=[] and stale pending state.
-
-    Fires only when messages is empty, pending_user_message is set,
-    active_stream_id is set, the stream is no longer alive, AND the turn is
-    older than _REPAIR_STALE_PENDING_GRACE_SECONDS (#1624).
-
-    Uses a non-blocking lock acquire so a caller that already holds the
-    per-session lock (e.g. retry_last, undo_last, cancel_stream) cannot
-    deadlock when get_session() triggers this on a cache miss.
-
-    Returns True if repair was applied, False otherwise.
-    Must never raise — all errors are caught and logged.
-    """
-    return _repair_stale_pending_impl(
+    return _repair_stale_pending_runtime(
         session,
         active_stream_ids=_active_stream_ids,
         get_profile_home=_get_profile_home,
         get_session_agent_lock=_get_session_agent_lock,
         apply_core_sync_or_error_marker=_apply_core_sync_or_error_marker,
         logger=logger,
-        now=time.time,
         grace_seconds=_REPAIR_STALE_PENDING_GRACE_SECONDS,
     )
 
