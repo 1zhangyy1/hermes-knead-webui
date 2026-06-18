@@ -1,6 +1,11 @@
 import threading
 
-from api.streaming_run_state import StreamingRunState, initialize_streaming_run_state
+import api.config as cfg
+from api.streaming_run_state import (
+    StreamingRunState,
+    initialize_streaming_run_state,
+    initialize_webui_streaming_run_state,
+)
 
 
 class _Tracker:
@@ -101,3 +106,46 @@ def test_initialize_streaming_run_state_registers_stream_and_adapters():
     assert status_calls[0]["session_id"] == "sid-1"
     status_calls[0]["put"]("status", {"phase": "running"})
     assert state.event_sink.events[-1] == ("status", {"phase": "running"})
+
+
+def test_initialize_webui_streaming_run_state_uses_standard_registries():
+    stream_id = "stream-webui-run-state"
+    session = object()
+    agent = object()
+
+    with cfg.STREAMS_LOCK:
+        cfg.CANCEL_FLAGS.pop(stream_id, None)
+        cfg.STREAM_PARTIAL_TEXT.pop(stream_id, None)
+        cfg.STREAM_REASONING_TEXT.pop(stream_id, None)
+        cfg.STREAM_LIVE_TOOL_CALLS.pop(stream_id, None)
+        cfg.STREAM_LAST_EVENT_ID.pop(stream_id, None)
+
+    try:
+        state = initialize_webui_streaming_run_state(
+            stream_id=stream_id,
+            session_id="sid-webui-run-state",
+            queue=object(),
+            run_journal="journal",
+            get_session=lambda: session,
+            get_agent=lambda: agent,
+            logger=object(),
+            live_usage_tracker_factory=_Tracker,
+            event_sink_factory=_Sink,
+            metering_ticker_factory=_Ticker,
+            status_callback_factory=lambda **_kwargs: "status-callback",
+        )
+
+        with cfg.STREAMS_LOCK:
+            assert cfg.CANCEL_FLAGS[stream_id] is state.cancel_event
+            assert cfg.STREAM_PARTIAL_TEXT[stream_id] == ""
+            assert cfg.STREAM_REASONING_TEXT[stream_id] == ""
+            assert cfg.STREAM_LIVE_TOOL_CALLS[stream_id] == []
+        assert state.live_usage_snapshot() == {"session": session, "agent": agent}
+        assert state.event_sink.kwargs["last_event_ids"] is cfg.STREAM_LAST_EVENT_ID
+    finally:
+        with cfg.STREAMS_LOCK:
+            cfg.CANCEL_FLAGS.pop(stream_id, None)
+            cfg.STREAM_PARTIAL_TEXT.pop(stream_id, None)
+            cfg.STREAM_REASONING_TEXT.pop(stream_id, None)
+            cfg.STREAM_LIVE_TOOL_CALLS.pop(stream_id, None)
+            cfg.STREAM_LAST_EVENT_ID.pop(stream_id, None)

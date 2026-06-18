@@ -18,7 +18,6 @@ from api.config import (
     STREAMS, STREAMS_LOCK, CANCEL_FLAGS, AGENT_INSTANCES, STREAM_PARTIAL_TEXT,
     STREAM_REASONING_TEXT, STREAM_LIVE_TOOL_CALLS,
     STREAM_GOAL_RELATED, PENDING_GOAL_CONTINUATION,
-    STREAM_LAST_EVENT_ID,
     LOCK, SESSIONS, SESSION_DIR,
     _get_session_agent_lock, _set_thread_env,
     register_active_run, update_active_run,
@@ -145,7 +144,7 @@ from api.streaming_process_notifications import (
     mark_process_completion_consumed as _mark_process_completion_consumed_impl,
 )
 from api.streaming_product_turn import ProductTurnFinalizer as _ProductTurnFinalizer
-from api.streaming_run_state import initialize_streaming_run_state as _initialize_streaming_run_state
+from api.streaming_run_state import initialize_webui_streaming_run_state as _initialize_streaming_run_state
 from api.streaming_turn_journal import (
     append_interrupted_turn_event as _append_interrupted_turn_event,
     append_worker_started_turn_event as _append_worker_started_turn_event,
@@ -741,12 +740,6 @@ def _run_agent_streaming(
         session_id=session_id,
         queue=q,
         run_journal=run_journal,
-        streams_lock=STREAMS_LOCK,
-        cancel_flags=CANCEL_FLAGS,
-        partial_texts=STREAM_PARTIAL_TEXT,
-        reasoning_texts=STREAM_REASONING_TEXT,
-        live_tool_calls=STREAM_LIVE_TOOL_CALLS,
-        last_event_ids=STREAM_LAST_EVENT_ID,
         get_session=lambda: get_session(session_id),
         get_agent=lambda: agent,
         logger=logger,

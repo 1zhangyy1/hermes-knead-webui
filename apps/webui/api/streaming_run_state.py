@@ -6,6 +6,14 @@ import threading
 from dataclasses import dataclass
 from typing import Any, Callable
 
+from api.config import (
+    CANCEL_FLAGS,
+    STREAMS_LOCK,
+    STREAM_LAST_EVENT_ID,
+    STREAM_LIVE_TOOL_CALLS,
+    STREAM_PARTIAL_TEXT,
+    STREAM_REASONING_TEXT,
+)
 from api.streaming_agent_status import make_agent_status_callback
 from api.streaming_event_sink import StreamingEventSink
 from api.streaming_live_usage import LiveUsageTracker
@@ -93,3 +101,41 @@ def initialize_streaming_run_state(
         put=state.put,
     )
     return state
+
+
+def initialize_webui_streaming_run_state(
+    *,
+    stream_id: str,
+    session_id: str,
+    queue,
+    run_journal,
+    get_session: Callable[[], object | None],
+    get_agent: Callable[[], object | None],
+    logger,
+    event_factory=threading.Event,
+    live_usage_tracker_factory=LiveUsageTracker,
+    event_sink_factory=StreamingEventSink,
+    metering_ticker_factory=StreamingMeteringTicker,
+    status_callback_factory=make_agent_status_callback,
+) -> StreamingRunState:
+    """Register a WebUI stream using the standard process-wide registries."""
+    return initialize_streaming_run_state(
+        stream_id=stream_id,
+        session_id=session_id,
+        queue=queue,
+        run_journal=run_journal,
+        streams_lock=STREAMS_LOCK,
+        cancel_flags=CANCEL_FLAGS,
+        partial_texts=STREAM_PARTIAL_TEXT,
+        reasoning_texts=STREAM_REASONING_TEXT,
+        live_tool_calls=STREAM_LIVE_TOOL_CALLS,
+        last_event_ids=STREAM_LAST_EVENT_ID,
+        get_session=get_session,
+        get_agent=get_agent,
+        logger=logger,
+        event_factory=event_factory,
+        live_usage_tracker_factory=live_usage_tracker_factory,
+        event_sink_factory=event_sink_factory,
+        metering_ticker_factory=metering_ticker_factory,
+        status_callback_factory=status_callback_factory,
+    )
