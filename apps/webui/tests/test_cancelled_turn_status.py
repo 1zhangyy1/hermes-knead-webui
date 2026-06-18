@@ -141,16 +141,18 @@ class TestCancelledTurnPersistenceGuards:
     def test_exception_path_classifies_after_cancel_event_before_generic_error(self):
         src = _read("api/streaming.py")
         cancellation_src = _read("api/streaming_cancellation.py")
+        errors_src = _read("api/streaming_errors.py")
         except_idx = src.find("print('[webui] stream error:")
         assert except_idx != -1, "stream exception handler not found"
         classify_idx = src.find("_classify_provider_error", except_idx)
-        generic_idx = src.find("_exc_label, _exc_type, _exc_hint = 'Error', 'error', ''", except_idx)
-        assert classify_idx != -1 and generic_idx != -1
-        block = src[except_idx:generic_idx]
+        copy_idx = src.find("_exception_error_copy", except_idx)
+        assert classify_idx != -1 and copy_idx != -1
+        block = src[except_idx:copy_idx]
 
         assert "_handle_exception_cancel(" in block, (
             "Exception handling must distinguish user-cancelled/aborted runs before generic errors."
         )
+        assert "return 'Error', 'error', ''" in errors_src
         assert "cancel_event.is_set()" in cancellation_src
         assert "finalize_cancelled_turn_fn(session, ephemeral=ephemeral)" in cancellation_src
         assert "append_interrupted_turn_event_fn(session.session_id, stream_id, logger=logger)" in cancellation_src

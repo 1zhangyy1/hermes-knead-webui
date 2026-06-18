@@ -78,7 +78,7 @@ class TestStreamingAuthErrorDetection:
 
     def test_auth_error_hint_mentions_hermes_model(self):
         """The auth_mismatch hint must mention 'hermes model' command."""
-        src = _read("api/streaming.py")
+        src = _read("api/streaming_errors.py")
         # Find the auth_mismatch apperror block
         idx = src.find("auth_mismatch")
         block = src[idx:idx + 500]

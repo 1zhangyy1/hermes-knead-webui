@@ -165,6 +165,31 @@ def classify_provider_error(
     return {'label': 'Error', 'type': 'error', 'hint': ''}
 
 
+def exception_error_copy(classification: dict) -> tuple[str, str, str]:
+    """Return the user-facing copy for an exception-path classified error."""
+    error_type = classification.get('type')
+    if error_type in {
+        'quota_exhausted',
+        'rate_limit',
+        'model_not_found',
+        'cancelled',
+        'interrupted',
+    }:
+        return (
+            classification.get('label') or 'Error',
+            error_type,
+            classification.get('hint') or '',
+        )
+    if error_type == 'auth_mismatch':
+        return (
+            'Authentication error',
+            'auth_mismatch',
+            'The selected model may not be supported by your configured provider. '
+            'Run `hermes model` in your terminal to switch providers, then restart the WebUI.',
+        )
+    return 'Error', 'error', ''
+
+
 def provider_error_payload(
     message: str,
     err_type: str,
