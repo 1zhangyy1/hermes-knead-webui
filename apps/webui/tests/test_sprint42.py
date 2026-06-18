@@ -4,9 +4,9 @@ Sprint 42 Tests: SessionDB injection into AIAgent for WebUI sessions (PR #356).
 Covers:
 - streaming_agent_config.py: SessionDB is initialized by a guarded helper
 - streaming_agent_config.py: try/except guards SessionDB init so failures are non-fatal
-- streaming.py: session_db= kwarg is passed into agent kwargs
+- streaming_agent_config.py: session_db= kwarg is passed into agent kwargs
 - streaming_agent_config.py: SessionDB init failure prints a WARNING (not silently swallowed)
-- streaming.py: SessionDB init is placed before AIAgent construction
+- streaming_agent_turn_setup.py: SessionDB init is placed before AIAgent construction
 """
 import ast
 import threading
@@ -51,9 +51,9 @@ class TestSessionDBInjection(unittest.TestCase):
     def test_session_db_kwarg_passed_to_agent(self):
         """session_db= must be passed to the AIAgent constructor call."""
         self.assertIn(
-            "session_db=_session_db",
-            STREAMING_PY,
-            "session_db kwarg not passed to AIAgent (PR #356)",
+            "session_db=session_db",
+            STREAMING_AGENT_CONFIG_PY,
+            "session_db kwarg not passed into WebUI agent kwargs (PR #356)",
         )
 
     def test_sessiondb_init_in_try_except(self):
@@ -769,11 +769,10 @@ def test_streaming_restores_prior_reasoning_metadata_after_followup():
     history before saving the session, including reinserting dropped
     reasoning-only assistant segments.
     """
-    src = (REPO / 'api' / 'streaming.py').read_text()
     completed_src = (REPO / 'api' / 'streaming_completed_writeback.py').read_text()
     context_src = (REPO / 'api' / 'streaming_context.py').read_text()
-    assert "def _restore_reasoning_metadata(" in src, \
-        "streaming.py must define a helper to restore prior reasoning metadata"
+    assert "def restore_reasoning_metadata(" in context_src, \
+        "streaming_context.py must define the helper that restores prior reasoning metadata"
     assert "apply_agent_result_to_session_fn(" in completed_src, \
         "completed writeback must apply restored agent result messages before saving"
     assert "session.context_messages = next_context_messages" in context_src, \
