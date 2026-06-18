@@ -4,6 +4,16 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from api.compression_anchor import visible_messages_for_anchor
+from api.config import (
+    LOCK,
+    SESSIONS,
+    SESSION_AGENT_CACHE,
+    SESSION_AGENT_CACHE_LOCK,
+    SESSION_AGENT_LOCKS,
+    SESSION_AGENT_LOCKS_LOCK,
+)
+
 
 @dataclass
 class CompressionSideEffectResult:
@@ -100,4 +110,45 @@ def handle_context_compression_side_effects(
         compressed=compressed,
         old_session_id=old_session_id,
         new_session_id=new_session_id,
+    )
+
+
+def apply_streaming_context_compression_side_effects(
+    session,
+    agent,
+    *,
+    original_session_id: str,
+    resolved_profile_name,
+    agent_lock,
+    pre_compression_count: int,
+    preserve_pre_compression_snapshot,
+    compression_anchor_message_key,
+    compact_summary_text,
+    compression_summary_from_messages,
+    put,
+    usage_snapshot,
+    logger=None,
+) -> CompressionSideEffectResult:
+    """Apply compression side effects using the WebUI streaming globals."""
+    return handle_context_compression_side_effects(
+        session,
+        agent,
+        original_session_id=original_session_id,
+        resolved_profile_name=resolved_profile_name,
+        agent_lock=agent_lock,
+        pre_compression_count=pre_compression_count,
+        preserve_pre_compression_snapshot=preserve_pre_compression_snapshot,
+        sessions_lock=LOCK,
+        sessions=SESSIONS,
+        session_agent_locks=SESSION_AGENT_LOCKS,
+        session_agent_locks_lock=SESSION_AGENT_LOCKS_LOCK,
+        session_agent_cache=SESSION_AGENT_CACHE,
+        session_agent_cache_lock=SESSION_AGENT_CACHE_LOCK,
+        visible_messages_for_anchor=visible_messages_for_anchor,
+        compression_anchor_message_key=compression_anchor_message_key,
+        compact_summary_text=compact_summary_text,
+        compression_summary_from_messages=compression_summary_from_messages,
+        put=put,
+        usage_snapshot=usage_snapshot,
+        logger=logger,
     )

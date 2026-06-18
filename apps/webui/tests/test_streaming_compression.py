@@ -1,7 +1,11 @@
 import threading
 from types import SimpleNamespace
 
-from api.streaming_compression import handle_context_compression_side_effects
+import api.config as cfg
+from api.streaming_compression import (
+    apply_streaming_context_compression_side_effects,
+    handle_context_compression_side_effects,
+)
 
 
 class Logger:
@@ -161,3 +165,82 @@ def test_handle_context_compression_noops_when_not_compressed():
     assert result.compressed is False
     assert events == []
     assert session.compression_anchor_summary is None
+
+
+def test_apply_streaming_context_compression_side_effects_uses_runtime_globals():
+    old_session_id = 'wrapper-old-session'
+    new_session_id = 'wrapper-new-session'
+    session = _session(old_session_id)
+    agent = SimpleNamespace(session_id=new_session_id, context_compressor=None)
+    agent_lock = object()
+    events = []
+    preserved = []
+
+    with cfg.LOCK:
+        cfg.SESSIONS.pop(old_session_id, None)
+        cfg.SESSIONS.pop(new_session_id, None)
+        cfg.SESSIONS[old_session_id] = session
+    with cfg.SESSION_AGENT_LOCKS_LOCK:
+        cfg.SESSION_AGENT_LOCKS.pop(old_session_id, None)
+        cfg.SESSION_AGENT_LOCKS.pop(new_session_id, None)
+        cfg.SESSION_AGENT_LOCKS[old_session_id] = agent_lock
+    with cfg.SESSION_AGENT_CACHE_LOCK:
+        cfg.SESSION_AGENT_CACHE.pop(old_session_id, None)
+        cfg.SESSION_AGENT_CACHE.pop(new_session_id, None)
+        cfg.SESSION_AGENT_CACHE[old_session_id] = (agent, 'sig')
+
+    try:
+        result = apply_streaming_context_compression_side_effects(
+            session,
+            agent,
+            original_session_id=old_session_id,
+            resolved_profile_name='runtime-profile',
+            agent_lock=agent_lock,
+            pre_compression_count=0,
+            preserve_pre_compression_snapshot=lambda s, sid: preserved.append((s, sid)),
+            compression_anchor_message_key=lambda message: {'role': message['role']},
+            compact_summary_text=lambda text: text,
+            compression_summary_from_messages=lambda messages: messages[-1].get('content') if messages else '',
+            put=lambda event, data: events.append((event, data)),
+            usage_snapshot=lambda: {'total_tokens': 42},
+        )
+
+        assert result.compressed is True
+        assert result.old_session_id == old_session_id
+        assert result.new_session_id == new_session_id
+        assert session.session_id == new_session_id
+        assert session.profile == 'runtime-profile'
+        assert session.parent_session_id == old_session_id
+        assert preserved == [(session, old_session_id)]
+        assert session.compression_anchor_visible_idx == 1
+        assert session.compression_anchor_message_key == {'role': 'assistant'}
+        assert events == [
+            (
+                'compressed',
+                {
+                    'session_id': new_session_id,
+                    'message': 'Context auto-compressed to continue the conversation',
+                    'usage': {'total_tokens': 42},
+                },
+            ),
+        ]
+
+        with cfg.LOCK:
+            assert old_session_id not in cfg.SESSIONS
+            assert cfg.SESSIONS[new_session_id] is session
+        with cfg.SESSION_AGENT_LOCKS_LOCK:
+            assert old_session_id not in cfg.SESSION_AGENT_LOCKS
+            assert cfg.SESSION_AGENT_LOCKS[new_session_id] is agent_lock
+        with cfg.SESSION_AGENT_CACHE_LOCK:
+            assert old_session_id not in cfg.SESSION_AGENT_CACHE
+            assert cfg.SESSION_AGENT_CACHE[new_session_id] == (agent, 'sig')
+    finally:
+        with cfg.LOCK:
+            cfg.SESSIONS.pop(old_session_id, None)
+            cfg.SESSIONS.pop(new_session_id, None)
+        with cfg.SESSION_AGENT_LOCKS_LOCK:
+            cfg.SESSION_AGENT_LOCKS.pop(old_session_id, None)
+            cfg.SESSION_AGENT_LOCKS.pop(new_session_id, None)
+        with cfg.SESSION_AGENT_CACHE_LOCK:
+            cfg.SESSION_AGENT_CACHE.pop(old_session_id, None)
+            cfg.SESSION_AGENT_CACHE.pop(new_session_id, None)
