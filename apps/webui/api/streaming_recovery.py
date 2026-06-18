@@ -272,3 +272,51 @@ def retry_conversation_after_credential_self_heal(
         return CredentialSelfHealRetry(rebuilt=rebuilt, result=None, error=exc)
 
     return CredentialSelfHealRetry(rebuilt=rebuilt, result=result, error=None)
+
+
+def persist_exception_self_heal_result(
+    session,
+    result: dict[str, Any],
+    *,
+    previous_messages,
+    previous_context_messages,
+    msg_text: str,
+    session_id: str,
+    stream_id: str,
+    ephemeral: bool,
+    agent_lock,
+    checkpoint_stop,
+    checkpoint_thread,
+    stop_checkpoint_thread,
+    stream_writeback_is_current,
+    apply_agent_result_to_session,
+    logger,
+) -> bool:
+    """Persist a successful exception-path self-heal retry result.
+
+    Return False when the worker no longer owns the stream writeback and the
+    caller should return without logging retry success.
+    """
+    if session is None:
+        return True
+
+    stop_checkpoint_thread(checkpoint_stop, checkpoint_thread)
+    lock_ctx = agent_lock if agent_lock is not None else contextlib.nullcontext()
+    with lock_ctx:
+        if not ephemeral and not stream_writeback_is_current(session, stream_id):
+            logger.info(
+                "Skipping stale stream self-heal writeback for session %s stream %s; active_stream_id=%s",
+                getattr(session, 'session_id', session_id),
+                stream_id,
+                getattr(session, 'active_stream_id', None),
+            )
+            return False
+        apply_agent_result_to_session(
+            session,
+            previous_messages,
+            previous_context_messages,
+            result.get('messages'),
+            msg_text,
+        )
+        session.save()
+    return True

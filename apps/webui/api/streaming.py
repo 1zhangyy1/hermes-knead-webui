@@ -208,6 +208,7 @@ from api.streaming_recovery import (
     attempt_credential_self_heal as _attempt_credential_self_heal_impl,
     last_resort_sync_from_core as _last_resort_sync_from_core_impl,
     materialize_pending_user_turn_before_error as _materialize_pending_user_turn_before_error_impl,
+    persist_exception_self_heal_result as _persist_exception_self_heal_result,
     retry_conversation_after_credential_self_heal as _retry_conversation_after_credential_self_heal,
 )
 from api.streaming_runtime_helpers import (
@@ -1343,27 +1344,24 @@ def _run_agent_streaming(
                     resolved_base_url = _rebuilt.resolved_base_url
                     _agent_kwargs = _rebuilt.agent_kwargs
                     if _heal_retry.result is not None:
-                        # Retry succeeded — persist the result normally
-                        if s is not None:
-                            _stop_checkpoint_thread(_checkpoint_stop, _ckpt_thread)
-                            _lock_ctx = _agent_lock if _agent_lock is not None else contextlib.nullcontext()
-                            with _lock_ctx:
-                                if not ephemeral and not _stream_writeback_is_current(s, stream_id):
-                                    logger.info(
-                                        "Skipping stale stream self-heal writeback for session %s stream %s; active_stream_id=%s",
-                                        getattr(s, 'session_id', session_id),
-                                        stream_id,
-                                        getattr(s, 'active_stream_id', None),
-                                    )
-                                    return
-                                _result_messages = _apply_agent_result_to_session(
-                                    s,
-                                    _previous_messages,
-                                    _previous_context_messages,
-                                    _heal_retry.result.get('messages'),
-                                    msg_text,
-                                )
-                                s.save()
+                        if not _persist_exception_self_heal_result(
+                            s,
+                            _heal_retry.result,
+                            previous_messages=_previous_messages,
+                            previous_context_messages=_previous_context_messages,
+                            msg_text=msg_text,
+                            session_id=session_id,
+                            stream_id=stream_id,
+                            ephemeral=ephemeral,
+                            agent_lock=_agent_lock,
+                            checkpoint_stop=_checkpoint_stop,
+                            checkpoint_thread=_ckpt_thread,
+                            stop_checkpoint_thread=_stop_checkpoint_thread,
+                            stream_writeback_is_current=_stream_writeback_is_current,
+                            apply_agent_result_to_session=_apply_agent_result_to_session,
+                            logger=logger,
+                        ):
+                            return
                         logger.info('[webui] self-heal (except path): retry succeeded')
                         return  # skip error emission
                     # Fall through to emit the original error when retry failed.
