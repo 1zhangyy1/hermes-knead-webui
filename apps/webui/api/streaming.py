@@ -231,7 +231,7 @@ from api.streaming_runtime_prompt import (
     build_workspace_system_message as _build_workspace_system_message,
     configure_agent_runtime_prompt as _configure_agent_runtime_prompt,
 )
-from api.streaming_compression import handle_context_compression_side_effects as _handle_context_compression_side_effects
+from api.streaming_compression import apply_streaming_context_compression_side_effects as _apply_streaming_context_compression_side_effects
 
 # Global lock for os.environ writes. Per-session locks (_agent_lock) prevent
 # concurrent runs of the SAME session, but two DIFFERENT sessions can still
@@ -1132,9 +1132,7 @@ def _run_agent_streaming(
                 # If compression fired inside run_conversation, the agent may have
                 # rotated its session_id. Detect and fix the mismatch so the WebUI
                 # continues writing to the correct session file.
-                from api.compression_anchor import visible_messages_for_anchor
-                from api.config import SESSION_AGENT_CACHE, SESSION_AGENT_CACHE_LOCK
-                _handle_context_compression_side_effects(
+                _apply_streaming_context_compression_side_effects(
                     s,
                     agent,
                     original_session_id=session_id,
@@ -1142,13 +1140,6 @@ def _run_agent_streaming(
                     agent_lock=_agent_lock,
                     pre_compression_count=_pre_compression_count,
                     preserve_pre_compression_snapshot=_preserve_pre_compression_snapshot,
-                    sessions_lock=LOCK,
-                    sessions=SESSIONS,
-                    session_agent_locks=SESSION_AGENT_LOCKS,
-                    session_agent_locks_lock=SESSION_AGENT_LOCKS_LOCK,
-                    session_agent_cache=SESSION_AGENT_CACHE,
-                    session_agent_cache_lock=SESSION_AGENT_CACHE_LOCK,
-                    visible_messages_for_anchor=visible_messages_for_anchor,
                     compression_anchor_message_key=_compression_anchor_message_key,
                     compact_summary_text=_compact_summary_text,
                     compression_summary_from_messages=_compression_summary_from_messages,
