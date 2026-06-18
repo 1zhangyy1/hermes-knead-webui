@@ -8,6 +8,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 STREAMING_PY = (REPO / "api" / "streaming.py").read_text(encoding="utf-8")
 STREAMING_USAGE_PY = (REPO / "api" / "streaming_usage.py").read_text(encoding="utf-8")
+STREAMING_TURN_METADATA_PY = (REPO / "api" / "streaming_turn_metadata.py").read_text(encoding="utf-8")
 MESSAGES_JS = (REPO / "static" / "messages.js").read_text(encoding="utf-8")
 ROUTES_PY = (REPO / "api" / "routes.py").read_text(encoding="utf-8")
 UI_JS = (REPO / "static" / "ui.js").read_text(encoding="utf-8")
@@ -27,7 +28,7 @@ def test_streaming_done_payload_includes_backend_turn_duration():
         "The missing-start fallback should be documented so it is not mistaken "
         "for the primary timing path."
     )
-    assert "_turnDuration" in STREAMING_PY, (
+    assert "_turnDuration" in STREAMING_TURN_METADATA_PY, (
         "The measured duration should be persisted on the assistant message so "
         "it survives reload after the SSE stream settles."
     )
