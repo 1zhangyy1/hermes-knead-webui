@@ -460,18 +460,18 @@ class TestIssue765FollowupHardening:
         s) under LOCK before deciding whether a manual rename should block the
         generated title write.
         """
-        src = (Path(__file__).parent.parent / "api" / "streaming.py").read_text(
+        src = (Path(__file__).parent.parent / "api" / "streaming_title_refresh.py").read_text(
             encoding="utf-8"
         )
-        fn_idx = src.find("def _run_background_title_update(")
-        assert fn_idx != -1, "_run_background_title_update not found"
-        fn_block = src[fn_idx:fn_idx + 3200]
-        assert "with LOCK:" in fn_block, (
-            "_run_background_title_update must acquire LOCK before rebinding "
+        fn_idx = src.find("def run_background_title_update(")
+        assert fn_idx != -1, "run_background_title_update not found"
+        fn_block = src[fn_idx:fn_idx + 5200]
+        assert "with lock:" in fn_block, (
+            "run_background_title_update must acquire LOCK before rebinding "
             "to canonical cached session instance"
         )
-        assert "s = SESSIONS.get(session_id, s)" in fn_block, (
-            "_run_background_title_update must rebind to canonical cached "
+        assert "s = sessions.get(session_id, s)" in fn_block, (
+            "run_background_title_update must rebind to canonical cached "
             "session instance under LOCK"
         )
 

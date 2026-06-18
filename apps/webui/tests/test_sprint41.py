@@ -16,6 +16,7 @@ CSS = (REPO_ROOT / "static" / "style.css").read_text()
 HTML = (REPO_ROOT / "static" / "index.html").read_text()
 MESSAGES_JS = (REPO_ROOT / "static" / "messages.js").read_text()
 STREAMING_PY = (REPO_ROOT / "api" / "streaming.py").read_text()
+STREAMING_TITLE_REFRESH = (REPO_ROOT / "api" / "streaming_title_refresh.py").read_text()
 
 
 # ── streaming.py: title auto-generation condition ─────────────────────────
@@ -96,21 +97,21 @@ class TestIssue495TitleStreaming(unittest.TestCase):
         # which can be rotated during context compression — see #652 fix)
         self.assertIn(
             "put_event('title', {'session_id': session_id, 'title': effective_title})",
-            STREAMING_PY,
-            "streaming.py should emit a title SSE event when title is updated",
+            STREAMING_TITLE_REFRESH,
+            "streaming_title_refresh.py should emit a title SSE event when title is updated",
         )
 
     def test_streaming_emits_title_status_sse_event(self):
         self.assertIn(
             "put_event('title_status', payload)",
-            STREAMING_PY,
-            "streaming.py should emit a title_status SSE event for title generation diagnostics",
+            STREAMING_TITLE_REFRESH,
+            "streaming_title_refresh.py should emit a title_status SSE event for title generation diagnostics",
         )
 
     def test_streaming_emits_stream_end_event(self):
         self.assertIn(
             "put_event('stream_end', {'session_id': session_id})",
-            STREAMING_PY,
+            STREAMING_TITLE_REFRESH,
             "background title path should end the SSE stream with stream_end",
         )
 
