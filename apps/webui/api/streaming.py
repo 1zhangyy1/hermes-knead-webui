@@ -75,6 +75,29 @@ from api.streaming_agent_runtime import (
     refresh_cached_agent_primary_runtime_snapshot as _refresh_cached_agent_primary_runtime_snapshot,
     refresh_cached_agent_runtime as _refresh_cached_agent_runtime,
 )
+from api.streaming_titles import (
+    LEGACY_WORKSPACE_PREFIX_ANY_RE as _LEGACY_WORKSPACE_PREFIX_ANY_RE,
+    LEGACY_WORKSPACE_PREFIX_RE as _LEGACY_WORKSPACE_PREFIX_RE,
+    WORKSPACE_PREFIX_ANY_RE as _WORKSPACE_PREFIX_ANY_RE,
+    WORKSPACE_PREFIX_RE as _WORKSPACE_PREFIX_RE,
+    count_exchanges as _count_exchanges,
+    escape_workspace_prefix_path as _escape_workspace_prefix_path,
+    fallback_title_from_exchange as _fallback_title_from_exchange,
+    first_exchange_snippets as _first_exchange_snippets,
+    is_generic_fallback_title as _is_generic_fallback_title,
+    is_provisional_title as _is_provisional_title_impl,
+    latest_exchange_snippets as _latest_exchange_snippets,
+    looks_invalid_generated_title as _looks_invalid_generated_title,
+    looks_like_current_user_turn as _looks_like_current_user_turn,
+    message_text as _message_text,
+    sanitize_generated_title as _sanitize_generated_title,
+    strip_thinking_markup as _strip_thinking_markup,
+    strip_workspace_prefix as _strip_workspace_prefix,
+    title_prompts as _title_prompts,
+    workspace_context_prefix as _workspace_context_prefix,
+)
+# Source-guard anchor: streaming title helpers still reject generic completion
+# phrases such as "all set" before persisting generated session titles.
 
 # Global lock for os.environ writes. Per-session locks (_agent_lock) prevent
 # concurrent runs of the SAME session, but two DIFFERENT sessions can still
@@ -475,31 +498,6 @@ def _drain_webui_process_notifications(session_id: str) -> list[str]:
     return notifications
 
 
-def _strip_thinking_markup(text: str) -> str:
-    """Remove common reasoning/thinking wrappers from model text."""
-    if not text:
-        return ''
-    s = str(text)
-    # Treat provider thinking wrappers as metadata only when they lead the
-    # response. Literal discussion of these tags later in normal prose should
-    # stay visible (#2152).
-    s = re.sub(r'^\s*<think>.*?</think>\s*', ' ', s, flags=re.IGNORECASE | re.DOTALL)
-    s = re.sub(r'^\s*<\|channel\|?>thought\n?.*?<channel\|>\s*', ' ', s, flags=re.IGNORECASE | re.DOTALL)
-    s = re.sub(r'^\s*<\|turn\|>thinking\n.*?<turn\|>\s*', ' ', s, flags=re.IGNORECASE | re.DOTALL)  # Gemma 4
-    s = re.sub(r'^\s*(the|ther)\s+user\s+is\s+asking[^\n]*(?:\n|$)', ' ', s, flags=re.IGNORECASE)
-    # Strip plain-text thinking preambles from models that don't use <think> tags (e.g. Qwen3).
-    # These appear as the very first sentence of the assistant response and are not useful as titles.
-    s = re.sub(
-        r"^\s*(?:here(?:'s| is) (?:a |my )?(?:thinking|thought) (?:process|trace|through)\b[^\n]*\n?"
-        r"|let me (?:think|work|reason|analyze|walk) (?:through|about|this|step)\b[^\n]*\n?"
-        r"|i(?:'ll| will) (?:think|work|reason|analyze|break this down)\b[^\n]*\n?"
-        r"|(?:okay|alright|sure|of course),?\s+let me\b[^\n]*\n?)",
-        ' ', s, flags=re.IGNORECASE
-    )
-    s = re.sub(r'\s+', ' ', s).strip()
-    return s
-
-
 def _strip_xml_tool_calls(text: str) -> str:
     """Strip XML-style function_calls blocks that DeepSeek and similar models
     emit in their raw response text.  These blocks are processed separately as
@@ -540,174 +538,6 @@ def _strip_xml_tool_calls(text: str) -> str:
     return s.strip()
 
 
-def _sanitize_generated_title(text: str) -> str:
-    """Sanitize LLM-generated title text before persisting to session."""
-    s = _strip_thinking_markup(text or '')
-    s = re.sub(
-        r'^\s*(?:[*_`~]+\s*)?(?:session\s+title|title)\s*:\s*(?:[*_`~]+\s*)?',
-        '',
-        s,
-        flags=re.IGNORECASE,
-    )
-    s = re.sub(r'^\s*title\s*:\s*', '', s, flags=re.IGNORECASE)
-    s = s.strip(" \t\r\n\"'`*_~")
-    s = re.sub(r'\s+', ' ', s).strip()
-    # Guard against chain-of-thought leakage and meta-reasoning patterns.
-    if _looks_invalid_generated_title(s):
-        return ''
-    return s[:80]
-
-
-def _looks_invalid_generated_title(text: str) -> bool:
-    s = str(text or '')
-    if not s.strip():
-        return True
-    return bool(
-        re.search(r'<think>|<\|channel\|>thought|<\|turn\|>thinking', s, flags=re.IGNORECASE)
-        or re.search(r'^\s*(the|ther)\s+user\s+', s, flags=re.IGNORECASE)
-        or re.search(r'^\s*user\s+\w+\s+', s, flags=re.IGNORECASE)
-        or re.search(r'\b(they|user)\s+want(s)?\s+me\s+to\b', s, flags=re.IGNORECASE)
-        or re.search(r'^\s*(i|we)\s+(should|need to|will|can)\b', s, flags=re.IGNORECASE)
-        or re.search(r'^\s*let me\b', s, flags=re.IGNORECASE)
-        or re.search(r"^\s*here(?:'s| is) (?:a |my )?(?:thinking|thought)", s, flags=re.IGNORECASE)
-        or re.search(r'^\s*(ok|okay|done|all set|complete|completed|finished)\b[\s.!?]*$', s, flags=re.IGNORECASE)
-    )
-
-
-def _message_text(value) -> str:
-    """Extract plain text from mixed message content payloads."""
-    if isinstance(value, list):
-        parts = []
-        for p in value:
-            if not isinstance(p, dict):
-                continue
-            ptype = str(p.get('type') or '').lower()
-            if ptype in ('', 'text', 'input_text', 'output_text'):
-                parts.append(str(p.get('text') or p.get('content') or ''))
-        return _strip_thinking_markup('\n'.join(parts).strip())
-    return _strip_thinking_markup(str(value or '').strip())
-
-
-_WORKSPACE_PREFIX_RE = re.compile(r'^\s*\[Workspace::v1:\s*(?:\\.|[^\]\\])+\]\s*')
-_LEGACY_WORKSPACE_PREFIX_RE = re.compile(r'^\s*\[Workspace:[^\]]+\]\s*')
-_WORKSPACE_PREFIX_ANY_RE = re.compile(r'\[Workspace::v1:\s*(?:\\.|[^\]\\])+\]\s*')
-_LEGACY_WORKSPACE_PREFIX_ANY_RE = re.compile(r'\[Workspace:[^\]]+\]\s*')
-
-
-def _escape_workspace_prefix_path(path: str) -> str:
-    return str(path or '').replace('\\', '\\\\').replace(']', '\\]')
-
-
-def _workspace_context_prefix(path: str) -> str:
-    return f"[Workspace::v1: {_escape_workspace_prefix_path(path)}]\n"
-
-
-def _strip_workspace_prefix(text: str, *, include_legacy: bool = False) -> str:
-    """Remove WebUI-injected workspace tags without eating user-typed text."""
-    value = str(text or '')
-    stripped = _WORKSPACE_PREFIX_RE.sub('', value, count=1)
-    if include_legacy and stripped == value:
-        stripped = _LEGACY_WORKSPACE_PREFIX_RE.sub('', value, count=1)
-    return stripped.strip()
-
-
-def _looks_like_current_user_turn(msg, msg_text) -> bool:
-    """Match the current human turn even if an internal workspace tag leaked mid-text.
-
-    Normal model-facing messages start with the workspace sentinel. A failed
-    retry/merge path can also return an optimistic draft followed by the
-    sentinel and the real prompt. Only treat that shape as the current turn
-    when the text after the sentinel exactly matches the submitted prompt.
-    """
-    if not isinstance(msg, dict) or msg.get('role') != 'user':
-        return False
-    needle = " ".join(str(msg_text or '').split())
-    if not needle:
-        return False
-    text = _message_text(msg.get('content', ''))
-    candidates = [_strip_workspace_prefix(text, include_legacy=True)]
-    for pattern in (_WORKSPACE_PREFIX_ANY_RE, _LEGACY_WORKSPACE_PREFIX_ANY_RE):
-        for match in pattern.finditer(text):
-            candidates.append(text[match.end():])
-    return any(" ".join(str(candidate or '').split()) == needle for candidate in candidates)
-
-
-def _first_exchange_snippets(messages):
-    """Return (first_user_text, first_assistant_text) snippets for title generation.
-
-    Prefer the first substantive assistant answer in the opening exchange,
-    skipping empty placeholders and assistant tool-call preambles.
-    """
-    user_text = ''
-    asst_text = ''
-    for m in messages or []:
-        if not isinstance(m, dict):
-            continue
-        role = m.get('role')
-        if role == 'user':
-            candidate = _message_text(m.get('content'))
-            if not user_text and candidate:
-                user_text = candidate
-                continue
-            if user_text and candidate:
-                break
-        elif role == 'assistant' and user_text:
-            candidate = _message_text(m.get('content'))
-            # Skip tool-call preambles *only* when content is empty or looks
-            # like meta-reasoning ("Let me check my memory first.", "The user
-            # is asking...", etc.). Assistant rows that carry tool_calls but
-            # also contain a substantive answer text are kept — those are
-            # agentic first-turn plans that are legitimate title candidates.
-            if m.get('tool_calls') and (not candidate or _looks_invalid_generated_title(candidate)):
-                continue
-            if candidate:
-                asst_text = candidate
-        if user_text and asst_text:
-            break
-    return user_text[:500], asst_text[:500]
-
-
-def _latest_exchange_snippets(messages):
-    """Return (last_user_text, last_assistant_text) snippets for title refresh.
-
-    Walks the message list backwards to find the last user+assistant pair,
-    skipping empty or tool-call-only assistant messages.
-    """
-    user_text = ''
-    asst_text = ''
-    for m in reversed(messages or []):
-        if not isinstance(m, dict):
-            continue
-        role = m.get('role')
-        if role == 'assistant' and not asst_text:
-            candidate = _message_text(m.get('content'))
-            # Skip tool-call-only preambles
-            if m.get('tool_calls') and (not candidate or _looks_invalid_generated_title(candidate)):
-                continue
-            if candidate:
-                asst_text = candidate
-        elif role == 'user' and not user_text:
-            candidate = _message_text(m.get('content'))
-            if candidate:
-                user_text = candidate
-        if user_text and asst_text:
-            break
-    return user_text[:500], asst_text[:500]
-
-
-def _count_exchanges(messages):
-    """Count the number of user messages (rough exchange count)."""
-    count = 0
-    for m in messages or []:
-        if isinstance(m, dict) and m.get('role') == 'user':
-            content = m.get('content', '')
-            if isinstance(content, list):
-                content = ' '.join(p.get('text', '') for p in content if isinstance(p, dict) and p.get('type') == 'text')
-            if str(content).strip():
-                count += 1
-    return count
-
-
 def _get_title_refresh_interval() -> int:
     """Read the auto_title_refresh_every setting (0 = disabled)."""
     try:
@@ -720,40 +550,7 @@ def _get_title_refresh_interval() -> int:
 
 
 def _is_provisional_title(current_title: str, messages) -> bool:
-    """Heuristic: title equals first-message substring placeholder."""
-    derived = title_from(messages, '') or ''
-    if not derived:
-        return False
-    current = re.sub(r'\s+', ' ', str(current_title or '')).strip()
-    candidate = re.sub(r'\s+', ' ', str(derived[:64] or '')).strip()
-    if not current or not candidate:
-        return False
-    return current == candidate
-
-
-def _title_prompts(user_text: str, assistant_text: str) -> tuple[str, list[str]]:
-    qa = f"User question:\n{user_text[:500]}\n\nAssistant answer:\n{assistant_text[:500]}"
-    prompts = [
-        (
-            "Generate a short session title from this conversation start.\n"
-            "Use BOTH the user's question and the assistant's visible answer.\n"
-            "Return only the title text, 3-8 words, as a topic label.\n"
-            "Do not use markdown, bullets, labels, or prefixes like Session Title:.\n"
-            "Do not output a full sentence.\n"
-            "Do not output acknowledgements or completion phrases like OK, done, or all set.\n"
-            "Do not describe internal reasoning.\n"
-            "Bad: The user is asking..., OK, all set.\n"
-            "Good: Title Generation Test, Clarify Dialog Layout, GitHub Issue Triage"
-        ),
-        (
-            "Rewrite this conversation start as a concise noun-phrase title.\n"
-            "Use the actual topic, not the task outcome.\n"
-            "Return title text only.\n"
-            "Do not use markdown, bullets, labels, or prefixes like Session Title:.\n"
-            "Never output acknowledgements, completion status, or meta commentary."
-        ),
-    ]
-    return qa, prompts
+    return _is_provisional_title_impl(current_title, messages, title_from_fn=title_from)
 
 
 def _is_minimax_route(provider: str = '', model: str = '', base_url: str = '') -> bool:
@@ -1140,91 +937,6 @@ def _put_title_status(put_event, session_id: str, status: str, reason: str = '',
         title or '',
         (raw_preview or '')[:120],
     )
-
-
-def _fallback_title_from_exchange(user_text: str, assistant_text: str) -> Optional[str]:
-    """Generate a readable local fallback title when LLM title generation fails."""
-    user_text = (user_text or '').strip()
-    assistant_text = _strip_thinking_markup(assistant_text or '').strip()
-    if not user_text:
-        return None
-    user_text = _strip_workspace_prefix(user_text)
-    user_text = re.sub(r'\s+', ' ', user_text).strip()
-    assistant_text = re.sub(r'\s+', ' ', assistant_text).strip()
-    combined = f"{user_text} {assistant_text}".strip().lower()
-    combined_raw = f"{user_text} {assistant_text}".strip()
-
-    def _contains_latin(text: str) -> bool:
-        return bool(re.search(r'[A-Za-z]', text or ''))
-
-    def _extract_named_topic(text: str) -> str:
-        m = re.search(r'"([^"\n]{2,24})"', text)
-        if m:
-            return (m.group(1) or '').strip()
-        m = re.search(r'“([^”\n]{2,24})”', text)
-        if m:
-            return (m.group(1) or '').strip()
-        return ''
-
-    topic_name = _extract_named_topic(combined_raw)
-    if topic_name:
-        if not _contains_latin(topic_name):
-            if any(k in combined for k in ('time', 'schedule', 'efficiency', 'manage', 'fitness', 'singing', 'calligraphy')):
-                return 'Time management discussion'
-            if any(k in combined for k in ('hermes', 'codex', 'ai')):
-                return 'AI productivity discussion'
-            return 'Conversation topic'
-        if any(k in combined for k in ('time', 'schedule', 'efficiency', 'manage', 'fitness', 'singing', 'calligraphy')):
-            return f'{topic_name} time management'
-        if any(k in combined for k in ('hermes', 'codex', 'ai')):
-            return f'{topic_name} AI productivity'
-        return f'{topic_name} discussion'
-
-    if any(k in combined for k in ('title', 'session title')) and any(k in combined for k in ('summary', 'summar', 'short title')):
-        if any(k in combined for k in ('test', 'ok', 'reply ok')):
-            return 'Session title auto-summary test'
-        return 'Session title auto-summary'
-    if any(k in combined for k in ('clarify', 'clarification')) and any(k in combined for k in ('dialog', 'card')):
-        return 'Clarify dialog card'
-    if any(k in combined for k in ('issue', 'github', 'pr')) and any(k in combined for k in ('triage', 'bug', 'review')):
-        return 'GitHub Issue Triage'
-
-    head = re.split(r'[.!?\n]', user_text)[0].strip()
-    if not head:
-        return None
-
-    stop_en = {
-        'the', 'this', 'that', 'with', 'from', 'into', 'just', 'reply', 'please',
-        'need', 'needs', 'want', 'wants', 'user', 'assistant', 'could', 'would',
-        'should', 'about', 'there', 'here', 'test', 'testing', 'title', 'summary',
-    }
-    # Unicode-aware Latin tokenization: keep the old "no leading underscore"
-    # and non-Latin placeholder behavior while allowing letters such as ä/ö/ü/ß.
-    # The previous ASCII-only pattern turned "führe" into "f" + "hre"; the short
-    # "f" was filtered and the broken "hre" became part of the title.
-    latin_word = r'A-Za-z0-9À-ÖØ-öø-ÿ'
-    tokens = re.findall(rf'[{latin_word}][{latin_word}_./+-]*', head)
-    if not tokens:
-        return 'Conversation topic'
-
-    picked = []
-    for tok in tokens:
-        lower_tok = tok.lower()
-        if lower_tok in stop_en or len(lower_tok) < 3:
-            continue
-        if tok not in picked:
-            picked.append(tok)
-        if len(picked) >= 4:
-            break
-
-    if picked:
-        return ' '.join(picked)[:60]
-    return 'Conversation topic'
-
-
-def _is_generic_fallback_title(title: str) -> bool:
-    """Return True for low-information fallback labels that should not be persisted."""
-    return str(title or '').strip().lower() in {'conversation topic'}
 
 
 def _run_background_title_update(session_id: str, user_text: str, assistant_text: str, placeholder_title: str, put_event, agent=None):
