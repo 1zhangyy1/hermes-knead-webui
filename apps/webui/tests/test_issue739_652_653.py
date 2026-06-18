@@ -89,7 +89,8 @@ class TestErrorPersistence:
 
     def test_exception_path_appends_error_message(self):
         """Exception path also persists the error to the session."""
-        assert "_persist_streaming_error_message(" in streaming_src
+        assert "_emit_and_persist_exception_streaming_error(" in streaming_src
+        assert "persist_error_message_fn(" in streaming_error_writeback_src
         assert "persist_streaming_error_message(" in streaming_error_writeback_src
 
     def test_sanitize_skips_error_messages(self):

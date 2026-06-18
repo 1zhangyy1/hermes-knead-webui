@@ -1,4 +1,5 @@
 from api.streaming_error_writeback import (
+    emit_and_persist_exception_streaming_error,
     emit_and_persist_streaming_error,
     format_streaming_error_content,
     persist_streaming_error_message,
@@ -8,6 +9,7 @@ from api.streaming_error_writeback import (
 
 class Session:
     def __init__(self):
+        self.session_id = 'sid-1'
         self.messages = []
         self.active_stream_id = 'stream-1'
         self.pending_user_message = 'hello'
@@ -24,6 +26,9 @@ class Logger:
         self.messages = []
 
     def debug(self, *args, **kwargs):
+        self.messages.append((args, kwargs))
+
+    def info(self, *args, **kwargs):
         self.messages.append((args, kwargs))
 
 
@@ -156,3 +161,118 @@ def test_emit_and_persist_streaming_error_emits_then_persists_payload():
         '_error': True,
         'provider_details': 'provider details',
     }
+
+
+def test_emit_and_persist_exception_streaming_error_persists_before_emitting():
+    events = []
+    session = Session()
+
+    ok = emit_and_persist_exception_streaming_error(
+        session,
+        err_str='raw provider error',
+        label='Error',
+        error_type='error',
+        hint='',
+        stream_id='stream-1',
+        session_id='sid-1',
+        ephemeral=False,
+        agent_lock=None,
+        checkpoint_stop='stop',
+        checkpoint_thread='thread',
+        stop_checkpoint_thread=lambda stop, thread: events.append(('stop', stop, thread)),
+        stream_writeback_is_current=lambda session_arg, stream_id: session_arg.active_stream_id == stream_id,
+        provider_error_payload=lambda message, error_type, hint: {
+            'message': 'payload message',
+            'type': error_type,
+            'details': message,
+        },
+        finalize_product_turn=lambda **kwargs: events.append(('finalize', kwargs)),
+        put=lambda event, data: events.append(('put', event, data)),
+        append_interrupted_turn_event=lambda *args, **kwargs: events.append(('journal', args, kwargs)),
+        materialize_pending_user_turn=lambda current: events.append(('materialize', current)),
+    )
+
+    assert ok is True
+    assert session.saved == 1
+    assert events == [
+        ('stop', 'stop', 'thread'),
+        ('materialize', session),
+        ('journal', ('sid-1', 'stream-1'), {'reason': 'error', 'logger': None}),
+        ('finalize', {
+            'failed': True,
+            'error_type': 'error',
+            'error_message': 'payload message',
+        }),
+        ('put', 'apperror', {
+            'message': 'payload message',
+            'type': 'error',
+            'details': 'raw provider error',
+        }),
+    ]
+    assert session.messages[-1]['content'] == '**Error:** payload message'
+    assert session.messages[-1]['provider_details'] == 'raw provider error'
+
+
+def test_emit_and_persist_exception_streaming_error_skips_stale_stream_writeback():
+    events = []
+    session = Session()
+    session.active_stream_id = 'newer-stream'
+
+    ok = emit_and_persist_exception_streaming_error(
+        session,
+        err_str='raw provider error',
+        label='Error',
+        error_type='error',
+        hint='',
+        stream_id='stream-1',
+        session_id='sid-1',
+        ephemeral=False,
+        agent_lock=None,
+        checkpoint_stop=None,
+        checkpoint_thread=None,
+        stop_checkpoint_thread=lambda *_args: events.append('stop'),
+        stream_writeback_is_current=lambda session_arg, stream_id: session_arg.active_stream_id == stream_id,
+        provider_error_payload=lambda message, error_type, hint: {'message': message, 'type': error_type},
+        finalize_product_turn=lambda **kwargs: events.append(('finalize', kwargs)),
+        put=lambda event, data: events.append(('put', event, data)),
+        append_interrupted_turn_event=lambda *args, **kwargs: events.append(('journal', args, kwargs)),
+        logger=Logger(),
+    )
+
+    assert ok is False
+    assert session.saved == 0
+    assert events == ['stop']
+
+
+def test_emit_and_persist_exception_streaming_error_emits_without_session():
+    events = []
+
+    ok = emit_and_persist_exception_streaming_error(
+        None,
+        err_str='raw provider error',
+        label='Error',
+        error_type='error',
+        hint='',
+        stream_id='stream-1',
+        session_id='sid-1',
+        ephemeral=False,
+        agent_lock=None,
+        checkpoint_stop=None,
+        checkpoint_thread=None,
+        stop_checkpoint_thread=lambda *_args: events.append('stop'),
+        stream_writeback_is_current=lambda *_args: False,
+        provider_error_payload=lambda message, error_type, hint: {'message': message, 'type': error_type},
+        finalize_product_turn=lambda **kwargs: events.append(('finalize', kwargs)),
+        put=lambda event, data: events.append(('put', event, data)),
+        append_interrupted_turn_event=lambda *args, **kwargs: events.append(('journal', args, kwargs)),
+    )
+
+    assert ok is True
+    assert events == [
+        ('finalize', {
+            'failed': True,
+            'error_type': 'error',
+            'error_message': 'raw provider error',
+        }),
+        ('put', 'apperror', {'message': 'raw provider error', 'type': 'error'}),
+    ]

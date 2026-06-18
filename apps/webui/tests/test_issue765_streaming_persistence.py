@@ -421,7 +421,7 @@ class TestIssue765FollowupHardening:
 
         The code must use a nullcontext fallback rather than unconditionally
         entering `with _agent_lock:`."""
-        src = (Path(__file__).parent.parent / "api" / "streaming.py").read_text(
+        src = (Path(__file__).parent.parent / "api" / "streaming_error_writeback.py").read_text(
             encoding="utf-8"
         )
         # Verify contextlib.nullcontext is used as a fallback
@@ -430,8 +430,8 @@ class TestIssue765FollowupHardening:
             "back to contextlib.nullcontext() instead of unconditionally "
             "entering `with _agent_lock:`"
         )
-        # Verify the except block uses _lock_ctx (the guarded variable)
-        assert "_lock_ctx" in src, (
+        # Verify the helper uses lock_ctx (the guarded variable)
+        assert "lock_ctx" in src, (
             "The except block must assign _agent_lock / nullcontext to a "
             "variable and use it, not enter `with _agent_lock:` directly"
         )

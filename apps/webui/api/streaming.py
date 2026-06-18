@@ -2,7 +2,6 @@
 Hermes Web UI -- SSE streaming engine and agent thread runner.
 Includes Sprint 10 cancel support via CANCEL_FLAGS.
 """
-import contextlib
 import json
 import logging
 import os
@@ -71,8 +70,8 @@ from api.streaming_gateway import (
 from api.streaming_gateway_notifications import register_streaming_gateway_notifications as _register_streaming_gateway_notifications
 from api.streaming_goal import run_post_turn_goal_hook as _run_post_turn_goal_hook
 from api.streaming_error_writeback import (
+    emit_and_persist_exception_streaming_error as _emit_and_persist_exception_streaming_error,
     emit_and_persist_streaming_error as _emit_and_persist_streaming_error,
-    persist_streaming_error_message as _persist_streaming_error_message,
 )
 from api.streaming_ephemeral import emit_ephemeral_done as _emit_ephemeral_done
 from api.streaming_attachments import (
@@ -1368,45 +1367,28 @@ def _run_agent_streaming(
 
         _exc_label, _exc_type, _exc_hint = _exception_error_copy(_classification)
 
-        _error_payload = _provider_error_payload(err_str, _exc_type, _exc_hint)
-        if s is not None:
-            _stop_checkpoint_thread(_checkpoint_stop, _ckpt_thread)
-            # Persist the error so it survives page reload.
-            # _error=True ensures _sanitize_messages_for_api excludes it from subsequent
-            # API calls so the LLM never sees its own error as prior context on the next turn.
-            _lock_ctx = _agent_lock if _agent_lock is not None else contextlib.nullcontext()
-            with _lock_ctx:
-                if not ephemeral and not _stream_writeback_is_current(s, stream_id):
-                    logger.info(
-                        "Skipping stale stream error writeback for session %s stream %s; active_stream_id=%s",
-                        getattr(s, 'session_id', session_id),
-                        stream_id,
-                        getattr(s, 'active_stream_id', None),
-                    )
-                    return
-                _persist_streaming_error_message(
-                    s,
-                    label=_exc_label,
-                    message=_error_payload.get("message") or err_str,
-                    error_type=_exc_type,
-                    hint=_exc_hint,
-                    details=_error_payload.get('details'),
-                    materialize_pending_user_turn=_materialize_pending_user_turn_before_error,
-                    logger=logger,
-                )
-                if not ephemeral:
-                    _append_interrupted_turn_event(
-                        s.session_id,
-                        stream_id,
-                        reason=_exc_type,
-                        logger=logger,
-                    )
-        _finalize_product_turn(
-            failed=True,
-            error_type=_error_payload.get('type') or _exc_type,
-            error_message=_error_payload.get('message') or str(_exc) or _exc_type,
-        )
-        put('apperror', _error_payload)
+        if not _emit_and_persist_exception_streaming_error(
+            s,
+            err_str=err_str,
+            label=_exc_label,
+            error_type=_exc_type,
+            hint=_exc_hint,
+            stream_id=stream_id,
+            session_id=session_id,
+            ephemeral=ephemeral,
+            agent_lock=_agent_lock,
+            checkpoint_stop=_checkpoint_stop,
+            checkpoint_thread=_ckpt_thread,
+            stop_checkpoint_thread=_stop_checkpoint_thread,
+            stream_writeback_is_current=_stream_writeback_is_current,
+            provider_error_payload=_provider_error_payload,
+            finalize_product_turn=_finalize_product_turn,
+            put=put,
+            append_interrupted_turn_event=_append_interrupted_turn_event,
+            materialize_pending_user_turn=_materialize_pending_user_turn_before_error,
+            logger=logger,
+        ):
+            return
     finally:
         # Stop the periodic checkpoint thread before the final recovery path.
         # The checkpoint thread also uses the per-session lock; joining it first

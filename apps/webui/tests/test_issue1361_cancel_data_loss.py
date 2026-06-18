@@ -474,10 +474,10 @@ def test_materialize_helper_called_immediately_before_error_path_clears():
     assert "materialize_pending_user_turn=_materialize_pending_user_turn_before_error" in silent_block
     assert "persist_streaming_error_message(" in writeback_src
 
-    outer_idx = src.find("_error_payload = _provider_error_payload(err_str, _exc_type, _exc_hint)")
-    outer_put_idx = src.find("put('apperror', _error_payload)", outer_idx)
-    outer_block = src[outer_idx:outer_put_idx]
-    assert "_persist_streaming_error_message(" in outer_block
+    outer_idx = src.find("_emit_and_persist_exception_streaming_error(")
+    outer_return_idx = src.find("):", outer_idx)
+    outer_block = src[outer_idx:outer_return_idx]
+    assert "persist_error_message_fn(" in writeback_src
     assert "materialize_pending_user_turn=_materialize_pending_user_turn_before_error" in outer_block
 
 
