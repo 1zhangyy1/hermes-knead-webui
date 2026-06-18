@@ -208,6 +208,10 @@ from api.streaming_runtime_helpers import (
     webui_clarify_callback as _webui_clarify_callback_impl,
     webui_ephemeral_system_prompt as _webui_ephemeral_system_prompt_impl,
 )
+from api.streaming_runtime_prompt import (
+    build_workspace_system_message as _build_workspace_system_message,
+    configure_agent_runtime_prompt as _configure_agent_runtime_prompt,
+)
 
 # Global lock for os.environ writes. Per-session locks (_agent_lock) prevent
 # concurrent runs of the SAME session, but two DIFFERENT sessions can still
@@ -1300,48 +1304,19 @@ def _run_agent_streaming(
             # Prepend workspace context so the agent always knows which directory
             # to use for file operations, regardless of session age or AGENTS.md defaults.
             workspace_ctx = _workspace_context_prefix(str(s.workspace))
-            workspace_system_msg = (
-                f"Active workspace at session start: {s.workspace}\n"
-                "Every user message is prefixed with [Workspace::v1: /absolute/path] indicating the "
-                "workspace the user has selected in the web UI at the time they sent that message. "
-                "This tag is the single authoritative source of the active workspace and updates "
-                "with every message. It overrides any prior workspace mentioned in this system "
-                "prompt, memory, or conversation history. Always use the value from the most recent "
-                "[Workspace::v1: ...] tag as your default working directory for ALL file operations: "
-                "write_file, read_file, search_files, terminal workdir, and patch. "
-                "Never fall back to a hardcoded path when this tag is present."
-            )
-            # Resolve personality prompt from config.yaml agent.personalities
-            # (matches hermes-agent CLI behavior — passes via ephemeral_system_prompt)
-            _personality_prompt = None
-            _pname = getattr(s, 'personality', None)
-            if _pname:
-                _agent_cfg = _cfg.get('agent', {})
-                _personalities = _agent_cfg.get('personalities', {})
-                if isinstance(_personalities, dict) and _pname in _personalities:
-                    _pval = _personalities[_pname]
-                    if isinstance(_pval, dict):
-                        _parts = [_pval.get('system_prompt', '') or _pval.get('prompt', '')]
-                        if _pval.get('tone'):
-                            _parts.append(f'Tone: {_pval["tone"]}')
-                        if _pval.get('style'):
-                            _parts.append(f'Style: {_pval["style"]}')
-                        _personality_prompt = '\n'.join(p for p in _parts if p)
-                    else:
-                        _personality_prompt = str(_pval)
+            workspace_system_msg = _build_workspace_system_message(s.workspace)
             # Pass WebUI-only runtime guidance via ephemeral_system_prompt
             # (agent's own mechanism). This preserves any selected personality
             # while making long tool runs emit real user-visible interim text
             # through interim_assistant_callback instead of frontend guesses.
-            _product_prompt = ""
-            if product_context:
-                try:
-                    from api.product_context import product_ephemeral_prompt
-
-                    _product_prompt = product_ephemeral_prompt(product_context)
-                except Exception:
-                    logger.debug("Failed to build product runtime prompt", exc_info=True)
-            agent.ephemeral_system_prompt = _webui_ephemeral_system_prompt(_personality_prompt, _product_prompt)
+            _configure_agent_runtime_prompt(
+                agent,
+                config=_cfg,
+                personality_name=getattr(s, 'personality', None),
+                product_context=product_context,
+                webui_ephemeral_system_prompt=_webui_ephemeral_system_prompt,
+                logger=logger,
+            )
             _pending_started_at = getattr(s, 'pending_started_at', None)
             # Normal chat-start sets pending_started_at before spawning this thread;
             # fallback to now only for recovered/legacy flows where that marker is absent
