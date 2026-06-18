@@ -57,7 +57,7 @@ from api.streaming_chat_steer import (
     drain_pending_steer_leftover as _drain_pending_steer_leftover,
     handle_chat_steer as _handle_chat_steer_impl,
 )
-from api.streaming_cleanup import cleanup_stream_registries as _cleanup_stream_registries
+from api.streaming_cleanup import finalize_streaming_worker_exit as _finalize_streaming_worker_exit
 from api.streaming_gateway import (
     GATEWAY_ROUTING_ATTEMPT_KEYS as _GATEWAY_ROUTING_ATTEMPT_KEYS,
     GATEWAY_ROUTING_CONTAINER_KEYS as _GATEWAY_ROUTING_CONTAINER_KEYS,
@@ -1390,19 +1390,17 @@ def _run_agent_streaming(
         ):
             return
     finally:
-        # Stop the periodic checkpoint thread before the final recovery path.
-        # The checkpoint thread also uses the per-session lock; joining it first
-        # avoids contending with checkpoint writes during stale-pending repair.
-        _stop_checkpoint_thread(_checkpoint_stop, _ckpt_thread)
-        if (s is not None
-                and getattr(s, 'active_stream_id', None) == stream_id
-                and getattr(s, 'pending_user_message', None)):
-            update_active_run(stream_id, phase="finalizing")
-            _last_resort_sync_from_core(s, stream_id, _agent_lock)
-        _finalize_product_turn(failed=True)
-        _clear_thread_env()  # TD1: always clear thread-local context
-        _cleanup_stream_registries(
-            stream_id,
+        _finalize_streaming_worker_exit(
+            session=s,
+            stream_id=stream_id,
+            agent_lock=_agent_lock,
+            checkpoint_stop=_checkpoint_stop,
+            checkpoint_thread=_ckpt_thread,
+            stop_checkpoint_thread=_stop_checkpoint_thread,
+            update_active_run=update_active_run,
+            last_resort_sync_from_core=_last_resort_sync_from_core,
+            finalize_product_turn=_finalize_product_turn,
+            clear_thread_env=_clear_thread_env,
             streams=STREAMS,
             cancel_flags=CANCEL_FLAGS,
             agent_instances=AGENT_INSTANCES,

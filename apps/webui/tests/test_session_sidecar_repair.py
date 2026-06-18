@@ -950,26 +950,18 @@ class TestLastResortSyncDelegation:
 
 
 class TestCheckpointOrdering:
-    """In _run_agent_streaming's outer finally block, checkpoint stop/join
-    happens BEFORE _last_resort_sync_from_core. This prevents deadlock because
-    the checkpoint thread holds the per-session lock."""
+    """Streaming worker cleanup stops checkpointing before last-resort recovery."""
 
     def test_checkpoint_stops_before_recovery_code_structure(self):
-        """Verify the code ordering in the outer finally block of
-        _run_agent_streaming: checkpoint stop appears before
-        _last_resort_sync_from_core."""
+        """Verify checkpoint stop appears before last_resort_sync_from_core."""
         import inspect
-        source = inspect.getsource(streaming._run_agent_streaming)
+        from api.streaming_cleanup import finalize_streaming_worker_exit
 
-        # Find the finally block
-        finally_idx = source.rfind("finally:")
-        assert finally_idx != -1, "Could not find 'finally:' in _run_agent_streaming"
-
-        finally_block = source[finally_idx:]
+        source = inspect.getsource(finalize_streaming_worker_exit)
 
         # _checkpoint_stop should appear before _last_resort_sync_from_core
-        ckpt_pos = finally_block.find("_checkpoint_stop")
-        recovery_pos = finally_block.find("_last_resort_sync_from_core")
+        ckpt_pos = source.find("stop_checkpoint_thread(")
+        recovery_pos = source.find("last_resort_sync_from_core(")
 
         assert ckpt_pos != -1, "Could not find _checkpoint_stop in finally block"
         assert recovery_pos != -1, "Could not find _last_resort_sync_from_core in finally block"

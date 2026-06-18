@@ -1,4 +1,4 @@
-from api.streaming_cleanup import cleanup_stream_registries
+from api.streaming_cleanup import cleanup_stream_registries, finalize_streaming_worker_exit
 
 
 class DummyLock:
@@ -58,3 +58,84 @@ def test_cleanup_stream_registries_does_not_require_existing_keys():
     )
 
     assert unregistered == ['missing-stream']
+
+
+class _Session:
+    active_stream_id = 'stream-1'
+    pending_user_message = 'hello'
+
+
+def test_finalize_streaming_worker_exit_stops_checkpoint_before_recovery_and_cleans_registries():
+    events = []
+    registries = [{'stream-1': 'value'} for _ in range(8)]
+    session = _Session()
+
+    finalize_streaming_worker_exit(
+        session=session,
+        stream_id='stream-1',
+        agent_lock='agent-lock',
+        checkpoint_stop='stop',
+        checkpoint_thread='thread',
+        stop_checkpoint_thread=lambda stop, thread: events.append(('stop', stop, thread)),
+        update_active_run=lambda stream_id, **kwargs: events.append(('active', stream_id, kwargs)),
+        last_resort_sync_from_core=lambda session, stream_id, agent_lock: events.append(
+            ('sync', session, stream_id, agent_lock)
+        ),
+        finalize_product_turn=lambda **kwargs: events.append(('finalize', kwargs)),
+        clear_thread_env=lambda: events.append(('clear-env', None)),
+        streams=registries[0],
+        cancel_flags=registries[1],
+        agent_instances=registries[2],
+        partial_text=registries[3],
+        reasoning_text=registries[4],
+        live_tool_calls=registries[5],
+        goal_related=registries[6],
+        last_event_ids=registries[7],
+        unregister_active_run=lambda stream_id: events.append(('unregister', stream_id)),
+        streams_lock=DummyLock(),
+    )
+
+    assert events[:4] == [
+        ('stop', 'stop', 'thread'),
+        ('active', 'stream-1', {'phase': 'finalizing'}),
+        ('sync', session, 'stream-1', 'agent-lock'),
+        ('finalize', {'failed': True}),
+    ]
+    assert events[-2:] == [('clear-env', None), ('unregister', 'stream-1')]
+    assert all('stream-1' not in registry for registry in registries)
+
+
+def test_finalize_streaming_worker_exit_skips_recovery_without_pending_owner():
+    events = []
+    session = _Session()
+    session.active_stream_id = 'newer-stream'
+
+    finalize_streaming_worker_exit(
+        session=session,
+        stream_id='stream-1',
+        agent_lock=None,
+        checkpoint_stop=None,
+        checkpoint_thread=None,
+        stop_checkpoint_thread=lambda *_args: events.append('stop'),
+        update_active_run=lambda *_args, **_kwargs: events.append('active'),
+        last_resort_sync_from_core=lambda *_args: events.append('sync'),
+        finalize_product_turn=lambda **kwargs: events.append(('finalize', kwargs)),
+        clear_thread_env=lambda: events.append('clear-env'),
+        streams={},
+        cancel_flags={},
+        agent_instances={},
+        partial_text={},
+        reasoning_text={},
+        live_tool_calls={},
+        goal_related={},
+        last_event_ids={},
+        unregister_active_run=lambda stream_id: events.append(('unregister', stream_id)),
+        streams_lock=DummyLock(),
+    )
+
+    assert events == [
+        'stop',
+        ('finalize', {'failed': True}),
+        'clear-env',
+        ('unregister', 'stream-1'),
+    ]
