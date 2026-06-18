@@ -25,6 +25,19 @@ class CredentialSelfHealRetry:
     error: Exception | None
 
 
+@dataclass
+class SilentFailureSelfHealResult:
+    self_healed: bool = False
+    succeeded: bool = False
+    result: dict[str, Any] | None = None
+    agent: Any = None
+    agent_kwargs: dict[str, Any] | None = None
+    runtime: dict[str, Any] | None = None
+    resolved_api_key: Any = None
+    resolved_provider: str | None = None
+    resolved_base_url: str | None = None
+
+
 def materialize_pending_user_turn_before_error(session) -> bool:
     """Persist the pending user prompt before clearing runtime stream state.
 
@@ -272,6 +285,104 @@ def retry_conversation_after_credential_self_heal(
         return CredentialSelfHealRetry(rebuilt=rebuilt, result=None, error=exc)
 
     return CredentialSelfHealRetry(rebuilt=rebuilt, result=result, error=None)
+
+
+def handle_silent_failure_credential_self_heal(
+    *,
+    should_attempt: bool,
+    provider_id: str,
+    session_id: str,
+    agent_lock,
+    agent_factory,
+    agent_kwargs: dict[str, Any],
+    agent_params,
+    resolved_model: str | None,
+    resolved_provider: str | None,
+    resolved_base_url: str | None,
+    custom_provider_resolver,
+    stream_id: str,
+    agent_instances,
+    streams_lock,
+    ephemeral: bool,
+    agent_sig: str | None,
+    user_message,
+    system_message,
+    previous_messages,
+    previous_context_messages,
+    config,
+    persist_user_message: str,
+    sanitize_messages_for_api,
+    output_bridge,
+    prev_len: int,
+    session,
+    msg_text: str,
+    has_new_assistant_reply,
+    apply_agent_result_to_session,
+    logger,
+    retry_conversation_after_credential_self_heal_fn=retry_conversation_after_credential_self_heal,
+) -> SilentFailureSelfHealResult:
+    """Retry a silent auth failure once and merge the retried result when it succeeds."""
+    if not should_attempt:
+        return SilentFailureSelfHealResult()
+
+    heal_retry = retry_conversation_after_credential_self_heal_fn(
+        provider_id=provider_id,
+        session_id=session_id,
+        agent_lock=agent_lock,
+        agent_factory=agent_factory,
+        agent_kwargs=agent_kwargs,
+        agent_params=agent_params,
+        resolved_model=resolved_model,
+        resolved_provider=resolved_provider,
+        resolved_base_url=resolved_base_url,
+        custom_provider_resolver=custom_provider_resolver,
+        stream_id=stream_id,
+        agent_instances=agent_instances,
+        streams_lock=streams_lock,
+        ephemeral=ephemeral,
+        agent_sig=agent_sig,
+        user_message=user_message,
+        system_message=system_message,
+        previous_context_messages=previous_context_messages,
+        config=config,
+        persist_user_message=persist_user_message,
+        sanitize_messages_for_api=sanitize_messages_for_api,
+        output_bridge=output_bridge,
+        logger=logger,
+        retrying_log_message='[webui] self-heal: retrying stream after credential refresh',
+        retry_failed_log_message='[webui] self-heal: retry also failed: %s',
+    )
+    if heal_retry is None:
+        return SilentFailureSelfHealResult()
+
+    rebuilt = heal_retry.rebuilt
+    healed = SilentFailureSelfHealResult(
+        self_healed=True,
+        result=heal_retry.result,
+        agent=rebuilt.agent,
+        agent_kwargs=rebuilt.agent_kwargs,
+        runtime=rebuilt.runtime,
+        resolved_api_key=rebuilt.resolved_api_key,
+        resolved_provider=rebuilt.resolved_provider,
+        resolved_base_url=rebuilt.resolved_base_url,
+    )
+    if heal_retry.result is None:
+        return healed
+
+    heal_messages = heal_retry.result.get('messages') or []
+    heal_ok = has_new_assistant_reply(heal_messages, prev_len) or output_bridge.token_sent
+    if not heal_ok:
+        return healed
+
+    apply_agent_result_to_session(
+        session,
+        previous_messages,
+        previous_context_messages,
+        heal_retry.result.get('messages'),
+        msg_text,
+    )
+    healed.succeeded = True
+    return healed
 
 
 def persist_exception_self_heal_result(
