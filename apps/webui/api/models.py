@@ -32,6 +32,11 @@ from api.session_index import (
     lookup_index_message_count as _lookup_session_index_message_count,
     write_session_index as _write_session_index_impl,
 )
+from api.session_metadata import (
+    find_top_level_json_key as _find_top_level_json_key_impl,
+    read_metadata_json_prefix as _read_metadata_json_prefix_impl,
+    read_session_metadata_payload,
+)
 
 logger = logging.getLogger(__name__)
 CLI_VISIBLE_SESSION_LIMIT = 20
@@ -144,62 +149,11 @@ def _message_role(message):
 
 
 def _find_top_level_json_key(text, key):
-    """Return the byte offset of a top-level JSON object key, if present."""
-    depth = 0
-    i = 0
-    n = len(text)
-    while i < n:
-        ch = text[i]
-        if ch == '"':
-            start = i
-            i += 1
-            escaped = False
-            chars = []
-            while i < n:
-                c = text[i]
-                if escaped:
-                    chars.append(c)
-                    escaped = False
-                elif c == '\\':
-                    escaped = True
-                elif c == '"':
-                    break
-                else:
-                    chars.append(c)
-                i += 1
-            if i >= n:
-                return None
-            if depth == 1 and ''.join(chars) == key:
-                j = i + 1
-                while j < n and text[j] in ' \t\r\n':
-                    j += 1
-                if j < n and text[j] == ':':
-                    return start
-        elif ch in '{[':
-            depth += 1
-        elif ch in '}]':
-            depth -= 1
-        i += 1
-    return None
+    return _find_top_level_json_key_impl(text, key)
 
 
 def _read_metadata_json_prefix(path, max_prefix_bytes=65536):
-    """Read only the metadata portion before the top-level messages array."""
-    buf = ''
-    with open(path, 'r', encoding='utf-8') as f:
-        while len(buf.encode('utf-8')) < max_prefix_bytes:
-            chunk = f.read(4096)
-            if not chunk:
-                return None
-            buf += chunk
-            messages_pos = _find_top_level_json_key(buf, 'messages')
-            if messages_pos is None:
-                continue
-            prefix = buf[:messages_pos].rstrip()
-            if prefix.endswith(','):
-                prefix = prefix[:-1].rstrip()
-            return f'{prefix}\n}}'
-    return None
+    return _read_metadata_json_prefix_impl(path, max_prefix_bytes=max_prefix_bytes)
 
 
 def _lookup_index_message_count(session_id):
@@ -440,15 +394,9 @@ class Session:
         if not p.exists():
             return None
         try:
-            prefix = _read_metadata_json_prefix(p)
-            if not prefix:
+            parsed = read_session_metadata_payload(p)
+            if not parsed:
                 return cls.load(sid)
-            parsed = json.loads(prefix)
-            needed = {'session_id', 'title', 'created_at', 'updated_at'}
-            if not needed.issubset(parsed.keys()):
-                return cls.load(sid)
-            parsed['messages'] = []
-            parsed['tool_calls'] = []
             session = cls(**parsed)
             session._metadata_message_count = _lookup_index_message_count(sid)
             # Mark this session as a metadata-only stub. save() refuses to write
