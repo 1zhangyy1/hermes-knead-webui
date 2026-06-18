@@ -1,4 +1,9 @@
-from api.streaming_cleanup import cleanup_stream_registries, finalize_streaming_worker_exit
+import api.config as cfg
+from api.streaming_cleanup import (
+    cleanup_stream_registries,
+    finalize_streaming_worker_exit,
+    finalize_webui_streaming_worker_exit,
+)
 
 
 class DummyLock:
@@ -139,3 +144,52 @@ def test_finalize_streaming_worker_exit_skips_recovery_without_pending_owner():
         'clear-env',
         ('unregister', 'stream-1'),
     ]
+
+
+def test_finalize_webui_streaming_worker_exit_cleans_standard_registries():
+    events = []
+    stream_id = 'stream-webui-cleanup-wrapper'
+    registries = (
+        cfg.STREAMS,
+        cfg.CANCEL_FLAGS,
+        cfg.AGENT_INSTANCES,
+        cfg.STREAM_PARTIAL_TEXT,
+        cfg.STREAM_REASONING_TEXT,
+        cfg.STREAM_LIVE_TOOL_CALLS,
+        cfg.STREAM_GOAL_RELATED,
+        cfg.STREAM_LAST_EVENT_ID,
+    )
+
+    with cfg.STREAMS_LOCK:
+        for registry in registries:
+            registry.pop(stream_id, None)
+            registry[stream_id] = 'value'
+
+    try:
+        finalize_webui_streaming_worker_exit(
+            session=None,
+            stream_id=stream_id,
+            agent_lock='agent-lock',
+            checkpoint_stop='stop',
+            checkpoint_thread='thread',
+            last_resort_sync_from_core=lambda *_args: events.append('sync'),
+            finalize_product_turn=lambda **kwargs: events.append(('finalize', kwargs)),
+            goal_related=cfg.STREAM_GOAL_RELATED,
+            stop_checkpoint_thread_fn=lambda stop, thread: events.append(('stop', stop, thread)),
+            update_active_run_fn=lambda *_args, **_kwargs: events.append('active'),
+            clear_thread_env_fn=lambda: events.append('clear-env'),
+            unregister_active_run_fn=lambda sid: events.append(('unregister', sid)),
+        )
+
+        assert events == [
+            ('stop', 'stop', 'thread'),
+            ('finalize', {'failed': True}),
+            'clear-env',
+            ('unregister', stream_id),
+        ]
+        with cfg.STREAMS_LOCK:
+            assert all(stream_id not in registry for registry in registries)
+    finally:
+        with cfg.STREAMS_LOCK:
+            for registry in registries:
+                registry.pop(stream_id, None)

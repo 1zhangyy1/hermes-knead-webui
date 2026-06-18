@@ -2,6 +2,22 @@
 
 from __future__ import annotations
 
+from api.config import (
+    AGENT_INSTANCES,
+    CANCEL_FLAGS,
+    STREAMS,
+    STREAMS_LOCK,
+    STREAM_GOAL_RELATED,
+    STREAM_LAST_EVENT_ID,
+    STREAM_LIVE_TOOL_CALLS,
+    STREAM_PARTIAL_TEXT,
+    STREAM_REASONING_TEXT,
+    _clear_thread_env,
+    unregister_active_run,
+    update_active_run,
+)
+from api.streaming_checkpoint import stop_checkpoint_thread
+
 
 def cleanup_stream_registries(
     stream_id: str,
@@ -80,4 +96,44 @@ def finalize_streaming_worker_exit(
         last_event_ids=last_event_ids,
         unregister_active_run=unregister_active_run,
         streams_lock=streams_lock,
+    )
+
+
+def finalize_webui_streaming_worker_exit(
+    *,
+    session,
+    stream_id: str,
+    agent_lock,
+    checkpoint_stop,
+    checkpoint_thread,
+    last_resort_sync_from_core,
+    finalize_product_turn,
+    goal_related=STREAM_GOAL_RELATED,
+    stop_checkpoint_thread_fn=stop_checkpoint_thread,
+    update_active_run_fn=update_active_run,
+    clear_thread_env_fn=_clear_thread_env,
+    unregister_active_run_fn=unregister_active_run,
+) -> None:
+    """Finalize a WebUI worker using the standard stream registries."""
+    finalize_streaming_worker_exit(
+        session=session,
+        stream_id=stream_id,
+        agent_lock=agent_lock,
+        checkpoint_stop=checkpoint_stop,
+        checkpoint_thread=checkpoint_thread,
+        stop_checkpoint_thread=stop_checkpoint_thread_fn,
+        update_active_run=update_active_run_fn,
+        last_resort_sync_from_core=last_resort_sync_from_core,
+        finalize_product_turn=finalize_product_turn,
+        clear_thread_env=clear_thread_env_fn,
+        streams=STREAMS,
+        cancel_flags=CANCEL_FLAGS,
+        agent_instances=AGENT_INSTANCES,
+        partial_text=STREAM_PARTIAL_TEXT,
+        reasoning_text=STREAM_REASONING_TEXT,
+        live_tool_calls=STREAM_LIVE_TOOL_CALLS,
+        goal_related=goal_related,
+        last_event_ids=STREAM_LAST_EVENT_ID,
+        unregister_active_run=unregister_active_run_fn,
+        streams_lock=STREAMS_LOCK,
     )
