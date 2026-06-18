@@ -5,6 +5,7 @@ from types import SimpleNamespace
 from api.streaming_process_notifications import (
     drain_webui_process_notifications,
     format_process_notification,
+    message_text_with_process_notifications,
     mark_process_completion_consumed,
 )
 
@@ -76,3 +77,7 @@ def test_mark_process_completion_consumed_is_best_effort():
 
     assert registry._completion_consumed == {"proc1"}
 
+
+def test_message_text_with_process_notifications_prefixes_agent_only_text():
+    assert message_text_with_process_notifications("user text", ["done 1", "done 2"]) == "done 1\n\ndone 2\n\nuser text"
+    assert message_text_with_process_notifications("user text", []) == "user text"

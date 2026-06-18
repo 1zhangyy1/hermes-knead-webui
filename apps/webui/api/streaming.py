@@ -145,6 +145,7 @@ from api.streaming_output_bridge import StreamingOutputBridge as _StreamingOutpu
 from api.streaming_process_notifications import (
     drain_webui_process_notifications as _drain_webui_process_notifications_impl,
     format_process_notification as _format_process_notification_impl,
+    message_text_with_process_notifications as _message_text_with_process_notifications,
     mark_process_completion_consumed as _mark_process_completion_consumed_impl,
 )
 from api.streaming_product_turn import ProductTurnFinalizer as _ProductTurnFinalizer
@@ -1223,9 +1224,7 @@ def _run_agent_streaming(
             _ckpt_thread = _checkpoint_runner.thread
 
             _process_notifications = _drain_webui_process_notifications(session_id)
-            _agent_msg_text = msg_text
-            if _process_notifications:
-                _agent_msg_text = "\n\n".join([*_process_notifications, msg_text]).strip()
+            _agent_msg_text = _message_text_with_process_notifications(msg_text, _process_notifications)
             user_message = _build_native_multimodal_message(workspace_ctx, _agent_msg_text, attachments, workspace, cfg=_cfg)
             result = agent.run_conversation(
                 user_message=user_message,
