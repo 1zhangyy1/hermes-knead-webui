@@ -749,14 +749,15 @@ def test_streaming_restores_prior_reasoning_metadata_after_followup():
     reasoning-only assistant segments.
     """
     src = (REPO / 'api' / 'streaming.py').read_text()
+    context_src = (REPO / 'api' / 'streaming_context.py').read_text()
     assert "def _restore_reasoning_metadata(" in src, \
         "streaming.py must define a helper to restore prior reasoning metadata"
     assert "s.context_messages = _next_context_messages" in src, \
         "streaming.py must restore prior reasoning metadata into model context"
     assert "s.messages = _merge_display_messages_after_agent_result(" in src, \
         "streaming.py must merge restored result messages into the visible transcript"
-    assert "updated_messages.insert(safe_pos, copy.deepcopy(prev_msg))" in src, \
-        "streaming.py must reinsert dropped reasoning-only assistant messages"
+    assert "updated_messages.insert(safe_pos, copy.deepcopy(prev_msg))" in context_src, \
+        "streaming_context.py must reinsert dropped reasoning-only assistant messages"
 
 
 def test_routes_restores_prior_reasoning_metadata_after_followup():

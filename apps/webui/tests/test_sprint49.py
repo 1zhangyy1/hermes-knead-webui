@@ -19,6 +19,7 @@ REPO = pathlib.Path(__file__).parent.parent
 UI_JS = (REPO / "static" / "ui.js").read_text(encoding="utf-8")
 UI_CSS = (REPO / "static" / "style.css").read_text(encoding="utf-8")
 STREAMING_PY = (REPO / "api" / "streaming.py").read_text(encoding="utf-8")
+STREAMING_CONTEXT_PY = (REPO / "api" / "streaming_context.py").read_text(encoding="utf-8")
 
 
 def test_footer_timestamp_is_not_limited_to_user_messages():
@@ -72,10 +73,10 @@ def test_last_assistant_keeps_usage_visible_and_reveals_time_and_actions_on_hove
 
 def test_restore_reasoning_metadata_preserves_existing_timestamps():
     assert "def _restore_reasoning_metadata(previous_messages, updated_messages):" in STREAMING_PY
-    assert "if prev_msg.get('timestamp') and not cur_msg.get('timestamp'):" in STREAMING_PY
-    assert "cur_msg['timestamp'] = prev_msg['timestamp']" in STREAMING_PY
-    assert "elif prev_msg.get('_ts') and not cur_msg.get('_ts') and not cur_msg.get('timestamp'):" in STREAMING_PY
-    assert "cur_msg['_ts'] = prev_msg['_ts']" in STREAMING_PY
+    assert "if prev_msg.get('timestamp') and not cur_msg.get('timestamp'):" in STREAMING_CONTEXT_PY
+    assert "cur_msg['timestamp'] = prev_msg['timestamp']" in STREAMING_CONTEXT_PY
+    assert "elif prev_msg.get('_ts') and not cur_msg.get('_ts') and not cur_msg.get('timestamp'):" in STREAMING_CONTEXT_PY
+    assert "cur_msg['_ts'] = prev_msg['_ts']" in STREAMING_CONTEXT_PY
 
 
 def test_restore_reasoning_metadata_preserves_timestamp_on_reload_for_unchanged_messages():
