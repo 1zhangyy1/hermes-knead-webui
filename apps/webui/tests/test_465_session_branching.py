@@ -126,7 +126,7 @@ def test_branch_auto_title():
 
 def test_session_model_parent_session_id():
     """Verify Session model supports parent_session_id."""
-    with open('api/models.py') as f:
+    with open('api/session_model.py') as f:
         src = f.read()
     assert 'parent_session_id' in src, "Session model should have parent_session_id"
     # Check __init__ parameter
@@ -139,7 +139,7 @@ def test_session_model_parent_session_id():
 
 def test_session_compact_includes_parent():
     """Verify compact() includes parent_session_id."""
-    with open('api/models.py') as f:
+    with open('api/session_model.py') as f:
         src = f.read()
     # Find the compact method and scan its full body for parent_session_id.
     # PR #1591 (May 2026) added a has_pending_user_message recompute block at
@@ -155,7 +155,7 @@ def test_session_compact_includes_parent():
 
 def test_session_metadata_fields_includes_parent():
     """Verify parent_session_id is in METADATA_FIELDS for persistence."""
-    with open('api/models.py') as f:
+    with open('api/session_model.py') as f:
         src = f.read()
     assert "'parent_session_id'" in src, \
         "METADATA_FIELDS should include parent_session_id"

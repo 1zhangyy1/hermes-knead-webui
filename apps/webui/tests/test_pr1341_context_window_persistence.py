@@ -21,7 +21,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 STREAMING = ROOT / "api" / "streaming.py"
-MODELS = ROOT / "api" / "models.py"
+SESSION_MODEL = ROOT / "api" / "session_model.py"
 ROUTES = ROOT / "api" / "routes.py"
 
 
@@ -69,7 +69,7 @@ def test_streaming_persists_context_fields_on_session_before_save():
 
 def test_session_init_accepts_context_fields():
     """Session.__init__ must accept the three fields as named kwargs."""
-    src = MODELS.read_text(encoding="utf-8")
+    src = SESSION_MODEL.read_text(encoding="utf-8")
     # The init signature spans many lines — read the full def block
     init_match = re.search(r"def __init__\(self,(.*?)\):", src, re.DOTALL)
     assert init_match, "Session.__init__ signature not found"
@@ -81,7 +81,7 @@ def test_session_init_accepts_context_fields():
 
 def test_session_metadata_fields_includes_context_fields():
     """Session.save() METADATA_FIELDS must include all three for round-trip persistence."""
-    src = MODELS.read_text(encoding="utf-8")
+    src = SESSION_MODEL.read_text(encoding="utf-8")
     # Locate METADATA_FIELDS list
     meta_match = re.search(
         r"METADATA_FIELDS\s*=\s*\[(.*?)\]",
@@ -97,7 +97,7 @@ def test_session_metadata_fields_includes_context_fields():
 
 def test_session_compact_exposes_context_fields():
     """Session.compact() must include the three fields in its output dict."""
-    src = MODELS.read_text(encoding="utf-8")
+    src = SESSION_MODEL.read_text(encoding="utf-8")
     # Find compact() method body
     compact_idx = src.find("def compact(")
     assert compact_idx != -1, "Session.compact not found"
