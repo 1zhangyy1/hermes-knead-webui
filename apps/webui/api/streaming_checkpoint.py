@@ -72,3 +72,11 @@ def start_periodic_checkpoint(
         logger=logger,
         thread_name=f"ckpt-{session_id[:8]}",
     ).start()
+
+
+def stop_checkpoint_thread(checkpoint_stop, checkpoint_thread, *, timeout: float = 15) -> None:
+    """Stop and join a checkpoint thread if it was started."""
+    if checkpoint_stop is not None:
+        checkpoint_stop.set()
+    if checkpoint_thread is not None:
+        checkpoint_thread.join(timeout=timeout)

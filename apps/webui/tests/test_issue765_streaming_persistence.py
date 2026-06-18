@@ -331,8 +331,7 @@ class TestIssue765FollowupHardening:
         src = (Path(__file__).parent.parent / "api" / "streaming.py").read_text(
             encoding="utf-8"
         )
-        stop_idx = src.find("if _checkpoint_stop is not None:\n                _checkpoint_stop.set()")
-        join_idx = src.find("if _ckpt_thread is not None:\n                _ckpt_thread.join(timeout=15)")
+        stop_idx = src.find("_stop_checkpoint_thread(_checkpoint_stop, _ckpt_thread)")
         lock_idx = src.find(
             "with _agent_lock:\n"
             "                if not ephemeral and not _stream_writeback_is_current(s, stream_id):"
@@ -340,10 +339,9 @@ class TestIssue765FollowupHardening:
         save_idx = src.find("s.context_messages = _next_context_messages")
 
         assert stop_idx != -1, "Success path must stop the checkpoint thread"
-        assert join_idx != -1, "Success path must join the checkpoint thread"
         assert lock_idx != -1, "Success path must serialize mutation with _agent_lock"
         assert save_idx != -1, "Success path restore/mutation block not found"
-        assert stop_idx < join_idx < lock_idx <= save_idx, (
+        assert stop_idx < lock_idx <= save_idx, (
             "Checkpoint stop/join must happen before the success-path session mutation block"
         )
 
