@@ -65,6 +65,7 @@ from api.streaming_gateway import (
     find_gateway_metadata_payload as _find_gateway_metadata_payload,
     normalize_gateway_routing_metadata as _normalize_gateway_routing_metadata,
 )
+from api.streaming_gateway_notifications import register_streaming_gateway_notifications as _register_streaming_gateway_notifications
 from api.streaming_goal import run_post_turn_goal_hook as _run_post_turn_goal_hook
 from api.streaming_attachments import (
     IMAGE_MAGIC as _IMAGE_MAGIC,
@@ -902,41 +903,11 @@ def _run_agent_streaming(
         except Exception:
             pass  # MCP not available or not configured — non-fatal
 
-        # Register a gateway-style notify callback so the approval system can
-        # push the `approval` SSE event the moment a dangerous command is
-        # detected, without waiting for the next on_tool() poll cycle.
-        # Without this, the agent thread blocks inside the terminal tool
-        # waiting for approval that the UI never knew to ask for, leaving
-        # the chat stuck in "Thinking…" forever.
-        _approval_registered = False
-        _unreg_notify = None
-        try:
-            from tools.approval import (
-                register_gateway_notify as _reg_notify,
-                unregister_gateway_notify as _unreg_notify,
-            )
-            def _approval_notify_cb(approval_data):
-                put('approval', approval_data)
-            _reg_notify(session_id, _approval_notify_cb)
-            _approval_registered = True
-        except ImportError:
-            logger.debug("Approval module not available, falling back to polling")
-
-        _clarify_registered = False
-        _unreg_clarify_notify = None
-        try:
-            from api.clarify import (
-                register_gateway_notify as _reg_clarify_notify,
-                unregister_gateway_notify as _unreg_clarify_notify,
-            )
-
-            def _clarify_notify_cb(clarify_data):
-                put('clarify', clarify_data)
-
-            _reg_clarify_notify(session_id, _clarify_notify_cb)
-            _clarify_registered = True
-        except ImportError:
-            logger.debug("Clarify module not available, falling back to polling")
+        _gateway_notifications = _register_streaming_gateway_notifications(
+            session_id,
+            put=put,
+            logger=logger,
+        )
 
         try:
             _token_sent = False  # tracks whether any streamed tokens were sent
@@ -1921,18 +1892,9 @@ def _run_agent_streaming(
         finally:
             # Stop the live metering ticker
             _metering_ticker.stop()
-            # Unregister the gateway approval callback and unblock any threads
-            # still waiting on approval (e.g. stream cancelled mid-approval).
-            if _approval_registered and _unreg_notify is not None:
-                try:
-                    _unreg_notify(session_id)
-                except Exception:
-                    logger.debug("Failed to unregister approval callback")
-            if _clarify_registered and _unreg_clarify_notify is not None:
-                try:
-                    _unreg_clarify_notify(session_id)
-                except Exception:
-                    logger.debug("Failed to unregister clarify callback")
+            # Unregister gateway callbacks and unblock any threads still
+            # waiting on approval/clarify prompts.
+            _gateway_notifications.unregister(session_id)
             _restore_agent_process_env(
                 old_profile_env,
                 {

@@ -7,7 +7,7 @@ Tests for:
 - i18n keys for approval card in both locales
 - CSS for approval-btn states (loading, disabled, kbd badge)
 - respondApproval loading/disable pattern in messages.js
-- streaming.py scoping fix (_unreg_notify=None initialisation)
+- streaming gateway notification registration/unregistration scoping
 - Approval respond HTTP endpoint (existing + new behaviour)
 """
 
@@ -338,39 +338,45 @@ class TestApprovalKeyboardShortcut:
             "Enter shortcut should not fire when focus is on TEXTAREA or INPUT"
 
 
-# ── streaming.py scoping fix ─────────────────────────────────────────────────
+# ── streaming gateway notification scoping ───────────────────────────────────
 
 class TestStreamingApprovalScoping:
 
-    def test_unreg_notify_initialised_to_none(self):
+    def test_gateway_notification_helper_imported(self):
         src = read(REPO / "api/streaming.py")
-        assert "_unreg_notify = None" in src, \
-            "_unreg_notify must be initialised to None before the try block"
+        assert "from api.streaming_gateway_notifications import register_streaming_gateway_notifications" in src, \
+            "streaming.py should import the gateway notification helper"
 
-    def test_finally_checks_unreg_notify_not_none(self):
+    def test_gateway_notifications_registered_once(self):
         src = read(REPO / "api/streaming.py")
-        assert "_unreg_notify is not None" in src, \
-            "finally block must check '_unreg_notify is not None' before calling it"
+        assert "_gateway_notifications = _register_streaming_gateway_notifications(" in src, \
+            "streaming.py should register gateway notifications through the helper"
 
-    def test_approval_registered_flag_present(self):
+    def test_finally_unregisters_gateway_notifications(self):
         src = read(REPO / "api/streaming.py")
-        assert "_approval_registered = False" in src, \
-            "_approval_registered flag must be initialised to False"
+        assert "_gateway_notifications.unregister(session_id)" in src, \
+            "finally block must unregister gateway notifications"
 
-    def test_clarify_registered_flag_present(self):
-        src = read(REPO / "api/streaming.py")
-        assert "_clarify_registered = False" in src, \
-            "_clarify_registered flag must be initialised to False"
+    def test_gateway_helper_initialises_flags_safely(self):
+        src = read(REPO / "api/streaming_gateway_notifications.py")
+        assert "approval_registered: bool = False" in src, \
+            "approval_registered flag must default to False"
+        assert "clarify_registered: bool = False" in src, \
+            "clarify_registered flag must default to False"
 
-    def test_clarify_unreg_notify_initialised_to_none(self):
-        src = read(REPO / "api/streaming.py")
-        assert "_unreg_clarify_notify = None" in src, \
-            "_unreg_clarify_notify must be initialised to None before the try block"
+    def test_gateway_helper_initialises_unregister_callbacks_safely(self):
+        src = read(REPO / "api/streaming_gateway_notifications.py")
+        assert "unregister_approval: Callable[[str], object] | None = None" in src, \
+            "approval unregister callback must default to None"
+        assert "unregister_clarify: Callable[[str], object] | None = None" in src, \
+            "clarify unregister callback must default to None"
 
-    def test_finally_checks_clarify_unreg_notify_not_none(self):
-        src = read(REPO / "api/streaming.py")
-        assert "_unreg_clarify_notify is not None" in src, \
-            "finally block must check '_unreg_clarify_notify is not None' before calling it"
+    def test_gateway_helper_checks_unregister_callbacks_not_none(self):
+        src = read(REPO / "api/streaming_gateway_notifications.py")
+        assert "self.unregister_approval is not None" in src, \
+            "approval unregister must check callback presence before calling it"
+        assert "self.unregister_clarify is not None" in src, \
+            "clarify unregister must check callback presence before calling it"
 
 
 # ── HTTP regression: approval respond ────────────────────────────────────────
