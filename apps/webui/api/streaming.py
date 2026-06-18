@@ -51,7 +51,10 @@ from api.streaming_cancellation import (
     persist_cancelled_turn as _persist_cancelled_turn_impl,
     session_has_cancel_marker as _session_has_cancel_marker_impl,
 )
-from api.streaming_chat_steer import handle_chat_steer as _handle_chat_steer_impl
+from api.streaming_chat_steer import (
+    drain_pending_steer_leftover as _drain_pending_steer_leftover,
+    handle_chat_steer as _handle_chat_steer_impl,
+)
 from api.streaming_gateway import (
     GATEWAY_ROUTING_ATTEMPT_KEYS as _GATEWAY_ROUTING_ATTEMPT_KEYS,
     GATEWAY_ROUTING_CONTAINER_KEYS as _GATEWAY_ROUTING_CONTAINER_KEYS,
@@ -1920,23 +1923,7 @@ def _run_agent_streaming(
                 resolved_provider=resolved_provider or '',
             )
             # (reasoning trace already attached + saved above, before s.save())
-            # Leftover-steer delivery: if a /steer was queued (via
-            # api/chat/steer) but the agent finished its turn before
-            # reaching a tool-result boundary that would consume it,
-            # the text is still stashed in agent._pending_steer. Drain
-            # it now and emit a pending_steer_leftover SSE event so the
-            # frontend can queue it for the next turn — same fallback
-            # path as the CLI in cli.py:8788-8794.
-            try:
-                _drain_pending_steer = getattr(agent, '_drain_pending_steer', None)
-                _leftover = _drain_pending_steer() if _drain_pending_steer else None
-                if _leftover:
-                    put('pending_steer_leftover', {
-                        'session_id': session_id,
-                        'text': str(_leftover),
-                    })
-            except Exception:
-                logger.debug("Failed to drain pending steer for session %s", session_id)
+            _drain_pending_steer_leftover(agent, session_id=session_id, put=put, logger=logger)
             # /goal parity: run the Hermes GoalManager judge before terminal
             # done/stream_end events so continuation prompts can be queued.
             _run_post_turn_goal_hook(

@@ -3,6 +3,24 @@
 from __future__ import annotations
 
 
+def drain_pending_steer_leftover(agent, *, session_id: str, put, logger=None) -> str:
+    """Emit a leftover /steer payload that the finished agent turn did not consume."""
+    try:
+        drain_pending_steer = getattr(agent, '_drain_pending_steer', None)
+        leftover = drain_pending_steer() if drain_pending_steer else None
+        if leftover:
+            text = str(leftover)
+            put('pending_steer_leftover', {
+                'session_id': session_id,
+                'text': text,
+            })
+            return text
+    except Exception:
+        if logger is not None:
+            logger.debug("Failed to drain pending steer for session %s", session_id)
+    return ''
+
+
 def handle_chat_steer(handler, body: dict, *, get_session, logger=None) -> bool:
     """Inject a /steer payload into the active agent for a session."""
     from api.helpers import j, bad

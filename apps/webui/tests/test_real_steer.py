@@ -321,11 +321,15 @@ class TestLeftoverDelivery:
 
     def test_leftover_drain_call_in_streaming(self):
         """Verify the streaming.py source contains the drain call before put('done', ...)."""
-        src = (Path(__file__).parent.parent / "api" / "streaming.py").read_text(encoding="utf-8")
-        assert "_drain_pending_steer" in src, (
+        streaming_src = (Path(__file__).parent.parent / "api" / "streaming.py").read_text(encoding="utf-8")
+        steer_src = (Path(__file__).parent.parent / "api" / "streaming_chat_steer.py").read_text(encoding="utf-8")
+        assert "_drain_pending_steer_leftover" in streaming_src, (
             "_run_agent_streaming must call agent._drain_pending_steer() to deliver leftovers"
         )
-        assert "pending_steer_leftover" in src, (
+        assert "_drain_pending_steer" in steer_src, (
+            "streaming_chat_steer must call agent._drain_pending_steer() to deliver leftovers"
+        )
+        assert "pending_steer_leftover" in steer_src, (
             "_run_agent_streaming must emit a pending_steer_leftover SSE event"
         )
 
@@ -334,7 +338,7 @@ class TestLeftoverDelivery:
         on the same turn."""
         src = (Path(__file__).parent.parent / "api" / "streaming.py").read_text(encoding="utf-8")
         # Find the drain invocation and the next put('done', ...) AFTER it
-        drain_idx = src.find("_drain_pending_steer()")
+        drain_idx = src.find("_drain_pending_steer_leftover(")
         assert drain_idx >= 0
         done_idx = src.find("put('done'", drain_idx)
         assert done_idx >= 0
