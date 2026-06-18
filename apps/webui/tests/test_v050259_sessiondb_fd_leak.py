@@ -68,14 +68,15 @@ def test_lru_eviction_closes_evicted_agent_session_db():
     Fix: capture the evicted entry, close its agent's `_session_db` before
     dropping the reference.
     """
-    src = (REPO / "api" / "streaming.py").read_text(encoding="utf-8")
+    streaming_src = (REPO / "api" / "streaming.py").read_text(encoding="utf-8")
+    helper_src = (REPO / "api" / "streaming_agent_cache.py").read_text(encoding="utf-8")
 
     # The eviction site uses popitem(last=False). The evicted entry must be
     # captured (not discarded with `_`) and the agent's _session_db closed.
-    eviction_idx = src.find("Evicted LRU agent from cache")
-    assert eviction_idx != -1, "LRU eviction debug log missing"
-    # Look in a window around the eviction.
-    block = src[max(0, eviction_idx - 1500) : eviction_idx + 200]
+    eviction_idx = streaming_src.find("SESSION_AGENT_CACHE.popitem(last=False)")
+    assert eviction_idx != -1, "LRU eviction popitem missing"
+    # Look in a window around the eviction collection site.
+    block = streaming_src[max(0, eviction_idx - 500) : eviction_idx + 500]
 
     # Negative pattern: the old `evicted_sid, _ = ...` discard form must NOT
     # be present — that's the bug shape.
@@ -86,10 +87,14 @@ def test_lru_eviction_closes_evicted_agent_session_db():
     )
 
     # Positive pattern: must close on the evicted agent.
-    assert "_evicted_agent._session_db.close()" in block, (
+    helper_idx = helper_src.find("def handle_evicted_agent_cache_items")
+    assert helper_idx != -1, "LRU eviction helper missing"
+    helper_block = helper_src[helper_idx : helper_idx + 2500]
+    assert "evicted_agent._session_db.close()" in helper_block, (
         "LRU eviction must close the evicted agent\'s _session_db. "
         "(Opus pre-release follow-up to PR #1421.)"
     )
+    assert "Evicted LRU agent from cache" in helper_block
 
 
 # ── 3: behavioral: SessionDB.close() is idempotent + safe ──────────────────
@@ -172,10 +177,12 @@ def test_cached_agent_reuse_calls_close_on_old_session_db():
 # ── 5: behavioral: LRU eviction with mock agents ────────────────────────────
 
 
-def test_lru_eviction_closes_evicted_session_db():
+def test_lru_eviction_closes_evicted_session_db(monkeypatch):
     """End-to-end: simulate LRU eviction and verify the evicted agent's
     SessionDB.close() is called."""
     import collections
+    from api.streaming_agent_cache import handle_evicted_agent_cache_items
+    import api.session_lifecycle as lifecycle
 
     class MockSessionDB:
         def __init__(self, name):
@@ -193,17 +200,17 @@ def test_lru_eviction_closes_evicted_session_db():
     cache["sid-a"] = (MockAgent(db1), "sig1")
     cache["sid-b"] = (MockAgent(db2), "sig2")
     cache["sid-c"] = (MockAgent(db3), "sig3")
+    monkeypatch.setattr(lifecycle, "commit_session_memory", lambda session_id, *, agent=None, wait=False: True)
+    monkeypatch.setattr(lifecycle, "has_uncommitted_work", lambda session_id: False)
+    monkeypatch.setattr(lifecycle, "unregister_agent", lambda session_id: None)
 
     # Mirror the production eviction path with MAX=2:
     MAX = 2
+    evicted_items = []
     while len(cache) > MAX:
         evicted_sid, evicted_entry = cache.popitem(last=False)
-        try:
-            _evicted_agent = evicted_entry[0] if isinstance(evicted_entry, tuple) else None
-            if _evicted_agent is not None and getattr(_evicted_agent, "_session_db", None) is not None:
-                _evicted_agent._session_db.close()
-        except Exception:
-            pass
+        evicted_items.append((evicted_sid, evicted_entry))
+    handle_evicted_agent_cache_items(evicted_items)
 
     # First-inserted entry (sid-a) was evicted.
     assert "sid-a" not in cache

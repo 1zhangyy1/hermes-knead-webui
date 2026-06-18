@@ -1,4 +1,4 @@
-from api.streaming_agent_cache import refresh_cached_agent_for_turn
+from api.streaming_agent_cache import handle_evicted_agent_cache_items, refresh_cached_agent_for_turn
 
 
 class _SessionDB:
@@ -85,3 +85,66 @@ def test_refresh_cached_agent_for_turn_ignores_missing_optional_attributes():
     assert agent.stream_delta_callback is callbacks['stream_delta_callback']
     assert agent.tool_progress_callback is callbacks['tool_progress_callback']
     assert not hasattr(agent, 'status_callback')
+
+
+def test_handle_evicted_agent_cache_items_commits_unregisters_and_closes(monkeypatch):
+    import api.session_lifecycle as lifecycle
+
+    calls = []
+    db = _SessionDB()
+    agent = type("Agent", (), {"_session_db": db})()
+
+    def commit_session_memory(session_id, *, agent=None, wait=False):
+        calls.append(("commit", session_id, agent, wait))
+        return True
+
+    def has_uncommitted_work(session_id):
+        calls.append(("has_uncommitted_work", session_id))
+        return False
+
+    def unregister_agent(session_id):
+        calls.append(("unregister_agent", session_id))
+
+    monkeypatch.setattr(lifecycle, "commit_session_memory", commit_session_memory)
+    monkeypatch.setattr(lifecycle, "has_uncommitted_work", has_uncommitted_work)
+    monkeypatch.setattr(lifecycle, "unregister_agent", unregister_agent)
+
+    handle_evicted_agent_cache_items([("sid-1", (agent, "sig"))])
+
+    assert calls == [
+        ("commit", "sid-1", agent, True),
+        ("has_uncommitted_work", "sid-1"),
+        ("unregister_agent", "sid-1"),
+    ]
+    assert db.close_calls == 1
+
+
+def test_handle_evicted_agent_cache_items_keeps_agent_open_when_work_remains(monkeypatch):
+    import api.session_lifecycle as lifecycle
+
+    calls = []
+    db = _SessionDB()
+    agent = type("Agent", (), {"_session_db": db})()
+
+    def commit_session_memory(session_id, *, agent=None, wait=False):
+        calls.append(("commit", session_id, agent, wait))
+        return True
+
+    def has_uncommitted_work(session_id):
+        calls.append(("has_uncommitted_work", session_id))
+        return True
+
+    def unregister_agent(session_id):
+        calls.append(("unregister_agent", session_id))
+
+    monkeypatch.setattr(lifecycle, "commit_session_memory", commit_session_memory)
+    monkeypatch.setattr(lifecycle, "has_uncommitted_work", has_uncommitted_work)
+    monkeypatch.setattr(lifecycle, "unregister_agent", unregister_agent)
+
+    handle_evicted_agent_cache_items([("sid-1", (agent, "sig"))])
+
+    assert calls == [
+        ("commit", "sid-1", agent, True),
+        ("has_uncommitted_work", "sid-1"),
+    ]
+    assert db.close_calls == 0
