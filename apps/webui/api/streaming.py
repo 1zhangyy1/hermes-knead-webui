@@ -67,6 +67,7 @@ from api.streaming_attachments import (
     attachment_name as _attachment_name,
     build_native_multimodal_message as _build_native_multimodal_message,
     is_valid_image as _is_valid_image,
+    tag_matching_user_message_attachments as _tag_matching_user_message_attachments,
 )
 from api.streaming_context import (
     API_SAFE_MSG_KEYS as _API_SAFE_MSG_KEYS_IMPL,
@@ -1816,19 +1817,7 @@ def _run_agent_streaming(
                 s.pending_user_message = None
                 s.pending_attachments = []
                 s.pending_started_at = None
-                # Tag the matching user message with attachment filenames for display on reload
-                # Only tag a user message whose content relates to this turn's text
-                # (msg_text is the full message including the [Attached files: ...] suffix)
-                if attachments:
-                    display_attachments = [_attachment_name(a) for a in attachments if _attachment_name(a)]
-                    for m in reversed(s.messages):
-                        if m.get('role') == 'user':
-                            content = str(m.get('content', ''))
-                            # Match if content is part of the sent message or vice-versa
-                            base_text = msg_text.split('\n\n[Attached files:')[0].strip() if '\n\n[Attached files:' in msg_text else msg_text
-                            if base_text[:60] in content or content[:60] in msg_text:
-                                m['attachments'] = display_attachments
-                                break
+                _tag_matching_user_message_attachments(s.messages, msg_text, attachments)
                 # Persist reasoning trace in the session so it survives reload.
                 # Must run BEFORE s.save() — otherwise the mutation lives only in
                 # memory until the next turn's save, and the last-turn thinking card
