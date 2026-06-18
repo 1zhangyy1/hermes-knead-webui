@@ -222,6 +222,7 @@ from api.streaming_runtime_helpers import (
     aiagent_import_error_detail as _aiagent_import_error_detail_impl,
     build_agent_thread_env as _build_agent_thread_env,
     clarify_timeout_seconds as _clarify_timeout_seconds_impl,
+    discover_mcp_tools_for_profile as _discover_mcp_tools_for_profile,
     has_new_assistant_reply as _has_new_assistant_reply_impl,
     restore_agent_process_env as _restore_agent_process_env,
     webui_clarify_callback as _webui_clarify_callback_impl,
@@ -903,27 +904,10 @@ def _run_agent_streaming(
                 # the lock (#2024).
                 if patch_skill_home_modules is not None:
                     patch_skill_home_modules(Path(_profile_home))
-        # Lock released — agent runs without holding it
-        # ── MCP Server Discovery (lazy import, idempotent) ──
-        # MUST run AFTER the HERMES_HOME mutation above — `discover_mcp_tools()`
-        # reads `~/.hermes/config.yaml` via `get_hermes_home()`, which uses
-        # `os.environ['HERMES_HOME']`.  Calling it before the mutation always
-        # loaded the default profile's `mcp_servers`, even when the session
-        # was stamped with a non-default profile.  See issue #1968.
-        #
-        # NOTE: `_servers` in `tools/mcp_tool.py` is a process-global registry
-        # keyed by server name.  This means once profile A registers a server
-        # named e.g. `postgres`, profile B's discovery sees it as already
-        # connected and skips it — even if B's config points at a different
-        # binary.  Fully fixing multi-profile concurrent use requires keying
-        # `_servers` by `(profile_home, name)` upstream in hermes-agent; that
-        # lives outside this WebUI repo.  This change fixes the headline bug
-        # for users who run a single non-default profile per WebUI process.
-        try:
-            from tools.mcp_tool import discover_mcp_tools
-            discover_mcp_tools()
-        except Exception:
-            pass  # MCP not available or not configured — non-fatal
+        # Lock released — agent runs without holding it.
+        # MCP discovery must run after the per-session HERMES_HOME mutation so
+        # non-default profile MCP servers are loaded from the right config.
+        _discover_mcp_tools_for_profile()
 
         _gateway_notifications = _register_streaming_gateway_notifications(
             session_id,
