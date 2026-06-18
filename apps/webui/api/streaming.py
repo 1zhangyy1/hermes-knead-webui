@@ -215,6 +215,7 @@ from api.streaming_recovery import (
     attempt_credential_self_heal as _attempt_credential_self_heal_impl,
     last_resort_sync_from_core as _last_resort_sync_from_core_impl,
     materialize_pending_user_turn_before_error as _materialize_pending_user_turn_before_error_impl,
+    rebuild_agent_for_credential_self_heal as _rebuild_agent_for_credential_self_heal,
 )
 from api.streaming_runtime_helpers import (
     WEBUI_VISIBLE_PROGRESS_PROMPT as _WEBUI_VISIBLE_PROGRESS_PROMPT_IMPL,
@@ -1150,34 +1151,28 @@ def _run_agent_streaming(
                         )
                         if _heal_rt is not None:
                             logger.info('[webui] self-heal: retrying stream after credential refresh')
-                            # Rebuild runtime variables from the refreshed resolve
-                            _rt = _heal_rt
-                            resolved_api_key = _heal_rt.get('api_key')
-                            if not resolved_provider:
-                                resolved_provider = _heal_rt.get('provider')
-                            if not resolved_base_url:
-                                resolved_base_url = _heal_rt.get('base_url')
-                            if isinstance(resolved_provider, str) and resolved_provider.startswith('custom:'):
-                                _cp_key, _cp_base = resolve_custom_provider_connection(resolved_provider)
-                                if not resolved_api_key and _cp_key:
-                                    resolved_api_key = _cp_key
-                                if not resolved_base_url and _cp_base:
-                                    resolved_base_url = _cp_base
-                            # Rebuild agent kwargs and create a fresh agent
-                            _agent_kwargs['api_key'] = resolved_api_key
-                            _agent_kwargs['base_url'] = resolved_base_url
-                            _agent_kwargs['model'] = resolved_model
-                            _agent_kwargs['provider'] = resolved_provider
-                            if 'credential_pool' in _agent_params:
-                                _agent_kwargs['credential_pool'] = _heal_rt.get('credential_pool')
-                            agent = _AIAgent(**_agent_kwargs)
-                            with STREAMS_LOCK:
-                                AGENT_INSTANCES[stream_id] = agent
-                            if not ephemeral and _agent_sig is not None:
-                                from api.config import SESSION_AGENT_CACHE as _SAC, SESSION_AGENT_CACHE_LOCK as _SAC_L
-                                with _SAC_L:
-                                    _SAC[session_id] = (agent, _agent_sig)
-                                    _SAC.move_to_end(session_id)
+                            _rebuilt = _rebuild_agent_for_credential_self_heal(
+                                agent_factory=_AIAgent,
+                                agent_kwargs=_agent_kwargs,
+                                agent_params=_agent_params,
+                                heal_runtime=_heal_rt,
+                                resolved_model=resolved_model,
+                                resolved_provider=resolved_provider,
+                                resolved_base_url=resolved_base_url,
+                                custom_provider_resolver=resolve_custom_provider_connection,
+                                session_id=session_id,
+                                stream_id=stream_id,
+                                agent_instances=AGENT_INSTANCES,
+                                streams_lock=STREAMS_LOCK,
+                                ephemeral=ephemeral,
+                                agent_sig=_agent_sig,
+                            )
+                            _rt = _rebuilt.runtime
+                            resolved_api_key = _rebuilt.resolved_api_key
+                            resolved_provider = _rebuilt.resolved_provider
+                            resolved_base_url = _rebuilt.resolved_base_url
+                            _agent_kwargs = _rebuilt.agent_kwargs
+                            agent = _rebuilt.agent
                             # Retry the conversation once with fresh credentials
                             _self_healed = True
                             _output_bridge.token_sent = False
@@ -1476,35 +1471,28 @@ def _run_agent_streaming(
                 if _heal_rt is not None:
                     logger.info('[webui] self-heal (except path): retrying stream after credential refresh')
                     _self_healed = True
-                    # Rebuild runtime variables
-                    _rt = _heal_rt
-                    resolved_api_key = _heal_rt.get('api_key')
-                    if not resolved_provider:
-                        resolved_provider = _heal_rt.get('provider')
-                    if not resolved_base_url:
-                        resolved_base_url = _heal_rt.get('base_url')
-                    if isinstance(resolved_provider, str) and resolved_provider.startswith('custom:'):
-                        _cp_key, _cp_base = resolve_custom_provider_connection(resolved_provider)
-                        if not resolved_api_key and _cp_key:
-                            resolved_api_key = _cp_key
-                        if not resolved_base_url and _cp_base:
-                            resolved_base_url = _cp_base
-                    # Build a fresh agent with the new credentials
-                    _heal_kwargs = dict(_agent_kwargs) if '_agent_kwargs' in dir() else {}
-                    _heal_kwargs['api_key'] = resolved_api_key
-                    _heal_kwargs['base_url'] = resolved_base_url
-                    _heal_kwargs['model'] = resolved_model
-                    _heal_kwargs['provider'] = resolved_provider
-                    if 'credential_pool' in _agent_params:
-                        _heal_kwargs['credential_pool'] = _heal_rt.get('credential_pool')
-                    _heal_agent = _AIAgent(**_heal_kwargs)
-                    with STREAMS_LOCK:
-                        AGENT_INSTANCES[stream_id] = _heal_agent
-                    if not ephemeral and _agent_sig is not None:
-                        from api.config import SESSION_AGENT_CACHE as _SAC2, SESSION_AGENT_CACHE_LOCK as _SAC2_L
-                        with _SAC2_L:
-                            _SAC2[session_id] = (_heal_agent, _agent_sig)
-                            _SAC2.move_to_end(session_id)
+                    _rebuilt = _rebuild_agent_for_credential_self_heal(
+                        agent_factory=_AIAgent,
+                        agent_kwargs=dict(_agent_kwargs) if '_agent_kwargs' in dir() else {},
+                        agent_params=_agent_params,
+                        heal_runtime=_heal_rt,
+                        resolved_model=resolved_model,
+                        resolved_provider=resolved_provider,
+                        resolved_base_url=resolved_base_url,
+                        custom_provider_resolver=resolve_custom_provider_connection,
+                        session_id=session_id,
+                        stream_id=stream_id,
+                        agent_instances=AGENT_INSTANCES,
+                        streams_lock=STREAMS_LOCK,
+                        ephemeral=ephemeral,
+                        agent_sig=_agent_sig,
+                    )
+                    _rt = _rebuilt.runtime
+                    resolved_api_key = _rebuilt.resolved_api_key
+                    resolved_provider = _rebuilt.resolved_provider
+                    resolved_base_url = _rebuilt.resolved_base_url
+                    _agent_kwargs = _rebuilt.agent_kwargs
+                    _heal_agent = _rebuilt.agent
                     # Retry the conversation
                     if _output_bridge is not None:
                         _output_bridge.token_sent = False
