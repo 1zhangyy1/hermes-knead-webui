@@ -43,13 +43,12 @@ from api.streaming_errors import (
     sanitize_provider_error_text as _sanitize_provider_error_text,
 )
 from api.streaming_cancellation import (
-    capture_cancel_stream_snapshot as _capture_cancel_stream_snapshot_impl,
+    cancel_stream_request as _cancel_stream_request,
     cleanup_ephemeral_cancelled_turn as _cleanup_ephemeral_cancelled_turn_impl,
     finalize_cancelled_turn as _finalize_cancelled_turn_impl,
     handle_exception_cancel as _handle_exception_cancel,
     handle_post_run_cancel as _handle_post_run_cancel,
     handle_preflight_cancel as _handle_preflight_cancel,
-    persist_cancel_stream_writeback as _persist_cancel_stream_writeback_impl,
     persist_cancelled_turn as _persist_cancelled_turn_impl,
     register_agent_instance_or_cancel as _register_agent_instance_or_cancel,
     session_has_cancel_marker as _session_has_cancel_marker_impl,
@@ -1617,7 +1616,7 @@ def cancel_stream(stream_id: str) -> bool:
     """
     from api import config as _live_config
 
-    _cancel_snapshot = _capture_cancel_stream_snapshot_impl(
+    return _cancel_stream_request(
         stream_id,
         live_config=_live_config,
         streams=STREAMS,
@@ -1627,53 +1626,9 @@ def cancel_stream(stream_id: str) -> bool:
         reasoning_texts=STREAM_REASONING_TEXT,
         live_tool_calls=STREAM_LIVE_TOOL_CALLS,
         streams_lock=STREAMS_LOCK,
+        get_session=get_session,
+        get_session_agent_lock=_get_session_agent_lock,
+        stream_writeback_is_current=_stream_writeback_is_current,
+        cancelled_turn_content_fn=_cancelled_turn_content,
         logger=logger,
     )
-    if _cancel_snapshot is None:
-        return False
-    q = _cancel_snapshot.queue
-    _emit_cancel_event = True
-    _cancel_session_id = _cancel_snapshot.session_id
-
-    # Session cleanup outside STREAMS_LOCK to preserve lock ordering.
-    # Acquire the per-session _agent_lock too, mirroring every other session
-    # writer (streaming success/error paths, periodic checkpoint, POST endpoints)
-    # so the cancel-path mutation races neither the checkpoint thread nor
-    # concurrent undo/retry calls.
-    if _cancel_session_id:
-        with _get_session_agent_lock(_cancel_session_id):
-            try:
-                _cs = get_session(_cancel_session_id)
-                if not _stream_writeback_is_current(_cs, stream_id):
-                    # The stream has rotated to a different stream id (newer
-                    # turn started, or the worker already finalized this one).
-                    # Skip the cancel-marker append AND suppress the terminal
-                    # cancel event so we don't contradict a possibly-already-
-                    # delivered done payload (#2151 + #2154 / PR #2136).
-                    logger.info(
-                        "Skipping stale cancel writeback for session %s stream %s; active_stream_id=%s",
-                        _cancel_session_id,
-                        stream_id,
-                        getattr(_cs, 'active_stream_id', None),
-                    )
-                    _emit_cancel_event = False
-                    return True
-                _persist_cancel_stream_writeback_impl(
-                    _cs,
-                    partial_text=_cancel_snapshot.partial_text,
-                    reasoning_text=_cancel_snapshot.reasoning_text,
-                    tool_calls=_cancel_snapshot.tool_calls,
-                    cancelled_turn_content_fn=_cancelled_turn_content,
-                    logger=logger,
-                    session_id=_cancel_session_id,
-                )
-            except Exception:
-                logger.debug("Failed to clear session state on cancel for %s", _cancel_session_id)
-
-    if _emit_cancel_event and q:
-        try:
-            q.put_nowait(('cancel', {'message': 'Cancelled by user'}))
-        except Exception:
-            logger.debug("Failed to put cancel event to queue")
-
-    return True
