@@ -95,6 +95,7 @@ from api.streaming_context_window import (
     apply_context_window_to_usage as _apply_context_window_to_usage,
     persist_context_window_on_session as _persist_context_window_on_session,
 )
+from api.streaming_checkpoint import start_periodic_checkpoint as _start_periodic_checkpoint
 from api.streaming_tool_calls import (
     TOOL_RESULT_SNIPPET_MAX as _TOOL_RESULT_SNIPPET_MAX,
     extract_tool_calls_from_messages as _extract_tool_calls_from_messages,
@@ -1369,44 +1370,20 @@ def _run_agent_streaming(
                 'compression_count', 0,
             )
 
-            # ── Periodic checkpoint during streaming (Issue #765) ──
-            # The agent works on an internal copy of s.messages during run_conversation()
-            # so we cannot watch s.messages for growth. Instead, on_tool() increments
-            # _checkpoint_activity[0] each time a tool call completes — that is the real
-            # signal that progress has been made worth persisting.
-            #
-            # What gets saved on each checkpoint:
-            #   - s.pending_user_message (already written before run starts)
-            #   - s.pending_started_at / s.active_stream_id (turn bookkeeping)
-            # On a server restart the UI will see a session with a pending message and no
-            # response — better than a silent loss of the entire conversation turn.
-            # The final s.save() at task completion handles the full session update + index.
-            # (_checkpoint_stop is pre-initialised at the top of the outer try.)
-            # (_checkpoint_activity is already initialised before on_tool().)
-
-            def _periodic_checkpoint():
-                last_saved_activity = 0
-                while not _checkpoint_stop.wait(15):
-                    try:
-                        cur = _checkpoint_activity[0]
-                        if cur > last_saved_activity:
-                            with _agent_lock:
-                                s.save(skip_index=True)
-                            last_saved_activity = cur
-                    except Exception as e:
-                        logger.debug("Periodic checkpoint save failed: %s", e)
-
-            _checkpoint_stop = threading.Event()
             # Persist the user message BEFORE streaming starts so it's durable even if
             # the server crashes before the first checkpoint fires (every 15s).
             with _agent_lock:
                 s.save(touch_updated_at=True, skip_index=False)
 
-            _ckpt_thread = threading.Thread(
-                target=_periodic_checkpoint, daemon=True,
-                name=f"ckpt-{session_id[:8]}",
+            _checkpoint_runner = _start_periodic_checkpoint(
+                s,
+                agent_lock=_agent_lock,
+                checkpoint_activity=_checkpoint_activity,
+                session_id=session_id,
+                logger=logger,
             )
-            _ckpt_thread.start()
+            _checkpoint_stop = _checkpoint_runner.stop_event
+            _ckpt_thread = _checkpoint_runner.thread
 
             _process_notifications = _drain_webui_process_notifications(session_id)
             _agent_msg_text = msg_text

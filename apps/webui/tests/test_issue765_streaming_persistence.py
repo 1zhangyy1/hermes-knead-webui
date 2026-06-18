@@ -441,15 +441,14 @@ class TestIssue765FollowupHardening:
     def test_periodic_checkpoint_uses_agent_lock(self):
         """The periodic checkpoint thread must hold _agent_lock while saving
         to prevent concurrent mutation races with other endpoints."""
-        src = (Path(__file__).parent.parent / "api" / "streaming.py").read_text(
+        src = (Path(__file__).parent.parent / "api" / "streaming_checkpoint.py").read_text(
             encoding="utf-8"
         )
-        # Find the _periodic_checkpoint function
-        ckpt_idx = src.find("def _periodic_checkpoint():")
-        assert ckpt_idx != -1, "_periodic_checkpoint function not found"
+        ckpt_idx = src.find("def save_if_activity_advanced(")
+        assert ckpt_idx != -1, "checkpoint save helper not found"
         ckpt_block = src[ckpt_idx:ckpt_idx + 600]
-        assert "with _agent_lock:" in ckpt_block, (
-            "_periodic_checkpoint must hold _agent_lock while calling s.save() "
+        assert "with self.agent_lock:" in ckpt_block, (
+            "StreamingCheckpointRunner must hold the per-session agent lock while calling session.save() "
             "to prevent race conditions with other session-mutating endpoints"
         )
 
