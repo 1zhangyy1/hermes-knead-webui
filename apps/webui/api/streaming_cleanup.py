@@ -17,6 +17,29 @@ from api.config import (
     update_active_run,
 )
 from api.streaming_checkpoint import stop_checkpoint_thread
+from api.streaming_runtime_helpers import restore_agent_process_env
+
+
+def finalize_streaming_run_attempt(
+    *,
+    run_state,
+    gateway_notifications,
+    session_id: str,
+    profile_env_snapshot,
+    runtime_env_snapshot,
+    env_lock,
+    restore_agent_process_env_fn=restore_agent_process_env,
+) -> None:
+    """Clean up per-run helpers that are initialised after startup succeeds."""
+    if run_state is not None and getattr(run_state, 'metering_ticker', None) is not None:
+        run_state.metering_ticker.stop()
+    if gateway_notifications is not None:
+        gateway_notifications.unregister(session_id)
+    restore_agent_process_env_fn(
+        profile_env_snapshot,
+        runtime_env_snapshot,
+        env_lock=env_lock,
+    )
 
 
 def cleanup_stream_registries(

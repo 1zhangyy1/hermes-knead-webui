@@ -51,7 +51,10 @@ from api.streaming_chat_steer import (
     drain_pending_steer_leftover as _drain_pending_steer_leftover,
     handle_chat_steer as _handle_chat_steer_impl,
 )
-from api.streaming_cleanup import finalize_webui_streaming_worker_exit as _finalize_streaming_worker_exit
+from api.streaming_cleanup import (
+    finalize_streaming_run_attempt as _finalize_streaming_run_attempt,
+    finalize_webui_streaming_worker_exit as _finalize_streaming_worker_exit,
+)
 from api.streaming_gateway import (
     GATEWAY_ROUTING_ATTEMPT_KEYS as _GATEWAY_ROUTING_ATTEMPT_KEYS,
     GATEWAY_ROUTING_CONTAINER_KEYS as _GATEWAY_ROUTING_CONTAINER_KEYS,
@@ -195,7 +198,6 @@ from api.streaming_runtime_helpers import (
     aiagent_import_error_detail as _aiagent_import_error_detail_impl,
     clarify_timeout_seconds as _clarify_timeout_seconds_impl,
     has_new_assistant_reply as _has_new_assistant_reply_impl,
-    restore_agent_process_env as _restore_agent_process_env,
     webui_clarify_callback as _webui_clarify_callback_impl,
     webui_ephemeral_system_prompt as _webui_ephemeral_system_prompt_impl,
 )
@@ -994,14 +996,12 @@ def _run_agent_streaming(
                 logger=logger,
             )
         finally:
-            # Stop the live metering ticker
-            _run_state.metering_ticker.stop()
-            # Unregister gateway callbacks and unblock any threads still
-            # waiting on approval/clarify prompts.
-            _gateway_notifications.unregister(session_id)
-            _restore_agent_process_env(
-                old_profile_env,
-                old_runtime_env,
+            _finalize_streaming_run_attempt(
+                run_state=_run_state,
+                gateway_notifications=_gateway_notifications,
+                session_id=session_id,
+                profile_env_snapshot=old_profile_env,
+                runtime_env_snapshot=old_runtime_env,
                 env_lock=_ENV_LOCK,
             )
 
