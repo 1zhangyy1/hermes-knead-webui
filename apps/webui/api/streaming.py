@@ -158,7 +158,10 @@ from api.streaming_turn_journal import (
     append_worker_started_turn_event as _append_worker_started_turn_event,
 )
 from api.streaming_terminal import emit_success_post_done_events as _emit_success_post_done_events
-from api.streaming_turn_metadata import apply_completed_turn_metadata as _apply_completed_turn_metadata
+from api.streaming_turn_metadata import (
+    apply_completed_turn_metadata as _apply_completed_turn_metadata,
+    attach_reasoning_trace_to_last_assistant as _attach_reasoning_trace_to_last_assistant,
+)
 from api.streaming_usage import (
     apply_agent_token_usage_to_session as _apply_agent_token_usage_to_session,
     build_done_usage_payload as _build_done_usage_payload,
@@ -1447,11 +1450,7 @@ def _run_agent_streaming(
                 # Must run BEFORE s.save() — otherwise the mutation lives only in
                 # memory until the next turn's save, and the last-turn thinking card
                 # is lost when the user reloads immediately after a response.
-                if _reasoning_text and s.messages:
-                    for _rm in reversed(s.messages):
-                        if isinstance(_rm, dict) and _rm.get('role') == 'assistant':
-                            _rm['reasoning'] = _reasoning_text
-                            break
+                _attach_reasoning_trace_to_last_assistant(s.messages, _reasoning_text)
                 _turn_metadata = _apply_completed_turn_metadata(
                     s,
                     agent,

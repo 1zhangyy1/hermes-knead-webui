@@ -1,6 +1,9 @@
 from types import SimpleNamespace
 
-from api.streaming_turn_metadata import apply_completed_turn_metadata
+from api.streaming_turn_metadata import (
+    apply_completed_turn_metadata,
+    attach_reasoning_trace_to_last_assistant,
+)
 
 
 def test_apply_completed_turn_metadata_updates_assistant_and_gateway(monkeypatch):
@@ -54,3 +57,20 @@ def test_apply_completed_turn_metadata_handles_missing_start_and_no_assistant(mo
     assert metadata.turn_tps is None
     assert metadata.gateway_routing is None
     assert session.messages == [{'role': 'user', 'content': 'hello'}]
+
+
+def test_attach_reasoning_trace_to_last_assistant_updates_last_assistant_only():
+    messages = [
+        {"role": "assistant", "content": "first"},
+        {"role": "user", "content": "next"},
+        {"role": "assistant", "content": "second"},
+    ]
+
+    assert attach_reasoning_trace_to_last_assistant(messages, "thinking") is True
+    assert messages[0].get("reasoning") is None
+    assert messages[2]["reasoning"] == "thinking"
+
+
+def test_attach_reasoning_trace_to_last_assistant_noops_without_text_or_assistant():
+    assert attach_reasoning_trace_to_last_assistant([{"role": "user"}], "thinking") is False
+    assert attach_reasoning_trace_to_last_assistant([{"role": "assistant"}], "") is False

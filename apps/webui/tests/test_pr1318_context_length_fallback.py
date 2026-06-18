@@ -27,8 +27,8 @@ CONTEXT_WINDOW = Path(__file__).resolve().parent.parent / "api" / "streaming_con
 def _persistence_block():
     """Return the source range covering the post-merge per-turn save block."""
     src = STREAMING.read_text(encoding="utf-8")
-    start = src.find("if _reasoning_text and s.messages:")
-    assert start != -1, "Reasoning trace marker not found in streaming.py"
+    start = src.find("_attach_reasoning_trace_to_last_assistant(")
+    assert start != -1, "Reasoning trace helper call not found in streaming.py"
     end = src.find("\n                s.save()", start)
     assert end != -1, "s.save() not found after the reasoning trace marker"
     # Include the s.save() line so we can verify ordering

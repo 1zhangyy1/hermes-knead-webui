@@ -32,9 +32,9 @@ def test_streaming_persists_context_fields_on_session_before_save():
     src = STREAMING.read_text(encoding="utf-8")
 
     # Find the post-merge save block — anchored on the unique reasoning trace
-    # marker right above the persistence block.
-    block_start = src.find("if _reasoning_text and s.messages:")
-    assert block_start != -1, "Reasoning-trace marker not found in streaming.py"
+    # helper call right above the persistence block.
+    block_start = src.find("_attach_reasoning_trace_to_last_assistant(")
+    assert block_start != -1, "Reasoning-trace helper call not found in streaming.py"
 
     # Save call follows shortly after
     save_call = src.find("\n                s.save()", block_start)
