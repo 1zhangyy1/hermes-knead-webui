@@ -118,6 +118,7 @@ from api.streaming_agent_runtime import (
     refresh_cached_agent_runtime as _refresh_cached_agent_runtime,
 )
 from api.streaming_agent_config import (
+    build_agent_kwargs as _build_agent_kwargs_impl,
     resolve_fallback_config as _resolve_fallback_config_impl,
     resolve_max_iterations_config as _resolve_max_iterations_config_impl,
     resolve_max_tokens_config as _resolve_max_tokens_config_impl,
@@ -1081,15 +1082,12 @@ def _run_agent_streaming(
             except Exception:
                 _reasoning_config = None
 
-            _agent_kwargs = dict(
+            _agent_kwargs = _build_agent_kwargs_impl(
+                agent_params=_agent_params,
                 model=resolved_model,
                 provider=resolved_provider,
                 base_url=resolved_base_url,
                 api_key=resolved_api_key,
-                # Identify browser-originated sessions as WebUI so Hermes Agent
-                # does not inject CLI-specific terminal/output guidance.
-                platform='webui',
-                quiet_mode=True,
                 enabled_toolsets=_toolsets,
                 fallback_model=_fallback_resolved,
                 session_id=session_id,
@@ -1106,38 +1104,15 @@ def _run_agent_streaming(
                         _clarify_timeout_seconds,
                     )
                 ),
+                interim_assistant_callback=on_interim_assistant,
+                tool_start_callback=on_tool_start,
+                tool_complete_callback=on_tool_complete,
+                status_callback=_agent_status_callback,
+                max_iterations=_max_iterations_cfg,
+                max_tokens=_max_tokens_cfg,
+                reasoning_config=_reasoning_config,
+                runtime=_rt,
             )
-            # reasoning_config has been an AIAgent param for several releases,
-            # but guard defensively to avoid TypeError on an older agent build.
-            if 'reasoning_config' in _agent_params and _reasoning_config is not None:
-                _agent_kwargs['reasoning_config'] = _reasoning_config
-            if 'interim_assistant_callback' in _agent_params:
-                _agent_kwargs['interim_assistant_callback'] = on_interim_assistant
-            if 'tool_start_callback' in _agent_params:
-                _agent_kwargs['tool_start_callback'] = on_tool_start
-            if 'tool_complete_callback' in _agent_params:
-                _agent_kwargs['tool_complete_callback'] = on_tool_complete
-            if 'status_callback' in _agent_params:
-                _agent_kwargs['status_callback'] = _agent_status_callback
-            if 'max_iterations' in _agent_params and _max_iterations_cfg is not None:
-                _agent_kwargs['max_iterations'] = _max_iterations_cfg
-            if 'max_tokens' in _agent_params and _max_tokens_cfg is not None:
-                _agent_kwargs['max_tokens'] = _max_tokens_cfg
-            # Params added in newer hermes-agent — skip if not supported
-            if 'api_mode' in _agent_params:
-                _agent_kwargs['api_mode'] = _rt.get('api_mode')
-            if 'acp_command' in _agent_params:
-                _agent_kwargs['acp_command'] = _rt.get('command')
-            if 'acp_args' in _agent_params:
-                _agent_kwargs['acp_args'] = _rt.get('args')
-            if 'credential_pool' in _agent_params:
-                _agent_kwargs['credential_pool'] = _rt.get('credential_pool')
-            # Pin Honcho memory sessions to the stable WebUI session ID.
-            # Without this, 'per-session' Honcho strategy creates a new Honcho
-            # session on every streaming request because HonchoSessionManager is
-            # re-instantiated fresh each turn (#855).
-            if 'gateway_session_key' in _agent_params:
-                _agent_kwargs['gateway_session_key'] = session_id
 
             # ── Agent cache: reuse across messages in the same session ──
             # Mirrors gateway _agent_cache.  Keeps _user_turn_count alive so

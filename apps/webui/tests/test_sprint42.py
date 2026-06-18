@@ -20,6 +20,7 @@ from unittest import mock
 
 REPO_ROOT = pathlib.Path(__file__).parent.parent
 STREAMING_PY = (REPO_ROOT / "api" / "streaming.py").read_text()
+STREAMING_AGENT_CONFIG_PY = (REPO_ROOT / "api" / "streaming_agent_config.py").read_text()
 
 
 # ── Shared helpers for sprint-42 additional tests ────────────────────────────
@@ -103,15 +104,15 @@ class TestRuntimeRouteInjection(unittest.TestCase):
         so the WebUI degrades gracefully against older hermes-agent builds.
         """
         for snippet in (
-            "_agent_kwargs['api_mode'] = _rt.get('api_mode')",
-            "_agent_kwargs['acp_command'] = _rt.get('command')",
-            "_agent_kwargs['acp_args'] = _rt.get('args')",
-            "_agent_kwargs['credential_pool'] = _rt.get('credential_pool')",
+            "kwargs['api_mode'] = runtime.get('api_mode')",
+            "kwargs['acp_command'] = runtime.get('command')",
+            "kwargs['acp_args'] = runtime.get('args')",
+            "kwargs['credential_pool'] = runtime.get('credential_pool')",
         ):
             self.assertIn(
                 snippet,
-                STREAMING_PY,
-                f"Missing defensive runtime route forwarding in streaming.py: {snippet}",
+                STREAMING_AGENT_CONFIG_PY,
+                f"Missing defensive runtime route forwarding in streaming_agent_config.py: {snippet}",
             )
 
     def test_runtime_route_is_forwarded_from_resolver_into_agent_init(self):
