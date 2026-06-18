@@ -132,6 +132,7 @@ from api.streaming_turn_journal import (
     append_interrupted_turn_event as _append_interrupted_turn_event,
     append_worker_started_turn_event as _append_worker_started_turn_event,
 )
+from api.streaming_usage import apply_agent_token_usage_to_session as _apply_agent_token_usage_to_session
 from api.streaming_titles import (
     LEGACY_WORKSPACE_PREFIX_ANY_RE as _LEGACY_WORKSPACE_PREFIX_ANY_RE,
     LEGACY_WORKSPACE_PREFIX_RE as _LEGACY_WORKSPACE_PREFIX_RE,
@@ -1821,30 +1822,12 @@ def _run_agent_streaming(
                 _a0 = ''
                 if _should_bg_title:
                     _u0, _a0 = _first_exchange_snippets(s.messages)
-                # Read token/cost usage from the agent object (if available).
-                # Per-turn overwrite (#1857): replace cumulative session totals with the
-                # agent's most recent values, which already represent the current turn's
-                # full prompt+completion (input_tokens are the entire context, not delta).
-                # Defensive: only overwrite when the agent reports non-zero / non-None
-                # values. A rebuilt-from-cache-miss agent (post-restart, post-LRU-eviction)
-                # starts at zero; without this guard, the next turn would zero out the
-                # persisted disk total before any new tokens were spent. Per Opus advisor
-                # on stage-320: prevents restart-induced regression of session usage data.
-                input_tokens = getattr(agent, 'session_prompt_tokens', 0) or 0
-                output_tokens = getattr(agent, 'session_completion_tokens', 0) or 0
-                estimated_cost = getattr(agent, 'session_estimated_cost_usd', None)
-                cache_read_tokens = getattr(agent, 'session_cache_read_tokens', 0) or 0
-                cache_write_tokens = getattr(agent, 'session_cache_write_tokens', 0) or 0
-                if input_tokens > 0:
-                    s.input_tokens = input_tokens
-                if output_tokens > 0:
-                    s.output_tokens = output_tokens
-                if estimated_cost is not None:
-                    s.estimated_cost = estimated_cost
-                if cache_read_tokens > 0:
-                    s.cache_read_tokens = cache_read_tokens
-                if cache_write_tokens > 0:
-                    s.cache_write_tokens = cache_write_tokens
+                _token_usage = _apply_agent_token_usage_to_session(s, agent)
+                input_tokens = _token_usage.input_tokens
+                output_tokens = _token_usage.output_tokens
+                estimated_cost = _token_usage.estimated_cost
+                cache_read_tokens = _token_usage.cache_read_tokens
+                cache_write_tokens = _token_usage.cache_write_tokens
                 # Persist tool-call summaries even when the final message history only
                 # kept bare tool rows and omitted explicit assistant tool_call IDs.
                 tool_calls = _extract_tool_calls_from_messages(
