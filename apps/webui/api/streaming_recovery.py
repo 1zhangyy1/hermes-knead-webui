@@ -4,6 +4,18 @@ from __future__ import annotations
 
 import contextlib
 import time
+from dataclasses import dataclass
+from typing import Any
+
+
+@dataclass
+class RebuiltCredentialAgent:
+    agent: Any
+    agent_kwargs: dict[str, Any]
+    runtime: dict[str, Any]
+    resolved_api_key: Any
+    resolved_provider: str | None
+    resolved_base_url: str | None
 
 
 def materialize_pending_user_turn_before_error(session) -> bool:
@@ -115,3 +127,63 @@ def attempt_credential_self_heal(provider_id, session_id, _agent_lock_ref, *, lo
             provider_id, session_id, heal_err,
         )
         return None
+
+
+def rebuild_agent_for_credential_self_heal(
+    *,
+    agent_factory,
+    agent_kwargs: dict[str, Any],
+    agent_params,
+    heal_runtime: dict[str, Any],
+    resolved_model: str | None,
+    resolved_provider: str | None,
+    resolved_base_url: str | None,
+    custom_provider_resolver,
+    session_id: str,
+    stream_id: str,
+    agent_instances,
+    streams_lock,
+    ephemeral: bool,
+    agent_sig: str | None,
+) -> RebuiltCredentialAgent:
+    """Rebuild the streaming agent after credentials are refreshed."""
+    runtime = heal_runtime or {}
+    resolved_api_key = runtime.get('api_key')
+    if not resolved_provider:
+        resolved_provider = runtime.get('provider')
+    if not resolved_base_url:
+        resolved_base_url = runtime.get('base_url')
+    if isinstance(resolved_provider, str) and resolved_provider.startswith('custom:'):
+        custom_key, custom_base = custom_provider_resolver(resolved_provider)
+        if not resolved_api_key and custom_key:
+            resolved_api_key = custom_key
+        if not resolved_base_url and custom_base:
+            resolved_base_url = custom_base
+
+    rebuilt_kwargs = dict(agent_kwargs)
+    rebuilt_kwargs['api_key'] = resolved_api_key
+    rebuilt_kwargs['base_url'] = resolved_base_url
+    rebuilt_kwargs['model'] = resolved_model
+    rebuilt_kwargs['provider'] = resolved_provider
+    if 'credential_pool' in agent_params:
+        rebuilt_kwargs['credential_pool'] = runtime.get('credential_pool')
+
+    agent = agent_factory(**rebuilt_kwargs)
+    with streams_lock:
+        agent_instances[stream_id] = agent
+
+    if not ephemeral and agent_sig is not None:
+        from api.config import SESSION_AGENT_CACHE, SESSION_AGENT_CACHE_LOCK
+
+        with SESSION_AGENT_CACHE_LOCK:
+            SESSION_AGENT_CACHE[session_id] = (agent, agent_sig)
+            SESSION_AGENT_CACHE.move_to_end(session_id)
+
+    return RebuiltCredentialAgent(
+        agent=agent,
+        agent_kwargs=rebuilt_kwargs,
+        runtime=runtime,
+        resolved_api_key=resolved_api_key,
+        resolved_provider=resolved_provider,
+        resolved_base_url=resolved_base_url,
+    )
