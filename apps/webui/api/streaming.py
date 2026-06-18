@@ -102,6 +102,7 @@ from api.streaming_agent_config import (
     resolve_max_tokens_config as _resolve_max_tokens_config_impl,
     resolve_reasoning_config as _resolve_reasoning_config_impl,
 )
+from api.streaming_agent_status import make_agent_status_callback as _make_agent_status_callback
 from api.streaming_event_sink import StreamingEventSink as _StreamingEventSink
 from api.streaming_live_usage import LiveUsageTracker as _LiveUsageTracker
 from api.streaming_product_turn import ProductTurnFinalizer as _ProductTurnFinalizer
@@ -1166,28 +1167,7 @@ def _run_agent_streaming(
     def put(event, data):
         _event_sink.put(event, data)
 
-    def _agent_status_callback(kind, message):
-        """Bridge Agent lifecycle compression status into WebUI SSE."""
-        _message = str(message or '').strip()
-        _kind = str(kind or '').strip().lower()
-        if not _message:
-            return
-        _lower = _message.lower()
-        _is_compression_start = (
-            _kind == 'lifecycle'
-            and (
-                'preflight compression' in _lower
-                or 'compressing' in _lower
-                or 'compacting context' in _lower
-                or 'context too large' in _lower
-            )
-        )
-        if not _is_compression_start:
-            return
-        put('compressing', {
-            'session_id': session_id,
-            'message': 'Auto-compressing context to continue...',
-        })
+    _agent_status_callback = _make_agent_status_callback(session_id=session_id, put=put)
 
     # Initialised here (before any code that may raise) so the outer `finally`
     # block can safely check `if _checkpoint_stop is not None` even when an
