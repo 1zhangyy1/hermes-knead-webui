@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import pathlib
 import re
 import time
@@ -225,6 +226,40 @@ def handle_post_run_cancel(
         with agent_lock:
             finalize_cancelled_turn_fn(session, ephemeral=False)
             append_interrupted_turn_event_fn(session.session_id, stream_id, logger=logger)
+    put_cancel_fn()
+    return True
+
+
+def handle_exception_cancel(
+    cancel_event,
+    session,
+    stream_id: str,
+    agent_lock,
+    finalize_cancelled_turn_fn,
+    put_cancel_fn,
+    *,
+    ephemeral: bool,
+    checkpoint_stop=None,
+    checkpoint_thread=None,
+    stop_checkpoint_thread_fn=None,
+    append_interrupted_turn_event_fn=None,
+    logger=None,
+) -> bool:
+    """Finalize cancellation observed while handling an agent exception."""
+    if not cancel_event.is_set():
+        return False
+    if session is not None:
+        if stop_checkpoint_thread_fn is None and (checkpoint_stop is not None or checkpoint_thread is not None):
+            from api.streaming_checkpoint import stop_checkpoint_thread as stop_checkpoint_thread_fn
+        if stop_checkpoint_thread_fn is not None:
+            stop_checkpoint_thread_fn(checkpoint_stop, checkpoint_thread)
+        lock_ctx = agent_lock if agent_lock is not None else contextlib.nullcontext()
+        with lock_ctx:
+            finalize_cancelled_turn_fn(session, ephemeral=ephemeral)
+            if not ephemeral:
+                if append_interrupted_turn_event_fn is None:
+                    from api.streaming_turn_journal import append_interrupted_turn_event as append_interrupted_turn_event_fn
+                append_interrupted_turn_event_fn(session.session_id, stream_id, logger=logger)
     put_cancel_fn()
     return True
 
