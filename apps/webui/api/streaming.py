@@ -206,6 +206,7 @@ from api.streaming_title_refresh import (
 # streaming_title_generation while streaming.py keeps the public wrappers.
 from api.streaming_recovery import (
     attempt_credential_self_heal as _attempt_credential_self_heal_impl,
+    handle_silent_failure_credential_self_heal as _handle_silent_failure_credential_self_heal,
     last_resort_sync_from_core as _last_resort_sync_from_core_impl,
     materialize_pending_user_turn_before_error as _materialize_pending_user_turn_before_error_impl,
     persist_exception_self_heal_result as _persist_exception_self_heal_result,
@@ -1076,7 +1077,8 @@ def _run_agent_streaming(
                         # ── Credential self-heal on 401 (#1401) ──
                         # Before emitting the error, try re-reading credentials
                         # and retrying once with a fresh agent.
-                        _heal_retry = _retry_conversation_after_credential_self_heal(
+                        _silent_self_heal = _handle_silent_failure_credential_self_heal(
+                            should_attempt=True,
                             provider_id=resolved_provider or '',
                             session_id=session_id,
                             agent_lock=_agent_lock,
@@ -1099,47 +1101,25 @@ def _run_agent_streaming(
                             persist_user_message=msg_text,
                             sanitize_messages_for_api=_sanitize_messages_for_api,
                             output_bridge=_output_bridge,
+                            prev_len=_prev_len,
+                            session=s,
+                            msg_text=msg_text,
+                            has_new_assistant_reply=_has_new_assistant_reply,
+                            apply_agent_result_to_session=_apply_agent_result_to_session,
                             logger=logger,
-                            retrying_log_message='[webui] self-heal: retrying stream after credential refresh',
-                            retry_failed_log_message='[webui] self-heal: retry also failed: %s',
                         )
-                        if _heal_retry is not None:
-                            _rebuilt = _heal_retry.rebuilt
-                            _rt = _rebuilt.runtime
-                            resolved_api_key = _rebuilt.resolved_api_key
-                            resolved_provider = _rebuilt.resolved_provider
-                            resolved_base_url = _rebuilt.resolved_base_url
-                            _agent_kwargs = _rebuilt.agent_kwargs
-                            agent = _rebuilt.agent
+                        if _silent_self_heal.self_healed:
+                            _rt = _silent_self_heal.runtime
+                            resolved_api_key = _silent_self_heal.resolved_api_key
+                            resolved_provider = _silent_self_heal.resolved_provider
+                            resolved_base_url = _silent_self_heal.resolved_base_url
+                            _agent_kwargs = _silent_self_heal.agent_kwargs
+                            agent = _silent_self_heal.agent
                             _self_healed = True
-                            if _heal_retry.result is not None:
-                                _heal_all_msgs = _heal_retry.result.get('messages') or []
-                                _heal_ok = _has_new_assistant_reply(_heal_all_msgs, _prev_len) or _output_bridge.token_sent
-                            else:
-                                _heal_ok = False
-                            if _heal_ok and _heal_retry.result is not None:
-                                # Retry succeeded — replace result and skip error
-                                result = _heal_retry.result
-                                # Fall through past the error-emission block;
-                                # the post-result persistence code below will
-                                # process ``result`` normally.  We jump past
-                                # the ``put('apperror', ...)`` + ``return`` by
-                                # NOT entering the ``if not _assistant_added``
-                                # guard again — but we are already inside it.
-                                # Solution: set _assistant_added so the guard
-                                # evaluates False on next conceptual pass.
-                                # Since we're in a flat block, directly run the
-                                # post-result merge logic here.
-                                _result_messages = _apply_agent_result_to_session(
-                                    s,
-                                    _previous_messages,
-                                    _previous_context_messages,
-                                    result.get('messages'),
-                                    msg_text,
-                                )
-                                # Skip the error block — jump directly to the
-                                # normal post-result persistence path by
-                                # leaving _assistant_added truthy (set below).
+                            if _silent_self_heal.succeeded and _silent_self_heal.result is not None:
+                                result = _silent_self_heal.result
+                                # Skip the error block; the retried result has
+                                # already been merged into the session.
                                 _assistant_added = True  # prevent re-entering guard
                     # Skip error emission if credential self-heal succeeded
                     # (#1401) — _assistant_added is set True on successful retry.
