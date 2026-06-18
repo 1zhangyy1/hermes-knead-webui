@@ -185,14 +185,42 @@ def register_agent_instance_or_cancel(
         except Exception:
             if logger is not None:
                 logger.debug("Failed to interrupt agent before start")
-        with agent_lock:
-            finalize_cancelled_turn_fn(
-                session,
-                ephemeral=ephemeral,
-                message='Task cancelled before start.',
-            )
-        put_cancel_fn()
+        handle_preflight_cancel(
+            flag,
+            session,
+            agent_lock,
+            finalize_cancelled_turn_fn,
+            put_cancel_fn,
+            ephemeral=ephemeral,
+            cancel_message=None,
+        )
         return False
+
+
+def handle_preflight_cancel(
+    cancel_event,
+    session,
+    agent_lock,
+    finalize_cancelled_turn_fn,
+    put_cancel_fn,
+    *,
+    ephemeral: bool,
+    cancel_message: str | None = "Cancelled before start",
+) -> bool:
+    """Finalize cancellation that arrives before the agent turn starts."""
+    if not cancel_event.is_set():
+        return False
+    with agent_lock:
+        finalize_cancelled_turn_fn(
+            session,
+            ephemeral=ephemeral,
+            message='Task cancelled before start.',
+        )
+    if cancel_message is None:
+        put_cancel_fn()
+    else:
+        put_cancel_fn(cancel_message)
+    return True
 
 
 def handle_post_run_cancel(

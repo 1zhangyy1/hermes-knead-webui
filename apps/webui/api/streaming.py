@@ -48,6 +48,7 @@ from api.streaming_cancellation import (
     finalize_cancelled_turn as _finalize_cancelled_turn_impl,
     handle_exception_cancel as _handle_exception_cancel,
     handle_post_run_cancel as _handle_post_run_cancel,
+    handle_preflight_cancel as _handle_preflight_cancel,
     persist_cancel_stream_writeback as _persist_cancel_stream_writeback_impl,
     persist_cancelled_turn as _persist_cancelled_turn_impl,
     register_agent_instance_or_cancel as _register_agent_instance_or_cancel,
@@ -822,10 +823,7 @@ def _run_agent_streaming(
         _agent_lock = _get_session_agent_lock(session_id)
         # TD1: set thread-local env context so concurrent sessions don't clobber globals
         # Check for pre-flight cancel (user cancelled before agent even started)
-        if cancel_event.is_set():
-            with _agent_lock:
-                _finalize_cancelled_turn(s, ephemeral=ephemeral, message='Task cancelled before start.')
-            _put_cancel('Cancelled before start')
+        if _handle_preflight_cancel(cancel_event, s, _agent_lock, _finalize_cancelled_turn, _put_cancel, ephemeral=ephemeral):
             return
 
         # Resolve profile home for this agent run — use the session's own profile

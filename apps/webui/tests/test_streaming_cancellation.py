@@ -3,6 +3,7 @@ import threading
 from api.streaming_cancellation import (
     handle_exception_cancel,
     handle_post_run_cancel,
+    handle_preflight_cancel,
     register_agent_instance_or_cancel,
 )
 
@@ -77,6 +78,43 @@ def test_register_agent_instance_or_cancel_interrupts_and_finalizes_when_cancell
     assert agent.interrupts == ["Cancelled before start"]
     assert finalize_calls == [(session, True, 'Task cancelled before start.')]
     assert put_cancel_calls == [True]
+
+
+def test_handle_preflight_cancel_returns_false_when_not_cancelled():
+    cancel_event = threading.Event()
+
+    assert handle_preflight_cancel(
+        cancel_event,
+        _Session(),
+        threading.Lock(),
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("finalize")),
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("put")),
+        ephemeral=False,
+    ) is False
+
+
+def test_handle_preflight_cancel_finalizes_before_start_with_message():
+    cancel_event = threading.Event()
+    cancel_event.set()
+    session = _Session()
+    calls = []
+
+    ok = handle_preflight_cancel(
+        cancel_event,
+        session,
+        threading.Lock(),
+        lambda session_arg, *, ephemeral=False, message='': calls.append(
+            ("finalize", session_arg, ephemeral, message)
+        ),
+        lambda message: calls.append(("put_cancel", message)),
+        ephemeral=True,
+    )
+
+    assert ok is True
+    assert calls == [
+        ("finalize", session, True, 'Task cancelled before start.'),
+        ("put_cancel", "Cancelled before start"),
+    ]
 
 
 def test_handle_post_run_cancel_returns_false_when_not_cancelled():
