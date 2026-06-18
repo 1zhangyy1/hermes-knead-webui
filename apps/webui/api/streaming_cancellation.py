@@ -5,9 +5,109 @@ from __future__ import annotations
 import pathlib
 import re
 import time
+from dataclasses import dataclass
 from typing import Callable
 
 from api.streaming_errors import CANCEL_MARKER_PATTERNS
+
+
+@dataclass
+class CancelStreamSnapshot:
+    queue: object
+    session_id: str | None
+    partial_text: str
+    reasoning_text: str
+    tool_calls: list
+
+
+def capture_cancel_stream_snapshot(
+    stream_id: str,
+    *,
+    live_config,
+    streams,
+    cancel_flags,
+    agent_instances,
+    partial_texts,
+    reasoning_texts,
+    live_tool_calls,
+    streams_lock,
+    logger=None,
+) -> CancelStreamSnapshot | None:
+    """Signal cancellation, eagerly pop stream state, and capture cancel writeback data."""
+    active_streams = streams
+    active_cancel_flags = cancel_flags
+    active_agent_instances = agent_instances
+    active_partials = partial_texts
+    active_streams_lock = streams_lock
+    if stream_id not in active_streams and getattr(live_config, 'STREAMS', active_streams) is not active_streams:
+        active_streams = live_config.STREAMS
+        active_cancel_flags = live_config.CANCEL_FLAGS
+        active_agent_instances = live_config.AGENT_INSTANCES
+        active_partials = live_config.STREAM_PARTIAL_TEXT
+        active_streams_lock = live_config.STREAMS_LOCK
+
+    with active_streams_lock:
+        if stream_id not in active_streams:
+            return None
+
+        flag = active_cancel_flags.get(stream_id)
+        if flag:
+            flag.set()
+
+        agent = active_agent_instances.get(stream_id)
+        if agent:
+            try:
+                agent.interrupt("Cancelled by user")
+            except Exception as exc:
+                if logger is not None:
+                    logger.debug("Failed to interrupt agent for stream %s: %s", stream_id, exc)
+        elif logger is not None:
+            logger.debug(
+                "Cancel requested for stream %s before agent ready - "
+                "cancel_event flag set, will be checked on agent startup",
+                stream_id,
+            )
+
+        try:
+            from api.clarify import clear_pending as clear_clarify_pending
+
+            if agent and getattr(agent, "session_id", None):
+                clear_clarify_pending(agent.session_id)
+        except Exception:
+            if logger is not None:
+                logger.debug("Failed to clear clarify prompt during cancel")
+
+        queue = active_streams.get(stream_id)
+        active_streams.pop(stream_id, None)
+        active_cancel_flags.pop(stream_id, None)
+        active_agent_instances.pop(stream_id, None)
+
+        session_id = getattr(agent, 'session_id', None) if agent else None
+        partial_text = active_partials.get(stream_id, '')
+        if not partial_text:
+            fallback_partials = getattr(live_config, 'STREAM_PARTIAL_TEXT', active_partials)
+            if fallback_partials is not active_partials:
+                partial_text = fallback_partials.get(stream_id, '')
+
+        reasoning_text = reasoning_texts.get(stream_id, '')
+        if not reasoning_text:
+            fallback_reasoning = getattr(live_config, 'STREAM_REASONING_TEXT', reasoning_texts)
+            if fallback_reasoning is not reasoning_texts:
+                reasoning_text = fallback_reasoning.get(stream_id, '')
+
+        tool_calls = live_tool_calls.get(stream_id, [])
+        if not tool_calls:
+            fallback_tools = getattr(live_config, 'STREAM_LIVE_TOOL_CALLS', live_tool_calls)
+            if fallback_tools is not live_tool_calls:
+                tool_calls = fallback_tools.get(stream_id, [])
+
+    return CancelStreamSnapshot(
+        queue=queue,
+        session_id=session_id,
+        partial_text=partial_text,
+        reasoning_text=reasoning_text,
+        tool_calls=tool_calls,
+    )
 
 
 def session_has_cancel_marker(session, *, marker_patterns=CANCEL_MARKER_PATTERNS) -> bool:
