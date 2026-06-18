@@ -1,8 +1,10 @@
 from api.streaming_agent_cache import (
     build_agent_cache_signature,
+    cache_new_agent_for_signature,
     cached_agent_for_signature,
     handle_evicted_agent_cache_items,
     register_agent_for_lifecycle,
+    refresh_or_discard_cached_agent,
     refresh_cached_agent_for_turn,
 )
 
@@ -129,6 +131,86 @@ def test_register_agent_for_lifecycle_swallows_failures(monkeypatch):
     monkeypatch.setattr(lifecycle, "register_agent", fail)
 
     register_agent_for_lifecycle("sid-1", object(), agent_kind='new')
+
+
+def test_refresh_or_discard_cached_agent_keeps_refreshable_agent(monkeypatch):
+    import api.streaming_agent_runtime as runtime
+
+    calls = []
+    agent = _Agent(session_db=_SessionDB())
+
+    def refresh_cached_agent_runtime(agent_arg, kwargs_arg):
+        calls.append((agent_arg, kwargs_arg))
+        return True
+
+    monkeypatch.setattr(runtime, "refresh_cached_agent_runtime", refresh_cached_agent_runtime)
+
+    result = refresh_or_discard_cached_agent("sid-1", agent, {"api_key": "fresh"})
+
+    assert result is agent
+    assert calls == [(agent, {"api_key": "fresh"})]
+    assert agent._session_db.close_calls == 0
+
+
+def test_refresh_or_discard_cached_agent_closes_and_removes_unrefreshable_agent(monkeypatch):
+    import api.config as cfg
+    import api.streaming_agent_runtime as runtime
+
+    monkeypatch.setattr(runtime, "refresh_cached_agent_runtime", lambda _agent, _kwargs: False)
+    agent = _Agent(session_db=_SessionDB())
+
+    with cfg.SESSION_AGENT_CACHE_LOCK:
+        snapshot = list(cfg.SESSION_AGENT_CACHE.items())
+        cfg.SESSION_AGENT_CACHE.clear()
+        cfg.SESSION_AGENT_CACHE["sid-1"] = (agent, "sig-1")
+    try:
+        result = refresh_or_discard_cached_agent("sid-1", agent, {"api_key": "fresh"})
+
+        assert result is None
+        assert agent._session_db.close_calls == 1
+        with cfg.SESSION_AGENT_CACHE_LOCK:
+            assert "sid-1" not in cfg.SESSION_AGENT_CACHE
+    finally:
+        with cfg.SESSION_AGENT_CACHE_LOCK:
+            cfg.SESSION_AGENT_CACHE.clear()
+            cfg.SESSION_AGENT_CACHE.update(snapshot)
+
+
+def test_cache_new_agent_for_signature_registers_caches_and_evicts(monkeypatch):
+    import api.config as cfg
+    import api.session_lifecycle as lifecycle
+
+    calls = []
+    old_db = _SessionDB()
+    old_agent = _Agent(session_db=old_db)
+    new_agent = _Agent(session_db=_SessionDB())
+
+    monkeypatch.setattr(cfg, "SESSION_AGENT_CACHE_MAX", 1)
+    monkeypatch.setattr(lifecycle, "register_agent", lambda session_id, agent: calls.append(("register", session_id, agent)))
+    monkeypatch.setattr(lifecycle, "commit_session_memory", lambda session_id, *, agent=None, wait=False: calls.append(("commit", session_id, agent, wait)) or True)
+    monkeypatch.setattr(lifecycle, "has_uncommitted_work", lambda session_id: calls.append(("has", session_id)) or False)
+    monkeypatch.setattr(lifecycle, "unregister_agent", lambda session_id: calls.append(("unregister", session_id)))
+
+    with cfg.SESSION_AGENT_CACHE_LOCK:
+        snapshot = list(cfg.SESSION_AGENT_CACHE.items())
+        cfg.SESSION_AGENT_CACHE.clear()
+        cfg.SESSION_AGENT_CACHE["old"] = (old_agent, "old-sig")
+    try:
+        cache_new_agent_for_signature("new", new_agent, "new-sig")
+
+        with cfg.SESSION_AGENT_CACHE_LOCK:
+            assert list(cfg.SESSION_AGENT_CACHE.items()) == [("new", (new_agent, "new-sig"))]
+        assert calls == [
+            ("register", "new", new_agent),
+            ("commit", "old", old_agent, True),
+            ("has", "old"),
+            ("unregister", "old"),
+        ]
+        assert old_db.close_calls == 1
+    finally:
+        with cfg.SESSION_AGENT_CACHE_LOCK:
+            cfg.SESSION_AGENT_CACHE.clear()
+            cfg.SESSION_AGENT_CACHE.update(snapshot)
 
 
 def test_refresh_cached_agent_for_turn_updates_request_scoped_callbacks():

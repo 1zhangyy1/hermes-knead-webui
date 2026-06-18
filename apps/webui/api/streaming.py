@@ -119,9 +119,9 @@ from api.streaming_agent_runtime import (
 )
 from api.streaming_agent_cache import (
     build_agent_cache_signature as _build_agent_cache_signature,
+    cache_new_agent_for_signature as _cache_new_agent_for_signature,
     cached_agent_for_signature as _cached_agent_for_signature,
-    handle_evicted_agent_cache_items as _handle_evicted_agent_cache_items,
-    register_agent_for_lifecycle as _register_agent_for_lifecycle,
+    refresh_or_discard_cached_agent as _refresh_or_discard_cached_agent,
     refresh_cached_agent_for_turn as _refresh_cached_agent_for_turn,
 )
 from api.streaming_agent_config import (
@@ -1128,7 +1128,6 @@ def _run_agent_streaming(
                 agent = _AIAgent(**_agent_kwargs)
                 logger.debug('[webui] Created ephemeral agent for session %s', session_id)
             else:
-                from api.config import SESSION_AGENT_CACHE, SESSION_AGENT_CACHE_LOCK
                 _agent_sig = _build_agent_cache_signature(
                     resolved_model=resolved_model,
                     resolved_api_key=resolved_api_key,
@@ -1148,19 +1147,7 @@ def _run_agent_streaming(
                 if agent is not None:
                     # Refresh volatile runtime credentials selected from provider
                     # pools without discarding cross-turn agent/provider state.
-                    if not _refresh_cached_agent_runtime(agent, _agent_kwargs):
-                        logger.warning(
-                            '[webui] Cached agent runtime could not be safely refreshed; rebuilding agent for session %s',
-                            session_id,
-                        )
-                        try:
-                            if getattr(agent, '_session_db', None) is not None:
-                                agent._session_db.close()
-                        except Exception:
-                            pass
-                        with SESSION_AGENT_CACHE_LOCK:
-                            SESSION_AGENT_CACHE.pop(session_id, None)
-                        agent = None
+                    agent = _refresh_or_discard_cached_agent(session_id, agent, _agent_kwargs, logger=logger)
 
                 if agent is not None:
                     _refresh_cached_agent_for_turn(
@@ -1171,19 +1158,7 @@ def _run_agent_streaming(
                     )
                 else:
                     agent = _AIAgent(**_agent_kwargs)
-                    _register_agent_for_lifecycle(session_id, agent, agent_kind='new', logger=logger)
-                    _evicted_items = []
-                    with SESSION_AGENT_CACHE_LOCK:
-                        SESSION_AGENT_CACHE[session_id] = (agent, _agent_sig)
-                        SESSION_AGENT_CACHE.move_to_end(session_id)  # LRU: mark as recently used
-                        from api.config import SESSION_AGENT_CACHE_MAX
-                        while len(SESSION_AGENT_CACHE) > SESSION_AGENT_CACHE_MAX:
-                            evicted_sid, evicted_entry = SESSION_AGENT_CACHE.popitem(last=False)
-                            _evicted_items.append((evicted_sid, evicted_entry))
-                    # Commit and close evicted agents outside the cache lock so
-                    # concurrent cache users are not blocked by provider I/O.
-                    _handle_evicted_agent_cache_items(_evicted_items, logger=logger)
-                    logger.debug('[webui] Created new agent for session %s', session_id)
+                    _cache_new_agent_for_signature(session_id, agent, _agent_sig, logger=logger)
 
             # Store agent instance for cancel/interrupt propagation
             with STREAMS_LOCK:

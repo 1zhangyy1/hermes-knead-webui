@@ -318,22 +318,21 @@ def test_lru_eviction_commits_outside_cache_lock():
     after leaving that lock; provider extraction can be slow I/O."""
     import api.streaming as streaming_mod
 
-    src = Path(streaming_mod.__file__).read_text(encoding="utf-8")
-    marker = "_evicted_items = []"
+    src = Path(streaming_mod.__file__).with_name("streaming_agent_cache.py").read_text(encoding="utf-8")
+    marker = "evicted_items = []"
     collect_start = src.index(marker)
     lock_start = src.index("with SESSION_AGENT_CACHE_LOCK:", collect_start)
     lock_end = src.index("# Commit and close evicted agents outside the cache lock", lock_start)
     locked_section = src[lock_start:lock_end]
-    outside_section = src[lock_end:src.index("logger.debug('[webui] Created new agent", lock_end)]
-    helper_src = Path(streaming_mod.__file__).with_name("streaming_agent_cache.py").read_text(encoding="utf-8")
+    outside_section = src[lock_end:src.index("if logger is not None:", lock_end)]
 
     assert "commit_session_memory" not in locked_section
     assert "_lifecycle_commit" not in locked_section
     assert "SESSION_AGENT_CACHE.popitem" in locked_section
-    assert "_handle_evicted_agent_cache_items(_evicted_items, logger=logger)" in outside_section
+    assert "handle_evicted_agent_cache_items(evicted_items, logger=logger)" in outside_section
     assert "outside the cache lock" in outside_section
-    assert "_lifecycle_commit" in helper_src
-    assert "wait=True" in helper_src
+    assert "_lifecycle_commit" in src
+    assert "wait=True" in src
 
 
 def test_clear_session_evicts_outside_session_lock():

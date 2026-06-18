@@ -68,15 +68,14 @@ def test_lru_eviction_closes_evicted_agent_session_db():
     Fix: capture the evicted entry, close its agent's `_session_db` before
     dropping the reference.
     """
-    streaming_src = (REPO / "api" / "streaming.py").read_text(encoding="utf-8")
     helper_src = (REPO / "api" / "streaming_agent_cache.py").read_text(encoding="utf-8")
 
     # The eviction site uses popitem(last=False). The evicted entry must be
     # captured (not discarded with `_`) and the agent's _session_db closed.
-    eviction_idx = streaming_src.find("SESSION_AGENT_CACHE.popitem(last=False)")
+    eviction_idx = helper_src.find("SESSION_AGENT_CACHE.popitem(last=False)")
     assert eviction_idx != -1, "LRU eviction popitem missing"
     # Look in a window around the eviction collection site.
-    block = streaming_src[max(0, eviction_idx - 500) : eviction_idx + 500]
+    block = helper_src[max(0, eviction_idx - 500) : eviction_idx + 500]
 
     # Negative pattern: the old `evicted_sid, _ = ...` discard form must NOT
     # be present — that's the bug shape.
