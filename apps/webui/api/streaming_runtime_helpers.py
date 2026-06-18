@@ -30,6 +30,27 @@ def build_agent_thread_env(profile_runtime_env: dict | None, workspace: str, ses
     return env
 
 
+def restore_env_snapshot(snapshot: dict | None) -> None:
+    """Restore os.environ values captured as ``key -> old_value``."""
+    for key, old_value in (snapshot or {}).items():
+        if old_value is None:
+            os.environ.pop(key, None)
+        else:
+            os.environ[key] = old_value
+
+
+def restore_agent_process_env(
+    profile_env_snapshot: dict | None,
+    runtime_env_snapshot: dict | None,
+    *,
+    env_lock,
+) -> None:
+    """Restore process-level env values mutated for a streaming agent run."""
+    with env_lock:
+        restore_env_snapshot(profile_env_snapshot)
+        restore_env_snapshot(runtime_env_snapshot)
+
+
 def clarify_timeout_seconds(get_config_fn, default: int = 120) -> int:
     """Resolve clarify timeout from config, with bounded fallback."""
     try:
