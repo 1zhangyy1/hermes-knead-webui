@@ -50,6 +50,7 @@ from api.streaming_cancellation import (
     persist_cancelled_turn as _persist_cancelled_turn_impl,
     session_has_cancel_marker as _session_has_cancel_marker_impl,
 )
+from api.streaming_chat_steer import handle_chat_steer as _handle_chat_steer_impl
 from api.streaming_gateway import (
     GATEWAY_ROUTING_ATTEMPT_KEYS as _GATEWAY_ROUTING_ATTEMPT_KEYS,
     GATEWAY_ROUTING_CONTAINER_KEYS as _GATEWAY_ROUTING_CONTAINER_KEYS,
@@ -2581,105 +2582,12 @@ def _run_agent_streaming(
 
 
 def _handle_chat_steer(handler, body: dict) -> bool:
-    """Inject a /steer payload into the active agent for a session.
-
-    Mirrors the CLI's `/steer <text>` command (cli.py:6140-6155):
-      - Look up the cached AIAgent for the session (PR #1051's
-        SESSION_AGENT_CACHE).
-      - Verify a stream is currently active for this session.
-      - Call agent.steer(text) — thread-safe, stashes text in
-        _pending_steer for application at the next tool-result boundary.
-
-    The agent's loop calls _apply_pending_steer_to_tool_results() at the
-    end of every tool batch and appends the steer text to the last tool
-    result's content with a marker, so the model sees the steer as part
-    of the tool output on its next iteration. The user's stream is NOT
-    interrupted.
-
-    If no agent is cached, the agent is too old to support steer, or no
-    stream is active, return {"accepted": False, "fallback": "<reason>"}
-    so the frontend can fall back to interrupt or queue mode. The
-    fallback path is the existing behaviour from PR #1062.
-
-    Returns 200 with {"accepted": bool, "fallback": str|None,
-    "stream_id": str|None}.
-    """
-    from api.helpers import j, bad
-    from api import config as _cfg
-
-    sid = str((body or {}).get("session_id", "") or "").strip()
-    text = str((body or {}).get("text", "") or "").strip()
-    if not sid:
-        return bad(handler, "session_id required")
-    if not text:
-        return bad(handler, "text required")
-
-    with _cfg.SESSION_AGENT_CACHE_LOCK:
-        cached = _cfg.SESSION_AGENT_CACHE.get(sid)
-    if not cached:
-        # No active agent for this session — caller falls back to interrupt
-        return j(handler, {"accepted": False, "fallback": "no_cached_agent",
-                           "stream_id": None})
-    agent = cached[0]
-    if not hasattr(agent, "steer"):
-        # Older hermes-agent that pre-dates the steer() method
-        return j(handler, {"accepted": False, "fallback": "agent_lacks_steer",
-                           "stream_id": None})
-
-    # Verify the agent is currently running. Use the session's
-    # active_stream_id rather than calling load_session_locked() which
-    # would block on the streaming thread's lock.
-    try:
-        s = get_session(sid)
-    except KeyError:
-        return j(handler, {"accepted": False, "fallback": "session_not_found",
-                           "stream_id": None})
-    active_stream_id = getattr(s, "active_stream_id", None) or None
-    if not active_stream_id:
-        return j(handler, {"accepted": False, "fallback": "not_running",
-                           "stream_id": None})
-    with _cfg.STREAMS_LOCK:
-        stream_alive = active_stream_id in _cfg.STREAMS
-    if not stream_alive:
-        # Active stream id is stale — stream has ended; caller falls back
-        return j(handler, {"accepted": False, "fallback": "stream_dead",
-                           "stream_id": None})
-
-    steer_text = text
-    product_context = None
-    product_body = body or {}
-    try:
-        from api.product_context import product_context_request_body
-
-        product_body = product_context_request_body(product_body, s, text)
-    except Exception:
-        logger.debug("Failed to restore product context body for steer session=%s", sid, exc_info=True)
-    if product_body.get("product_id") or product_body.get("productId"):
-        try:
-            from api.product_context import product_context_from_request, product_ephemeral_prompt
-
-            product_context = product_context_from_request(product_body, workspace=getattr(s, "workspace", None))
-            if product_context and str(product_context.get("scope") or "") in {"product_init", "product_builder"}:
-                product_prompt = product_ephemeral_prompt(product_context)
-                if product_prompt:
-                    steer_text = (
-                        f"{product_prompt}\n\n"
-                        "Steer update for the current running turn:\n"
-                        f"{text}"
-                    )
-        except Exception:
-            logger.debug("Failed to attach product context to steer for session=%s", sid, exc_info=True)
-
-    try:
-        accepted = bool(agent.steer(steer_text))
-    except Exception as exc:
-        logger.debug("agent.steer() raised for session=%s: %s", sid, exc)
-        return j(handler, {"accepted": False, "fallback": "steer_error",
-                           "stream_id": active_stream_id})
-
-    return j(handler, {"accepted": accepted, "fallback": None,
-                       "stream_id": active_stream_id,
-                       "product_scope": product_context.get("scope") if product_context else None})
+    return _handle_chat_steer_impl(
+        handler,
+        body,
+        get_session=get_session,
+        logger=logger,
+    )
 
 
 def cancel_stream(stream_id: str) -> bool:
