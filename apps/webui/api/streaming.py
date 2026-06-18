@@ -208,11 +208,10 @@ from api.streaming_title_refresh import (
 # streaming_title_generation while streaming.py keeps the public wrappers.
 from api.streaming_recovery import (
     attempt_credential_self_heal as _attempt_credential_self_heal_impl,
+    handle_exception_credential_self_heal as _handle_exception_credential_self_heal,
     handle_silent_failure_credential_self_heal as _handle_silent_failure_credential_self_heal,
     last_resort_sync_from_core as _last_resort_sync_from_core_impl,
     materialize_pending_user_turn_before_error as _materialize_pending_user_turn_before_error_impl,
-    persist_exception_self_heal_result as _persist_exception_self_heal_result,
-    retry_conversation_after_credential_self_heal as _retry_conversation_after_credential_self_heal,
 )
 from api.streaming_runtime_helpers import (
     WEBUI_VISIBLE_PROGRESS_PROMPT as _WEBUI_VISIBLE_PROGRESS_PROMPT_IMPL,
@@ -1255,7 +1254,7 @@ def _run_agent_streaming(
         if _exc_is_auth:
             if not _self_healed:
                 # ── Credential self-heal on 401 (#1401) ──
-                _heal_retry = _retry_conversation_after_credential_self_heal(
+                _exception_self_heal = _handle_exception_credential_self_heal(
                     provider_id=resolved_provider or '',
                     session_id=session_id,
                     agent_lock=_agent_lock,
@@ -1278,40 +1277,24 @@ def _run_agent_streaming(
                     persist_user_message=msg_text,
                     sanitize_messages_for_api=_sanitize_messages_for_api,
                     output_bridge=_output_bridge,
+                    session=s,
+                    msg_text=msg_text,
+                    checkpoint_stop=_checkpoint_stop,
+                    checkpoint_thread=_ckpt_thread,
+                    stop_checkpoint_thread=_stop_checkpoint_thread,
+                    stream_writeback_is_current=_stream_writeback_is_current,
+                    apply_agent_result_to_session=_apply_agent_result_to_session,
                     logger=logger,
-                    retrying_log_message='[webui] self-heal (except path): retrying stream after credential refresh',
-                    retry_failed_log_message='[webui] self-heal (except path): retry failed: %s',
                 )
-                if _heal_retry is not None:
+                if _exception_self_heal.self_healed:
                     _self_healed = True
-                    _rebuilt = _heal_retry.rebuilt
-                    _rt = _rebuilt.runtime
-                    resolved_api_key = _rebuilt.resolved_api_key
-                    resolved_provider = _rebuilt.resolved_provider
-                    resolved_base_url = _rebuilt.resolved_base_url
-                    _agent_kwargs = _rebuilt.agent_kwargs
-                    if _heal_retry.result is not None:
-                        if not _persist_exception_self_heal_result(
-                            s,
-                            _heal_retry.result,
-                            previous_messages=_previous_messages,
-                            previous_context_messages=_previous_context_messages,
-                            msg_text=msg_text,
-                            session_id=session_id,
-                            stream_id=stream_id,
-                            ephemeral=ephemeral,
-                            agent_lock=_agent_lock,
-                            checkpoint_stop=_checkpoint_stop,
-                            checkpoint_thread=_ckpt_thread,
-                            stop_checkpoint_thread=_stop_checkpoint_thread,
-                            stream_writeback_is_current=_stream_writeback_is_current,
-                            apply_agent_result_to_session=_apply_agent_result_to_session,
-                            logger=logger,
-                        ):
-                            return
-                        logger.info('[webui] self-heal (except path): retry succeeded')
-                        return  # skip error emission
-                    # Fall through to emit the original error when retry failed.
+                    _rt = _exception_self_heal.runtime
+                    resolved_api_key = _exception_self_heal.resolved_api_key
+                    resolved_provider = _exception_self_heal.resolved_provider
+                    resolved_base_url = _exception_self_heal.resolved_base_url
+                    _agent_kwargs = _exception_self_heal.agent_kwargs
+                if _exception_self_heal.should_return:
+                    return  # skip error emission
 
         _exc_label, _exc_type, _exc_hint = _exception_error_copy(_classification)
 
