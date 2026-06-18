@@ -56,7 +56,7 @@ def test_streaming_applies_profile_runtime_env_to_agent_run():
     assert "_profile_runtime = _resolve_streaming_profile_runtime(s)" in streaming_src
     assert "_profile_runtime_env" in streaming_src
     assert "old_profile_env" in streaming_src
-    assert "os.environ.update(_profile_runtime_env)" in streaming_src
+    assert "os.environ.update(profile_runtime_env)" in helper_src
 
 
 def test_streaming_thread_env_allows_profile_terminal_cwd_override():

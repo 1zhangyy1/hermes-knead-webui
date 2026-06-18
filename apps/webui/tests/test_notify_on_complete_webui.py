@@ -34,7 +34,7 @@ def test_webui_sets_gateway_session_platform_for_background_watchers():
 
     assert "'HERMES_SESSION_PLATFORM': 'webui'" in helper_src
     assert "_thread_env = _build_agent_thread_env(" in src
-    assert "os.environ['HERMES_SESSION_PLATFORM'] = 'webui'" in src
-    assert "old_session_platform = os.environ.get('HERMES_SESSION_PLATFORM')" in src
-    assert "'HERMES_SESSION_PLATFORM': old_session_platform" in src
+    assert "os.environ['HERMES_SESSION_PLATFORM'] = 'webui'" in helper_src
+    assert "'HERMES_SESSION_PLATFORM'" in helper_src
+    assert "runtime_env_snapshot" in src
     assert "os.environ.pop(key, None)" in helper_src

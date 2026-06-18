@@ -4,6 +4,7 @@ import os
 import sys
 import time
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Callable, Optional
 
 
@@ -23,6 +24,12 @@ class StreamingProfileRuntime:
     profile_runtime_env: dict
     resolved_profile_name: str | None
     patch_skill_home_modules: Callable | None
+
+
+@dataclass(frozen=True)
+class StreamingProcessEnvSnapshot:
+    profile_env_snapshot: dict
+    runtime_env_snapshot: dict
 
 
 def build_agent_thread_env(profile_runtime_env: dict | None, workspace: str, session_id: str, profile_home: str) -> dict:
@@ -72,6 +79,48 @@ def resolve_streaming_profile_runtime(session, *, environ=os.environ) -> Streami
         profile_runtime_env=_profile_runtime_env,
         resolved_profile_name=_resolved_profile_name,
         patch_skill_home_modules=patch_skill_home_modules,
+    )
+
+
+def apply_streaming_profile_process_env(
+    *,
+    profile_runtime_env: dict | None,
+    workspace: str,
+    session_id: str,
+    profile_home: str,
+    patch_skill_home_modules: Callable | None,
+    env_lock,
+) -> StreamingProcessEnvSnapshot:
+    """Apply process-level fallback env for tools that bypass thread-local env."""
+    runtime_keys = (
+        'TERMINAL_CWD',
+        'HERMES_EXEC_ASK',
+        'HERMES_SESSION_KEY',
+        'HERMES_SESSION_ID',
+        'HERMES_SESSION_PLATFORM',
+        'HERMES_HOME',
+    )
+    profile_runtime_env = dict(profile_runtime_env or {})
+    with env_lock:
+        profile_env_snapshot = {key: os.environ.get(key) for key in profile_runtime_env}
+        runtime_env_snapshot = {key: os.environ.get(key) for key in runtime_keys}
+        os.environ.update(profile_runtime_env)
+        os.environ['TERMINAL_CWD'] = str(workspace)
+        os.environ['HERMES_EXEC_ASK'] = '1'
+        os.environ['HERMES_SESSION_KEY'] = session_id
+        os.environ['HERMES_SESSION_ID'] = session_id
+        os.environ['HERMES_SESSION_PLATFORM'] = 'webui'
+        if profile_home:
+            os.environ['HERMES_HOME'] = profile_home
+            # Patch module-level caches to match the active profile. Modules
+            # are prewarmed before this helper is called, so this remains a
+            # lightweight sys.modules lookup path under the env lock (#2024).
+            if patch_skill_home_modules is not None:
+                patch_skill_home_modules(Path(profile_home))
+
+    return StreamingProcessEnvSnapshot(
+        profile_env_snapshot=profile_env_snapshot,
+        runtime_env_snapshot=runtime_env_snapshot,
     )
 
 

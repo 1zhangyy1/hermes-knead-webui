@@ -3,6 +3,7 @@ import sys
 import types
 
 from api.streaming_runtime_helpers import (
+    apply_streaming_profile_process_env,
     discover_mcp_tools_for_profile,
     restore_agent_process_env,
     restore_env_snapshot,
@@ -56,6 +57,38 @@ def test_restore_agent_process_env_uses_lock_and_restores_both_snapshots(monkeyp
     assert os.environ['PROFILE_KEY'] == 'old-profile'
     assert os.environ['TERMINAL_CWD'] == '/old'
     assert 'HERMES_SESSION_ID' not in os.environ
+
+
+def test_apply_streaming_profile_process_env_sets_and_snapshots_process_env(monkeypatch, tmp_path):
+    monkeypatch.setenv("PROFILE_KEY", "old-profile")
+    monkeypatch.setenv("TERMINAL_CWD", "/old")
+    monkeypatch.delenv("HERMES_SESSION_PLATFORM", raising=False)
+    patched_homes = []
+    lock = DummyLock()
+    profile_home = tmp_path / "profile-home"
+
+    snapshot = apply_streaming_profile_process_env(
+        profile_runtime_env={"PROFILE_KEY": "new-profile"},
+        workspace="/workspace",
+        session_id="sid-1",
+        profile_home=str(profile_home),
+        patch_skill_home_modules=lambda home: patched_homes.append(home),
+        env_lock=lock,
+    )
+
+    assert lock.entered is True
+    assert lock.exited is True
+    assert os.environ["PROFILE_KEY"] == "new-profile"
+    assert os.environ["TERMINAL_CWD"] == "/workspace"
+    assert os.environ["HERMES_EXEC_ASK"] == "1"
+    assert os.environ["HERMES_SESSION_KEY"] == "sid-1"
+    assert os.environ["HERMES_SESSION_ID"] == "sid-1"
+    assert os.environ["HERMES_SESSION_PLATFORM"] == "webui"
+    assert os.environ["HERMES_HOME"] == str(profile_home)
+    assert patched_homes == [profile_home]
+    assert snapshot.profile_env_snapshot == {"PROFILE_KEY": "old-profile"}
+    assert snapshot.runtime_env_snapshot["TERMINAL_CWD"] == "/old"
+    assert snapshot.runtime_env_snapshot["HERMES_SESSION_PLATFORM"] is None
 
 
 def test_discover_mcp_tools_for_profile_runs_best_effort(monkeypatch):
