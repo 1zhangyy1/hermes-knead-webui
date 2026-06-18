@@ -11,6 +11,7 @@ REPO = Path(__file__).resolve().parent.parent
 CONFIG_PY = (REPO / "api" / "config.py").read_text(encoding="utf-8")
 STREAMING_PY = (REPO / "api" / "streaming.py").read_text(encoding="utf-8")
 STREAMING_LIVE_USAGE_PY = (REPO / "api" / "streaming_live_usage.py").read_text(encoding="utf-8")
+STREAMING_METERING_PY = (REPO / "api" / "streaming_metering.py").read_text(encoding="utf-8")
 BOOT_JS = (REPO / "static" / "boot.js").read_text(encoding="utf-8")
 INDEX_HTML = (REPO / "static" / "index.html").read_text(encoding="utf-8")
 MESSAGES_JS = (REPO / "static" / "messages.js").read_text(encoding="utf-8")
@@ -83,8 +84,9 @@ def test_done_payload_persists_final_tps_when_exact_usage_available():
 
 
 def test_backend_marks_streaming_metering_availability_explicitly():
-    assert "tps_available" in STREAMING_PY, "metering SSE payloads must explicitly say whether TPS is displayable"
-    assert "estimated" in STREAMING_PY, "metering SSE payloads must explicitly distinguish estimated readings"
+    metering_backend = STREAMING_PY + "\n" + STREAMING_METERING_PY
+    assert "tps_available" in metering_backend, "metering SSE payloads must explicitly say whether TPS is displayable"
+    assert "estimated" in metering_backend, "metering SSE payloads must explicitly distinguish estimated readings"
     assert "record_token(stream_id, len(STREAM_PARTIAL_TEXT[stream_id]))" not in STREAMING_PY, (
         "live TPS must not be derived from streamed character count / byte-size estimates"
     )
