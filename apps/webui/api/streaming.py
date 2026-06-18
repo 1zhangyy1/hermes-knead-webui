@@ -1657,15 +1657,11 @@ def _run_agent_streaming(
                                         getattr(s, 'active_stream_id', None),
                                     )
                                     return
-                                _result_messages = _heal_result.get('messages') or _previous_context_messages
-                                _next_context_messages = _restore_reasoning_metadata(
-                                    _previous_context_messages, _result_messages,
-                                )
-                                s.context_messages = _next_context_messages
-                                s.messages = _merge_display_messages_after_agent_result(
+                                _result_messages = _apply_agent_result_to_session(
+                                    s,
                                     _previous_messages,
                                     _previous_context_messages,
-                                    _restore_reasoning_metadata(_previous_messages, _result_messages),
+                                    _heal_result.get('messages'),
                                     msg_text,
                                 )
                                 s.save()
