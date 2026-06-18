@@ -26,6 +26,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 STREAMING_PY = (REPO_ROOT / "api" / "streaming.py").read_text(encoding="utf-8")
+STREAMING_CLEANUP_PY = (REPO_ROOT / "api" / "streaming_cleanup.py").read_text(encoding="utf-8")
 EVENT_SINK_PY = (REPO_ROOT / "api" / "streaming_event_sink.py").read_text(encoding="utf-8")
 ROUTES_PY = (REPO_ROOT / "api" / "routes.py").read_text(encoding="utf-8")
 CONFIG_PY = (REPO_ROOT / "api" / "config.py").read_text(encoding="utf-8")
@@ -86,10 +87,10 @@ def test_cleanup_pops_stream_last_event_id():
     """The streaming worker's finally block must pop STREAM_LAST_EVENT_ID
     alongside the other STREAM_* dicts to prevent memory leak."""
     # Find the cleanup block — multiple .pop(stream_id, None) lines
-    cleanup_idx = STREAMING_PY.find("STREAM_LIVE_TOOL_CALLS.pop(stream_id, None)")
+    cleanup_idx = STREAMING_CLEANUP_PY.find("live_tool_calls.pop(stream_id, None)")
     assert cleanup_idx != -1, "cleanup block not found"
-    cleanup_block = STREAMING_PY[cleanup_idx:cleanup_idx + 500]
-    assert "STREAM_LAST_EVENT_ID.pop(stream_id, None)" in cleanup_block, (
+    cleanup_block = STREAMING_CLEANUP_PY[cleanup_idx:cleanup_idx + 500]
+    assert "last_event_ids.pop(stream_id, None)" in cleanup_block, (
         "STREAM_LAST_EVENT_ID must be popped on worker finally to prevent "
         "unbounded memory growth across streams"
     )
