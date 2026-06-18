@@ -96,8 +96,8 @@ class TestSidebarFirstTurnVisibility:
         assert "_sessionStreamingById.set(sid,false)" in clear_body.replace(" ", "")
 
     def test_backend_compact_counts_pending_first_turn_as_visible(self):
-        src = read("api/models.py")
-        compact = src[src.index("def compact"):src.index("def _get_profile_home")]
+        src = read("api/session_model.py")
+        compact = src[src.index("def compact"):]
         assert "has_pending_user_message" in compact and "pending_user_message" in compact, (
             "Session.compact() must account for pending_user_message in sidebar metadata."
         )

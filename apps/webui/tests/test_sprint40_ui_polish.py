@@ -88,19 +88,19 @@ if __name__ == "__main__":
 
 # ── #452 unknown model ─────────────────────────────────────────────
 class TestGatewaySessionNullModel(unittest.TestCase):
-    """Verify that api/models.py and api/gateway_watcher.py do not
+    """Verify session bridge and gateway watcher do not
     fall back to the string 'unknown' for missing model values."""
 
     def test_gateway_session_null_model_returns_none_not_unknown(self):
-        """api/models.py must not use `or 'unknown'` for the model field
+        """api/cli_session_list.py must not use `or 'unknown'` for the model field
         so that a NULL model in state.db is returned as None (falsy) to
         the frontend rather than the truthy string 'unknown'."""
-        models_src = (REPO_ROOT / "api" / "models.py").read_text()
+        cli_sessions_src = (REPO_ROOT / "api" / "cli_session_list.py").read_text()
         # Ensure the old fallback pattern is gone
         self.assertNotIn(
             "'model': row['model'] or 'unknown'",
-            models_src,
-            "api/models.py must not use `or 'unknown'` for the model field "
+            cli_sessions_src,
+            "api/cli_session_list.py must not use `or 'unknown'` for the model field "
             "(fixes #443: gateway sessions showed 'telegram · unknown')",
         )
 
@@ -118,12 +118,12 @@ class TestGatewaySessionNullModel(unittest.TestCase):
     def test_gateway_session_model_uses_none_fallback(self):
         """Both source files must use `row['model'] or None` (explicit None
         fallback) for the model field assignment."""
-        models_src = (REPO_ROOT / "api" / "models.py").read_text()
+        cli_sessions_src = (REPO_ROOT / "api" / "cli_session_list.py").read_text()
         gw_src = (REPO_ROOT / "api" / "gateway_watcher.py").read_text()
         self.assertIn(
             "'model': row['model'] or None,",
-            models_src,
-            "api/models.py should assign `row['model'] or None` for the model field",
+            cli_sessions_src,
+            "api/cli_session_list.py should assign `row['model'] or None` for the model field",
         )
         self.assertIn(
             "'model': row['model'] or None,",
