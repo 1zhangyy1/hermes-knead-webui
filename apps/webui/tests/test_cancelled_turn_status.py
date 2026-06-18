@@ -157,20 +157,24 @@ class TestCancelledTurnPersistenceGuards:
 
     def test_post_run_cancel_guard_runs_before_normal_success_merge(self):
         src = _read("api/streaming.py")
+        cancellation_src = _read("api/streaming_cancellation.py")
         run_idx = src.find("result = agent.run_conversation(")
         merge_idx = src.find("_result_messages = result.get", run_idx)
         assert run_idx != -1 and merge_idx != -1, "run/merge path not found"
         block = src[run_idx:merge_idx]
 
-        assert "cancel_event.is_set()" in block, (
+        assert "_handle_post_run_cancel(" in block, (
             "If cancellation arrives after tokens streamed but before run_conversation returns, "
             "the worker must emit/persist cancel before normal merge/save/completed handling."
         )
-        assert "put('cancel'" in block
-        assert "_cleanup_ephemeral_cancelled_turn" in block or "_finalize_cancelled_turn" in block, (
+        assert "cancel_event.is_set()" in cancellation_src
+        assert "put_cancel_fn()" in cancellation_src
+        assert "cleanup_ephemeral_cancelled_turn_fn(session)" in cancellation_src
+        assert "finalize_cancelled_turn_fn(session, ephemeral=False)" in cancellation_src
+        assert "append_interrupted_turn_event_fn(session.session_id, stream_id, logger=logger)" in cancellation_src
+        assert "_handle_post_run_cancel(" in block and "return" in block, (
             "Ephemeral cancels must clean up their temporary session before returning."
         )
-        assert "return" in block
 
     def test_frontend_has_cancelled_and_interrupted_labels_for_apperror_fallbacks(self):
         src = _read("static/messages.js")

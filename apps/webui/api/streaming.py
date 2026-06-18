@@ -46,6 +46,7 @@ from api.streaming_cancellation import (
     capture_cancel_stream_snapshot as _capture_cancel_stream_snapshot_impl,
     cleanup_ephemeral_cancelled_turn as _cleanup_ephemeral_cancelled_turn_impl,
     finalize_cancelled_turn as _finalize_cancelled_turn_impl,
+    handle_post_run_cancel as _handle_post_run_cancel,
     persist_cancel_stream_writeback as _persist_cancel_stream_writeback_impl,
     persist_cancelled_turn as _persist_cancelled_turn_impl,
     register_agent_instance_or_cancel as _register_agent_instance_or_cancel,
@@ -1233,17 +1234,18 @@ def _run_agent_streaming(
                 task_id=session_id,
                 persist_user_message=msg_text,
             )
-            if cancel_event.is_set():
-                _stop_checkpoint_thread(_checkpoint_stop, _ckpt_thread)
-                if ephemeral:
-                    _cleanup_ephemeral_cancelled_turn(s)
-                else:
-                    with _agent_lock:
-                        _finalize_cancelled_turn(s, ephemeral=False)
-                        _append_interrupted_turn_event(s.session_id, stream_id, logger=logger)
-                # Emits put('cancel', ...) through _put_cancel() for the
-                # source-guarded post-run cancel path.
-                _put_cancel()
+            if _handle_post_run_cancel(
+                cancel_event,
+                s,
+                stream_id,
+                _agent_lock,
+                _finalize_cancelled_turn,
+                _put_cancel,
+                ephemeral=ephemeral,
+                checkpoint_stop=_checkpoint_stop,
+                checkpoint_thread=_ckpt_thread,
+                logger=logger,
+            ):
                 return
             # ── Ephemeral mode (/btw): deliver answer, skip persistence, cleanup ──
             if ephemeral:
@@ -1256,11 +1258,16 @@ def _run_agent_streaming(
                 )
                 return  # skip all normal persistence for ephemeral sessions
             _stop_checkpoint_thread(_checkpoint_stop, _ckpt_thread)
-            if cancel_event.is_set():
-                with _agent_lock:
-                    _finalize_cancelled_turn(s, ephemeral=False)
-                    _append_interrupted_turn_event(s.session_id, stream_id, logger=logger)
-                _put_cancel()
+            if _handle_post_run_cancel(
+                cancel_event,
+                s,
+                stream_id,
+                _agent_lock,
+                _finalize_cancelled_turn,
+                _put_cancel,
+                ephemeral=False,
+                logger=logger,
+            ):
                 return
             with _agent_lock:
                 if not ephemeral and not _stream_writeback_is_current(s, stream_id):
