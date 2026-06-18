@@ -5,6 +5,7 @@ from api.streaming_recovery import (
     CredentialSelfHealRetry,
     RebuiltCredentialAgent,
     rebuild_agent_for_credential_self_heal,
+    persist_exception_self_heal_result,
     retry_conversation_after_credential_self_heal,
 )
 
@@ -30,6 +31,16 @@ class _ConversationAgent(_Agent):
 
 class _OutputBridge:
     token_sent = True
+
+
+class _Session:
+    def __init__(self):
+        self.session_id = "sid-1"
+        self.active_stream_id = "stream-1"
+        self.saved = 0
+
+    def save(self):
+        self.saved += 1
 
 
 def test_rebuild_agent_for_credential_self_heal_updates_runtime_and_cache():
@@ -228,6 +239,95 @@ def test_retry_conversation_after_credential_self_heal_returns_retry_error():
     assert isinstance(result, CredentialSelfHealRetry)
     assert result.result is None
     assert result.error is retry_error
+
+
+def test_persist_exception_self_heal_result_writes_retry_messages_before_save():
+    session = _Session()
+    calls = []
+    result = {"messages": [{"role": "assistant", "content": "ok"}]}
+
+    ok = persist_exception_self_heal_result(
+        session,
+        result,
+        previous_messages=["display-before"],
+        previous_context_messages=["context-before"],
+        msg_text="hello",
+        session_id="sid-1",
+        stream_id="stream-1",
+        ephemeral=False,
+        agent_lock=threading.Lock(),
+        checkpoint_stop="stop",
+        checkpoint_thread="thread",
+        stop_checkpoint_thread=lambda stop, thread: calls.append(("stop", stop, thread)),
+        stream_writeback_is_current=lambda session_arg, stream_id: session_arg.active_stream_id == stream_id,
+        apply_agent_result_to_session=lambda *args: calls.append(("apply", args)),
+        logger=logging.getLogger(__name__),
+    )
+
+    assert ok is True
+    assert session.saved == 1
+    assert calls[0] == ("stop", "stop", "thread")
+    assert calls[1][0] == "apply"
+    assert calls[1][1] == (
+        session,
+        ["display-before"],
+        ["context-before"],
+        [{"role": "assistant", "content": "ok"}],
+        "hello",
+    )
+
+
+def test_persist_exception_self_heal_result_skips_stale_stream_writeback():
+    session = _Session()
+    session.active_stream_id = "newer-stream"
+    calls = []
+
+    ok = persist_exception_self_heal_result(
+        session,
+        {"messages": []},
+        previous_messages=[],
+        previous_context_messages=[],
+        msg_text="hello",
+        session_id="sid-1",
+        stream_id="stream-1",
+        ephemeral=False,
+        agent_lock=threading.Lock(),
+        checkpoint_stop=None,
+        checkpoint_thread=None,
+        stop_checkpoint_thread=lambda *_args: calls.append(("stop", None)),
+        stream_writeback_is_current=lambda session_arg, stream_id: session_arg.active_stream_id == stream_id,
+        apply_agent_result_to_session=lambda *_args: calls.append(("apply", None)),
+        logger=logging.getLogger(__name__),
+    )
+
+    assert ok is False
+    assert session.saved == 0
+    assert calls == [("stop", None)]
+
+
+def test_persist_exception_self_heal_result_treats_missing_session_as_success():
+    calls = []
+
+    ok = persist_exception_self_heal_result(
+        None,
+        {"messages": []},
+        previous_messages=[],
+        previous_context_messages=[],
+        msg_text="hello",
+        session_id="sid-1",
+        stream_id="stream-1",
+        ephemeral=False,
+        agent_lock=None,
+        checkpoint_stop=None,
+        checkpoint_thread=None,
+        stop_checkpoint_thread=lambda *_args: calls.append(("stop", None)),
+        stream_writeback_is_current=lambda *_args: False,
+        apply_agent_result_to_session=lambda *_args: calls.append(("apply", None)),
+        logger=logging.getLogger(__name__),
+    )
+
+    assert ok is True
+    assert calls == []
 
 
 def test_rebuild_agent_for_credential_self_heal_skips_cache_for_ephemeral_turns():
