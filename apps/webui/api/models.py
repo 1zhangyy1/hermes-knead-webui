@@ -51,6 +51,11 @@ from api.session_sidebar import (
     sidebar_title_is_generic_webui as _sidebar_title_is_generic_webui_impl,
     strip_sidebar_internal_flags as _strip_sidebar_internal_flags_impl,
 )
+from api.session_cache import (
+    cache_session as _cache_session,
+    evict_cached_session_if_same as _evict_cached_session_if_same,
+    get_cached_session as _get_cached_session,
+)
 
 logger = logging.getLogger(__name__)
 CLI_VISIBLE_SESSION_LIMIT = 20
@@ -957,10 +962,9 @@ def get_session(sid, metadata_only=False):
     messages list. Use this when you only need compact() metadata and not the
     actual message history (e.g., for fast sidebar switching).
     """
-    with LOCK:
-        if sid in SESSIONS:
-            SESSIONS.move_to_end(sid)  # LRU: mark as recently used
-            return SESSIONS[sid]
+    cached = _get_cached_session(SESSIONS, LOCK, sid)
+    if cached is not None:
+        return cached
     if metadata_only:
         s = Session.load_metadata_only(sid)
         if s:
@@ -968,11 +972,7 @@ def get_session(sid, metadata_only=False):
     else:
         s = Session.load(sid)
     if s:
-        with LOCK:
-            SESSIONS[sid] = s
-            SESSIONS.move_to_end(sid)
-            while len(SESSIONS) > SESSIONS_MAX:
-                SESSIONS.popitem(last=False)  # evict least recently used
+        _cache_session(SESSIONS, LOCK, sid, s, SESSIONS_MAX)
         if not metadata_only:
             try:
                 repaired = _repair_stale_pending(s)
@@ -984,9 +984,7 @@ def get_session(sid, metadata_only=False):
                         and s.pending_user_message
                         and s.active_stream_id
                         and s.active_stream_id not in _active_stream_ids()):
-                    with LOCK:
-                        if SESSIONS.get(sid) is s:
-                            SESSIONS.pop(sid, None)
+                    _evict_cached_session_if_same(SESSIONS, LOCK, sid, s)
             except Exception:
                 pass  # repair is best-effort
         return s
@@ -1038,11 +1036,7 @@ def new_session(workspace=None, model=None, profile=None, model_provider=None, p
         worktree_repo_root=wt.get('repo_root') if wt else None,
         worktree_created_at=wt.get('created_at') if wt else None,
     )
-    with LOCK:
-        SESSIONS[s.session_id] = s
-        SESSIONS.move_to_end(s.session_id)
-        while len(SESSIONS) > SESSIONS_MAX:
-            SESSIONS.popitem(last=False)
+    _cache_session(SESSIONS, LOCK, s.session_id, s, SESSIONS_MAX)
     if wt:
         s.save()
     return s
