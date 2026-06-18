@@ -365,10 +365,10 @@ def test_post_turn_lifecycle_marks_completion_without_commit():
     src = Path(streaming_mod.__file__).read_text(encoding="utf-8")
 
     save_pos = src.index("s.save()")
-    lifecycle_marker = src.index("mark_turn_completed(s.session_id, agent=agent)", save_pos)
+    lifecycle_marker = src.index("_mark_completed_turn_memory_lifecycle(s.session_id, agent, logger=logger)", save_pos)
     cancel_check = src.index("cancel_event.is_set()", save_pos)
-    completed_journal = src.index('"completed"', save_pos)
-    sync_to_state_db = src.index("# Sync to state.db", save_pos)
+    completed_journal = src.index("_append_completed_turn_event", save_pos)
+    terminal_usage = src.index("usage = _build_done_usage_payload", save_pos)
 
     assert lifecycle_marker > cancel_check, (
         "mark_turn_completed must appear after the cancellation check"
@@ -376,16 +376,20 @@ def test_post_turn_lifecycle_marks_completion_without_commit():
     assert lifecycle_marker > completed_journal, (
         "mark_turn_completed must appear after the completed-turn journal event"
     )
-    assert lifecycle_marker < sync_to_state_db
+    assert lifecycle_marker < terminal_usage
 
     # The post-turn block must contain mark_turn_completed but NOT
     # commit_session_memory — extraction is a boundary concern.
     block_start = src.rindex("if not ephemeral:", save_pos, lifecycle_marker)
-    block_end_pos = src.index("# Sync to state.db", save_pos)
+    block_end_pos = terminal_usage
     post_turn_block = src[block_start:block_end_pos]
-    assert "mark_turn_completed" in post_turn_block
+    assert "_mark_completed_turn_memory_lifecycle" in post_turn_block
     assert "commit_session_memory" not in post_turn_block
     assert "per-session writeback lock" in post_turn_block
+
+    helper_src = Path(streaming_mod.__file__).with_name("streaming_memory_lifecycle.py").read_text(encoding="utf-8")
+    assert "mark_turn_completed(session_id, agent=agent)" in helper_src
+    assert "commit_session_memory" not in helper_src
 
 
 def test_multiple_completed_turns_coalesce_into_single_boundary_commit():

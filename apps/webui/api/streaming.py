@@ -125,6 +125,7 @@ from api.streaming_agent_status import make_agent_status_callback as _make_agent
 from api.streaming_event_sink import StreamingEventSink as _StreamingEventSink
 from api.streaming_live_usage import LiveUsageTracker as _LiveUsageTracker
 from api.streaming_metering import StreamingMeteringTicker as _StreamingMeteringTicker
+from api.streaming_memory_lifecycle import mark_completed_turn_memory_lifecycle as _mark_completed_turn_memory_lifecycle
 from api.streaming_output_bridge import StreamingOutputBridge as _StreamingOutputBridge
 from api.streaming_process_notifications import (
     drain_webui_process_notifications as _drain_webui_process_notifications_impl,
@@ -1870,22 +1871,9 @@ def _run_agent_streaming(
                 if not ephemeral:
                     _append_completed_turn_event(s.session_id, stream_id, s.messages, logger=logger)
                 if not ephemeral:
-                    # ── Memory-provider lifecycle: mark turn completed (CLI parity) ──
-                    # Completed, non-ephemeral turns are marked dirty/uncommitted so
-                    # boundary drains know there is work.  Per CLI semantics, the
-                    # actual memory extraction/commit happens only at session boundaries
-                    # (new session creation, LRU eviction, shutdown drain) — NOT after
-                    # every completed turn.  This mirrors Hermes CLI where
-                    # run_agent.py::_sync_external_memory_for_turn() records messages
-                    # but only AIAgent.commit_memory_session()/shutdown_memory_provider()
-                    # trigger extraction via provider on_session_end().  The mark is
-                    # in-memory bookkeeping, not provider I/O, so keep it inside the
-                    # per-session writeback lock to preserve completed-turn ordering.
-                    try:
-                        from api.session_lifecycle import mark_turn_completed
-                        mark_turn_completed(s.session_id, agent=agent)
-                    except Exception:
-                        logger.debug("Memory lifecycle mark failed for session %s", s.session_id, exc_info=True)
+                    # Keep this marker inside the per-session writeback lock so
+                    # completed-turn ordering stays aligned with session save/journal.
+                    _mark_completed_turn_memory_lifecycle(s.session_id, agent, logger=logger)
             usage = _build_done_usage_payload(
                 _token_usage,
                 duration_seconds=_turn_metadata.duration_seconds,
