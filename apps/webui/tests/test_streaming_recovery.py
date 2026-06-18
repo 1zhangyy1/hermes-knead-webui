@@ -3,7 +3,9 @@ import threading
 
 from api.streaming_recovery import (
     CredentialSelfHealRetry,
+    ExceptionSelfHealResult,
     RebuiltCredentialAgent,
+    handle_exception_credential_self_heal,
     handle_silent_failure_credential_self_heal,
     rebuild_agent_for_credential_self_heal,
     persist_exception_self_heal_result,
@@ -514,6 +516,230 @@ def test_persist_exception_self_heal_result_treats_missing_session_as_success():
 
     assert ok is True
     assert calls == []
+
+
+def test_handle_exception_self_heal_skips_when_retry_not_available():
+    calls = []
+
+    result = handle_exception_credential_self_heal(
+        provider_id="anthropic",
+        session_id="sid-1",
+        agent_lock=None,
+        agent_factory=_Agent,
+        agent_kwargs={},
+        agent_params=set(),
+        resolved_model="model-a",
+        resolved_provider="anthropic",
+        resolved_base_url=None,
+        custom_provider_resolver=lambda _provider: (None, None),
+        stream_id="stream-1",
+        agent_instances={},
+        streams_lock=threading.Lock(),
+        ephemeral=False,
+        agent_sig="sig-1",
+        user_message="hello",
+        system_message="system",
+        previous_messages=[],
+        previous_context_messages=[],
+        config={},
+        persist_user_message="hello",
+        sanitize_messages_for_api=lambda messages, *, cfg: messages,
+        output_bridge=_OutputBridge(),
+        session=_Session(),
+        msg_text="hello",
+        checkpoint_stop=None,
+        checkpoint_thread=None,
+        stop_checkpoint_thread=lambda *_args: calls.append(("stop",)),
+        stream_writeback_is_current=lambda *_args: True,
+        apply_agent_result_to_session=lambda *_args: calls.append(("apply",)),
+        logger=logging.getLogger(__name__),
+        retry_conversation_after_credential_self_heal_fn=lambda **_kwargs: None,
+    )
+
+    assert result == ExceptionSelfHealResult()
+    assert calls == []
+
+
+def test_handle_exception_self_heal_persists_successful_retry_and_returns():
+    session = _Session()
+    retry_result = {"messages": [{"role": "assistant", "content": "ok"}]}
+    calls = []
+
+    def retry_fn(**kwargs):
+        calls.append(("retry", kwargs))
+        return CredentialSelfHealRetry(
+            rebuilt=RebuiltCredentialAgent(
+                agent=_Agent(api_key="fresh"),
+                agent_kwargs={"api_key": "fresh"},
+                runtime={"api_key": "fresh"},
+                resolved_api_key="fresh",
+                resolved_provider="anthropic",
+                resolved_base_url="https://api.example",
+            ),
+            result=retry_result,
+            error=None,
+        )
+
+    def persist_fn(*args, **kwargs):
+        calls.append(("persist", args, kwargs))
+        return True
+
+    result = handle_exception_credential_self_heal(
+        provider_id="anthropic",
+        session_id="sid-1",
+        agent_lock="lock",
+        agent_factory=_Agent,
+        agent_kwargs={"api_key": "old"},
+        agent_params=set(),
+        resolved_model="model-a",
+        resolved_provider="anthropic",
+        resolved_base_url=None,
+        custom_provider_resolver=lambda _provider: (None, None),
+        stream_id="stream-1",
+        agent_instances={},
+        streams_lock=threading.Lock(),
+        ephemeral=False,
+        agent_sig="sig-1",
+        user_message="hello",
+        system_message="system",
+        previous_messages=["display-before"],
+        previous_context_messages=["context-before"],
+        config={"mode": "test"},
+        persist_user_message="hello",
+        sanitize_messages_for_api=lambda messages, *, cfg: messages,
+        output_bridge=_OutputBridge(),
+        session=session,
+        msg_text="hello",
+        checkpoint_stop="stop",
+        checkpoint_thread="thread",
+        stop_checkpoint_thread=lambda *_args: calls.append(("stop",)),
+        stream_writeback_is_current=lambda *_args: True,
+        apply_agent_result_to_session=lambda *_args: calls.append(("apply",)),
+        logger=logging.getLogger(__name__),
+        retry_conversation_after_credential_self_heal_fn=retry_fn,
+        persist_self_heal_result_fn=persist_fn,
+    )
+
+    assert result.self_healed is True
+    assert result.should_return is True
+    assert result.result is retry_result
+    assert result.agent_kwargs == {"api_key": "fresh"}
+    assert result.runtime == {"api_key": "fresh"}
+    assert result.resolved_api_key == "fresh"
+    assert result.resolved_provider == "anthropic"
+    assert result.resolved_base_url == "https://api.example"
+    assert calls[0][0] == "retry"
+    assert calls[1][0] == "persist"
+    assert calls[1][1] == (session, retry_result)
+    assert calls[1][2]["previous_messages"] == ["display-before"]
+    assert calls[1][2]["checkpoint_stop"] == "stop"
+
+
+def test_handle_exception_self_heal_returns_on_stale_retry_writeback():
+    retry_result = {"messages": [{"role": "assistant", "content": "ok"}]}
+
+    result = handle_exception_credential_self_heal(
+        provider_id="anthropic",
+        session_id="sid-1",
+        agent_lock=None,
+        agent_factory=_Agent,
+        agent_kwargs={},
+        agent_params=set(),
+        resolved_model="model-a",
+        resolved_provider="anthropic",
+        resolved_base_url=None,
+        custom_provider_resolver=lambda _provider: (None, None),
+        stream_id="stream-1",
+        agent_instances={},
+        streams_lock=threading.Lock(),
+        ephemeral=False,
+        agent_sig="sig-1",
+        user_message="hello",
+        system_message="system",
+        previous_messages=[],
+        previous_context_messages=[],
+        config={},
+        persist_user_message="hello",
+        sanitize_messages_for_api=lambda messages, *, cfg: messages,
+        output_bridge=_OutputBridge(),
+        session=_Session(),
+        msg_text="hello",
+        checkpoint_stop=None,
+        checkpoint_thread=None,
+        stop_checkpoint_thread=lambda *_args: None,
+        stream_writeback_is_current=lambda *_args: False,
+        apply_agent_result_to_session=lambda *_args: None,
+        logger=logging.getLogger(__name__),
+        retry_conversation_after_credential_self_heal_fn=lambda **_kwargs: CredentialSelfHealRetry(
+            rebuilt=RebuiltCredentialAgent(
+                agent=_Agent(),
+                agent_kwargs={},
+                runtime={},
+                resolved_api_key=None,
+                resolved_provider="anthropic",
+                resolved_base_url=None,
+            ),
+            result=retry_result,
+            error=None,
+        ),
+        persist_self_heal_result_fn=lambda *_args, **_kwargs: False,
+    )
+
+    assert result.self_healed is True
+    assert result.should_return is True
+    assert result.result is retry_result
+
+
+def test_handle_exception_self_heal_without_retry_result_falls_through_to_error_emit():
+    result = handle_exception_credential_self_heal(
+        provider_id="anthropic",
+        session_id="sid-1",
+        agent_lock=None,
+        agent_factory=_Agent,
+        agent_kwargs={},
+        agent_params=set(),
+        resolved_model="model-a",
+        resolved_provider="anthropic",
+        resolved_base_url=None,
+        custom_provider_resolver=lambda _provider: (None, None),
+        stream_id="stream-1",
+        agent_instances={},
+        streams_lock=threading.Lock(),
+        ephemeral=False,
+        agent_sig="sig-1",
+        user_message="hello",
+        system_message="system",
+        previous_messages=[],
+        previous_context_messages=[],
+        config={},
+        persist_user_message="hello",
+        sanitize_messages_for_api=lambda messages, *, cfg: messages,
+        output_bridge=_OutputBridge(),
+        session=_Session(),
+        msg_text="hello",
+        checkpoint_stop=None,
+        checkpoint_thread=None,
+        stop_checkpoint_thread=lambda *_args: None,
+        stream_writeback_is_current=lambda *_args: True,
+        apply_agent_result_to_session=lambda *_args: None,
+        logger=logging.getLogger(__name__),
+        retry_conversation_after_credential_self_heal_fn=lambda **_kwargs: CredentialSelfHealRetry(
+            rebuilt=RebuiltCredentialAgent(
+                agent=_Agent(),
+                agent_kwargs={"api_key": "fresh"},
+                runtime={"api_key": "fresh"},
+                resolved_api_key="fresh",
+                resolved_provider="anthropic",
+                resolved_base_url=None,
+            ),
+            result=None,
+            error=RuntimeError("retry failed"),
+        ),
+    )
+
+    assert result.self_healed is True
+    assert result.should_return is False
+    assert result.result is None
 
 
 def test_rebuild_agent_for_credential_self_heal_skips_cache_for_ephemeral_turns():

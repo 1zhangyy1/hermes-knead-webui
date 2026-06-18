@@ -38,6 +38,18 @@ class SilentFailureSelfHealResult:
     resolved_base_url: str | None = None
 
 
+@dataclass
+class ExceptionSelfHealResult:
+    self_healed: bool = False
+    should_return: bool = False
+    result: dict[str, Any] | None = None
+    agent_kwargs: dict[str, Any] | None = None
+    runtime: dict[str, Any] | None = None
+    resolved_api_key: Any = None
+    resolved_provider: str | None = None
+    resolved_base_url: str | None = None
+
+
 def materialize_pending_user_turn_before_error(session) -> bool:
     """Persist the pending user prompt before clearing runtime stream state.
 
@@ -431,3 +443,108 @@ def persist_exception_self_heal_result(
         )
         session.save()
     return True
+
+
+def handle_exception_credential_self_heal(
+    *,
+    provider_id: str,
+    session_id: str,
+    agent_lock,
+    agent_factory,
+    agent_kwargs: dict[str, Any],
+    agent_params,
+    resolved_model: str | None,
+    resolved_provider: str | None,
+    resolved_base_url: str | None,
+    custom_provider_resolver,
+    stream_id: str,
+    agent_instances,
+    streams_lock,
+    ephemeral: bool,
+    agent_sig: str | None,
+    user_message,
+    system_message,
+    previous_messages,
+    previous_context_messages,
+    config,
+    persist_user_message: str,
+    sanitize_messages_for_api,
+    output_bridge,
+    session,
+    msg_text: str,
+    checkpoint_stop,
+    checkpoint_thread,
+    stop_checkpoint_thread,
+    stream_writeback_is_current,
+    apply_agent_result_to_session,
+    logger,
+    retry_conversation_after_credential_self_heal_fn=retry_conversation_after_credential_self_heal,
+    persist_self_heal_result_fn=persist_exception_self_heal_result,
+) -> ExceptionSelfHealResult:
+    """Retry an exception-path auth failure and persist the successful retry result."""
+    heal_retry = retry_conversation_after_credential_self_heal_fn(
+        provider_id=provider_id,
+        session_id=session_id,
+        agent_lock=agent_lock,
+        agent_factory=agent_factory,
+        agent_kwargs=agent_kwargs,
+        agent_params=agent_params,
+        resolved_model=resolved_model,
+        resolved_provider=resolved_provider,
+        resolved_base_url=resolved_base_url,
+        custom_provider_resolver=custom_provider_resolver,
+        stream_id=stream_id,
+        agent_instances=agent_instances,
+        streams_lock=streams_lock,
+        ephemeral=ephemeral,
+        agent_sig=agent_sig,
+        user_message=user_message,
+        system_message=system_message,
+        previous_context_messages=previous_context_messages,
+        config=config,
+        persist_user_message=persist_user_message,
+        sanitize_messages_for_api=sanitize_messages_for_api,
+        output_bridge=output_bridge,
+        logger=logger,
+        retrying_log_message='[webui] self-heal (except path): retrying stream after credential refresh',
+        retry_failed_log_message='[webui] self-heal (except path): retry failed: %s',
+    )
+    if heal_retry is None:
+        return ExceptionSelfHealResult()
+
+    rebuilt = heal_retry.rebuilt
+    healed = ExceptionSelfHealResult(
+        self_healed=True,
+        result=heal_retry.result,
+        agent_kwargs=rebuilt.agent_kwargs,
+        runtime=rebuilt.runtime,
+        resolved_api_key=rebuilt.resolved_api_key,
+        resolved_provider=rebuilt.resolved_provider,
+        resolved_base_url=rebuilt.resolved_base_url,
+    )
+    if heal_retry.result is None:
+        return healed
+
+    if not persist_self_heal_result_fn(
+        session,
+        heal_retry.result,
+        previous_messages=previous_messages,
+        previous_context_messages=previous_context_messages,
+        msg_text=msg_text,
+        session_id=session_id,
+        stream_id=stream_id,
+        ephemeral=ephemeral,
+        agent_lock=agent_lock,
+        checkpoint_stop=checkpoint_stop,
+        checkpoint_thread=checkpoint_thread,
+        stop_checkpoint_thread=stop_checkpoint_thread,
+        stream_writeback_is_current=stream_writeback_is_current,
+        apply_agent_result_to_session=apply_agent_result_to_session,
+        logger=logger,
+    ):
+        healed.should_return = True
+        return healed
+
+    logger.info('[webui] self-heal (except path): retry succeeded')
+    healed.should_return = True
+    return healed
