@@ -19,12 +19,14 @@ def test_webui_drains_only_matching_background_completion_events():
 
 def test_webui_injects_process_notifications_without_persisting_them_as_user_text():
     src = (REPO / "api" / "streaming.py").read_text(encoding="utf-8")
+    turn_start_src = (REPO / "api" / "streaming_turn_start.py").read_text(encoding="utf-8")
     process_src = (REPO / "api" / "streaming_process_notifications.py").read_text(encoding="utf-8")
 
-    assert "_process_notifications = _drain_webui_process_notifications(session_id)" in src
-    assert "_message_text_with_process_notifications(msg_text, _process_notifications)" in src
+    assert "_turn_input = _prepare_streaming_turn_input(" in src
+    assert "process_notifications = drain_process_notifications_fn(session_id, logger=logger)" in turn_start_src
+    assert "message_text_with_process_notifications_fn(msg_text, process_notifications)" in turn_start_src
     assert "[*process_notifications, msg_text]" in process_src
-    assert "_build_native_multimodal_message(workspace_ctx, _agent_msg_text" in src
+    assert "build_native_multimodal_message_fn(" in turn_start_src
     assert "persist_user_message=msg_text" in src
 
 
