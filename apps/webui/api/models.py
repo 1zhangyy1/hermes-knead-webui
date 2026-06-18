@@ -35,9 +35,12 @@ from api.session_index import (
 from api.session_metadata import (
     find_top_level_json_key as _find_top_level_json_key_impl,
     read_metadata_json_prefix as _read_metadata_json_prefix_impl,
-    read_session_metadata_payload,
 )
 from api.session_json import build_session_payload, write_session_json_with_backup
+from api.session_store import (
+    load_session as _load_session_from_store,
+    load_session_metadata_only as _load_session_metadata_only_from_store,
+)
 
 logger = logging.getLogger(__name__)
 CLI_VISIBLE_SESSION_LIMIT = 20
@@ -317,12 +320,7 @@ class Session:
     @classmethod
     def load(cls, sid):
         # Validate session ID format to prevent path traversal
-        if not sid or not all(c in '0123456789abcdefghijklmnopqrstuvwxyz_' for c in sid):
-            return None
-        p = SESSION_DIR / f'{sid}.json'
-        if not p.exists():
-            return None
-        return cls(**json.loads(p.read_text(encoding='utf-8')))
+        return _load_session_from_store(cls, SESSION_DIR, sid)
 
     @classmethod
     def load_metadata_only(cls, sid):
@@ -333,28 +331,12 @@ class Session:
         top-level "messages" field and synthesize a small metadata-only object.
         Falls back to load() for legacy or unexpected file layouts.
         """
-        if not sid or not all(c in '0123456789abcdefghijklmnopqrstuvwxyz_' for c in sid):
-            return None
-        p = SESSION_DIR / f'{sid}.json'
-        if not p.exists():
-            return None
-        try:
-            parsed = read_session_metadata_payload(p)
-            if not parsed:
-                return cls.load(sid)
-            session = cls(**parsed)
-            session._metadata_message_count = _lookup_index_message_count(sid)
-            # Mark this session as a metadata-only stub. save() refuses to write
-            # such a session because doing so would atomically replace the
-            # on-disk JSON with messages=[], wiping the conversation. Any
-            # caller that needs to mutate persisted state on a metadata-only
-            # session must reload it with metadata_only=False first.
-            # See #1558 — v0.50.279 _clear_stale_stream_state() data-loss bug.
-            session._loaded_metadata_only = True
-            return session
-        except Exception:
-            # Corrupt prefix or decode error — fall back to full load
-            return cls.load(sid)
+        return _load_session_metadata_only_from_store(
+            cls,
+            SESSION_DIR,
+            SESSION_INDEX_FILE,
+            sid,
+        )
 
     def compact(self, include_runtime=False, active_stream_ids=None) -> dict:
         active_stream_ids = active_stream_ids if active_stream_ids is not None else set()
