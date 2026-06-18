@@ -11,6 +11,8 @@ Covers:
 import pathlib
 import re
 
+from api.streaming_errors import sanitize_provider_error_text
+
 REPO_ROOT = pathlib.Path(__file__).parent.parent.resolve()
 
 
@@ -104,13 +106,18 @@ class TestStreamingHtmlSanitization:
 
     def test_html_strip_before_classification(self):
         """HTML tags must be stripped before error classification."""
-        src = _read("api/streaming.py")
-        # Find the HTML sanitization block in the exception handler
-        # It should appear before _exc_lower = err_str.lower()
-        sanitize_idx = src.find("re.sub(r'<[^>]+>'")
-        exc_lower_idx = src.find("_exc_lower = err_str.lower()")
+        streaming_src = _read("api/streaming.py")
+        errors_src = _read("api/streaming_errors.py")
+        # Find the HTML sanitization helper call in the exception handler.
+        # It should appear before _exc_lower = err_str.lower().
+        sanitize_idx = streaming_src.find("_sanitize_provider_error_text(str(e))")
+        exc_lower_idx = streaming_src.find("_exc_lower = err_str.lower()")
+        helper_idx = errors_src.find("re.sub(r'<[^>]+>'")
         assert sanitize_idx != -1, (
-            "HTML tag stripping (re.sub) not found in streaming.py exception handler"
+            "HTML sanitization helper call not found in streaming.py exception handler"
+        )
+        assert helper_idx != -1, (
+            "HTML tag stripping (re.sub) not found in streaming_errors.py helper"
         )
         assert exc_lower_idx != -1, "_exc_lower not found"
         assert sanitize_idx < exc_lower_idx, (
@@ -119,12 +126,15 @@ class TestStreamingHtmlSanitization:
 
     def test_whitespace_normalization(self):
         """Stripped HTML must have whitespace collapsed."""
-        src = _read("api/streaming.py")
+        src = _read("api/streaming_errors.py")
         sanitize_idx = src.find("re.sub(r'<[^>]+>'")
         block = src[sanitize_idx:sanitize_idx + 300]
         assert r"\s+" in block, (
             "Whitespace normalization (\\s+) not found after HTML strip"
         )
+
+    def test_html_error_text_sanitized_to_plain_text(self):
+        assert sanitize_provider_error_text("<html><body>404\nnot found</body></html>") == "404 not found"
 
 
 # ── 3. static/messages.js: apperror handler ──────────────────────────────────

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Callable
 
 
@@ -184,6 +185,14 @@ def provider_error_payload(
         if details:
             payload['details'] = details
     return payload
+
+
+def sanitize_provider_error_text(error_text: str) -> str:
+    """Strip provider HTML error pages down to compact plain text."""
+    text = str(error_text or '')
+    stripped = re.sub(r'<[^>]+>', ' ', text)
+    stripped = re.sub(r'\s+', ' ', stripped).strip()
+    return stripped if stripped != text else text
 
 
 def cancelled_turn_content(

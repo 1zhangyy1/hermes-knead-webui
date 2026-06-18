@@ -6,7 +6,6 @@ import contextlib
 import json
 import logging
 import os
-import re
 import threading
 import time
 import traceback
@@ -41,6 +40,7 @@ from api.streaming_errors import (
     is_quota_error_text as _is_quota_error_text_impl,
     preferred_agent_display_name as _preferred_agent_display_name_impl,
     provider_error_payload as _provider_error_payload_impl,
+    sanitize_provider_error_text as _sanitize_provider_error_text,
 )
 from api.streaming_cancellation import (
     capture_cancel_stream_snapshot as _capture_cancel_stream_snapshot_impl,
@@ -1539,14 +1539,7 @@ def _run_agent_streaming(
 
     except Exception as e:
         print('[webui] stream error:\n' + traceback.format_exc(), flush=True)
-        err_str = str(e)
-        # Sanitize HTML from provider error responses — some providers return
-        # full HTML pages (e.g. nginx "404 page not found") instead of JSON errors.
-        # Strip HTML tags to avoid rendering raw markup in the chat message.
-        _stripped = re.sub(r'<[^>]+>', ' ', err_str)
-        _stripped = re.sub(r'\s+', ' ', _stripped).strip()
-        if _stripped != err_str:
-            err_str = _stripped
+        err_str = _sanitize_provider_error_text(str(e))
         _exc_lower = err_str.lower()
         _classification = _classify_provider_error(err_str, e)
         if _handle_exception_cancel(
