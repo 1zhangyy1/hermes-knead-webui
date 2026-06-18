@@ -713,12 +713,12 @@ def test_streaming_agent_cache_signature_includes_reasoning_config(cleanup_test_
     matches the old entry and the operator's `/reasoning xhigh` change has
     no effect on the live session.
     """
-    src = (REPO_ROOT / "api/streaming.py").read_text()
-    start = src.find("_sig_blob = _json.dumps")
-    end = src.find("_agent_sig", start)
+    src = (REPO_ROOT / "api/streaming_agent_cache.py").read_text()
+    start = src.find("def build_agent_cache_signature")
+    end = src.find("return hashlib.sha256", start)
     assert start >= 0 and end > start, "agent cache signature block not found"
     sig_block = src[start:end]
-    assert "_reasoning_config" in sig_block, \
+    assert "reasoning_config" in sig_block, \
         "agent cache signature must include reasoning_config so xhigh/medium changes take effect"
 
 

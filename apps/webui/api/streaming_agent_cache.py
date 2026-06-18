@@ -2,7 +2,49 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 from typing import Any
+
+from api.streaming_agent_runtime import agent_cache_api_key_sig
+
+
+def build_agent_cache_signature(
+    *,
+    resolved_model: str | None,
+    resolved_api_key: str | None,
+    resolved_base_url: str | None,
+    resolved_provider: str | None,
+    runtime: dict[str, Any] | None,
+    max_iterations: Any,
+    max_tokens: Any,
+    fallback_resolved: Any,
+    toolsets: Any,
+    reasoning_config: Any,
+    profile_home: str | None,
+) -> str:
+    """Build the stable cache identity for a reusable WebUI AIAgent."""
+    runtime = runtime or {}
+    credential_pool = runtime.get('credential_pool')
+    sig_blob = json.dumps([
+        resolved_model or '',
+        agent_cache_api_key_sig(resolved_api_key, credential_pool),
+        resolved_base_url or '',
+        resolved_provider or '',
+        runtime.get('api_mode') or '',
+        runtime.get('command') or '',
+        runtime.get('args') or [],
+        bool(credential_pool),
+        max_iterations or '',
+        max_tokens or '',
+        fallback_resolved or {},
+        sorted(toolsets) if toolsets else [],
+        reasoning_config or {},
+        # #1897: profile_home is part of the agent's identity because AIAgent
+        # caches profile-scoped prompts at construction time.
+        profile_home or '',
+    ], sort_keys=True)
+    return hashlib.sha256(sig_blob.encode()).hexdigest()[:16]
 
 
 def handle_evicted_agent_cache_items(evicted_items: list[tuple[str, Any]], *, logger: Any | None = None) -> None:
