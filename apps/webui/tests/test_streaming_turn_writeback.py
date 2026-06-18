@@ -116,6 +116,62 @@ def test_apply_completed_turn_writeback_state_applies_pre_save_mutations(monkeyp
     assert calls[6][4] == {'resolved_model': 'model-a', 'resolved_provider': 'provider-a'}
 
 
+def test_detect_silent_failure_after_merge_handles_missing_assistant_reply():
+    calls = []
+
+    state = writeback.detect_silent_failure_after_merge(
+        {'messages': [{'role': 'user', 'content': 'hello'}]},
+        [{'role': 'user', 'content': 'hello'}],
+        msg_text='hello',
+        token_sent=False,
+        assistant_reply_added_after_current_turn=lambda messages, previous, msg_text: calls.append(
+            (messages, previous, msg_text)
+        ) or False,
+    )
+
+    assert state == writeback.SilentFailureDetectionState(
+        previous_context_count=1,
+        assistant_added=False,
+        token_sent=False,
+        should_handle=True,
+    )
+    assert calls == [(
+        [{'role': 'user', 'content': 'hello'}],
+        [{'role': 'user', 'content': 'hello'}],
+        'hello',
+    )]
+
+
+def test_detect_silent_failure_after_merge_skips_when_assistant_or_token_seen():
+    assistant_state = writeback.detect_silent_failure_after_merge(
+        {'messages': [{'role': 'assistant', 'content': 'ok'}]},
+        [],
+        msg_text='hello',
+        token_sent=False,
+        assistant_reply_added_after_current_turn=lambda *_args: True,
+    )
+    token_state = writeback.detect_silent_failure_after_merge(
+        None,
+        None,
+        msg_text='hello',
+        token_sent=True,
+        assistant_reply_added_after_current_turn=lambda *_args: False,
+    )
+
+    assert assistant_state == writeback.SilentFailureDetectionState(
+        previous_context_count=0,
+        assistant_added=True,
+        token_sent=False,
+        should_handle=False,
+    )
+    assert token_state == writeback.SilentFailureDetectionState(
+        previous_context_count=0,
+        assistant_added=False,
+        token_sent=True,
+        should_handle=False,
+    )
+
+
 def test_prepare_success_turn_writeback_skips_stale_stream_without_mutation():
     session = Session()
     session.active_stream_id = 'newer-stream'

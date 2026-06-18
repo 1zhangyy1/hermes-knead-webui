@@ -358,7 +358,7 @@ class TestIssue765FollowupHardening:
             "with _agent_lock:\n"
             "                if not _prepare_success_turn_writeback("
         )
-        silent_failure_idx = src.find("if not _assistant_added and not _output_bridge.token_sent:")
+        silent_failure_idx = src.find("if _silent_failure.should_handle:")
         inner_lock_idx = src.find("with _agent_lock:", outer_lock_idx + 1)
         compression_idx = src.find("# ── Handle context compression side effects ──")
 

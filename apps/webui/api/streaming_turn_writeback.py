@@ -30,6 +30,38 @@ class CompletedTurnWritebackState:
     turn_metadata: Any
 
 
+@dataclass(frozen=True)
+class SilentFailureDetectionState:
+    previous_context_count: int
+    assistant_added: bool
+    token_sent: bool
+    should_handle: bool
+
+
+def detect_silent_failure_after_merge(
+    result,
+    previous_context_messages,
+    *,
+    msg_text: str,
+    token_sent: bool,
+    assistant_reply_added_after_current_turn: Callable,
+) -> SilentFailureDetectionState:
+    """Detect whether a completed run produced no current-turn assistant reply."""
+    result_messages = (result or {}).get('messages') or []
+    previous_context_count = len(previous_context_messages or [])
+    assistant_added = assistant_reply_added_after_current_turn(
+        result_messages,
+        previous_context_messages,
+        msg_text,
+    )
+    return SilentFailureDetectionState(
+        previous_context_count=previous_context_count,
+        assistant_added=assistant_added,
+        token_sent=bool(token_sent),
+        should_handle=(not assistant_added and not token_sent),
+    )
+
+
 def apply_completed_turn_writeback_state(
     session,
     agent,

@@ -156,6 +156,7 @@ from api.streaming_terminal import (
 from api.streaming_turn_start import prepare_streaming_turn_input as _prepare_streaming_turn_input
 from api.streaming_turn_writeback import (
     apply_completed_turn_writeback_state as _apply_completed_turn_writeback_state,
+    detect_silent_failure_after_merge as _detect_silent_failure_after_merge,
     prepare_success_turn_writeback as _prepare_success_turn_writeback,
     save_completed_turn_and_journal as _save_completed_turn_and_journal,
 )
@@ -1038,25 +1039,16 @@ def _run_agent_streaming(
                 )
 
                 # ── Detect silent agent failure (no assistant reply produced) ──
-                # When the agent catches an auth/network error internally it may return
-                # an empty final_response without raising — the stream would end with
-                # a done event containing zero assistant messages, leaving the user with
-                # no feedback. Emit an apperror so the client shows an inline error.
-                # Keep the current-turn assistant detection aligned with the
-                # display-merge logic. A compacted or replayed result payload
-                # is not always a simple append-only suffix, so use the
-                # workspace-aware helper from this branch while still
-                # preserving the pre-turn length for downstream self-heal
-                # checks introduced on master.
-                _all_result_messages = result.get('messages') or []
-                _prev_len = len(_previous_context_messages)
-                _assistant_added = _assistant_reply_added_after_current_turn(
-                    _all_result_messages,
+                _silent_failure = _detect_silent_failure_after_merge(
+                    result,
                     _previous_context_messages,
-                    msg_text,
+                    msg_text=msg_text,
+                    token_sent=_output_bridge.token_sent,
+                    assistant_reply_added_after_current_turn=_assistant_reply_added_after_current_turn,
                 )
-                # token_sent tracks whether the output bridge streamed visible text.
-                if not _assistant_added and not _output_bridge.token_sent:
+                _assistant_added = _silent_failure.assistant_added
+                _prev_len = _silent_failure.previous_context_count
+                if _silent_failure.should_handle:
                     if cancel_event.is_set():
                         _finalize_cancelled_turn(s, ephemeral=ephemeral)
                         if not ephemeral:
