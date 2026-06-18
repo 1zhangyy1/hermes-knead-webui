@@ -1,10 +1,37 @@
 from api.streaming_agent_config import (
     build_agent_kwargs,
+    initialize_session_db,
     resolve_fallback_config,
     resolve_max_iterations_config,
     resolve_max_tokens_config,
     resolve_reasoning_config,
 )
+
+
+def test_initialize_session_db_returns_created_db():
+    db = object()
+
+    assert initialize_session_db(session_db_factory=lambda: db) is db
+
+
+def test_initialize_session_db_warns_and_returns_none_on_failure():
+    warnings = []
+
+    def fail():
+        raise RuntimeError("missing state")
+
+    result = initialize_session_db(
+        session_db_factory=fail,
+        warning_fn=lambda message, *, flush=False: warnings.append((message, flush)),
+    )
+
+    assert result is None
+    assert warnings == [
+        (
+            "[webui] WARNING: SessionDB init failed — session_search will be unavailable: missing state",
+            True,
+        )
+    ]
 
 
 def test_build_agent_kwargs_includes_supported_optional_runtime_fields():
