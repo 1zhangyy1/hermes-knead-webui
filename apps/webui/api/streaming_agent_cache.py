@@ -215,3 +215,32 @@ def refresh_cached_agent_for_turn(
         agent._interrupt_message = None
 
     return agent
+
+
+def get_cached_or_new_agent_for_turn(
+    session_id: str,
+    agent_sig: str,
+    agent_kwargs: dict[str, Any],
+    *,
+    agent_factory,
+    session_db: Any | None = None,
+    cached_agent_fn=cached_agent_for_signature,
+    refresh_or_discard_fn=refresh_or_discard_cached_agent,
+    refresh_for_turn_fn=refresh_cached_agent_for_turn,
+    cache_new_fn=cache_new_agent_for_signature,
+    logger: Any | None = None,
+) -> Any:
+    """Return a reusable cached agent for this turn, or construct and cache one."""
+    agent = cached_agent_fn(session_id, agent_sig, logger=logger)
+    if agent is not None:
+        # Refresh volatile runtime credentials selected from provider pools
+        # without discarding cross-turn agent/provider state.
+        agent = refresh_or_discard_fn(session_id, agent, agent_kwargs, logger=logger)
+
+    if agent is not None:
+        refresh_for_turn_fn(agent, agent_kwargs, session_db=session_db, logger=logger)
+        return agent
+
+    agent = agent_factory(**agent_kwargs)
+    cache_new_fn(session_id, agent, agent_sig, logger=logger)
+    return agent
