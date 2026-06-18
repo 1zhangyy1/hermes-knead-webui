@@ -37,6 +37,22 @@ def strip_xml_tool_calls(text: str) -> str:
     return s.strip()
 
 
+def strip_xml_tool_calls_from_assistant_messages(messages) -> None:
+    """Remove leaked XML tool-call blocks from assistant message content in-place."""
+    for message in messages or []:
+        if not isinstance(message, dict) or message.get('role') != 'assistant':
+            continue
+        raw_content = message.get('content')
+        if isinstance(raw_content, str):
+            cleaned = strip_xml_tool_calls(raw_content)
+            if cleaned != raw_content:
+                message['content'] = cleaned
+        elif isinstance(raw_content, list):
+            for part in raw_content:
+                if isinstance(part, dict) and isinstance(part.get('text'), str):
+                    part['text'] = strip_xml_tool_calls(part['text'])
+
+
 def tool_result_snippet(raw, limit: int = TOOL_RESULT_SNIPPET_MAX) -> str:
     """Extract a bounded result preview from a stored tool message payload."""
     if limit <= 0:
