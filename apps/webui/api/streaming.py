@@ -6,7 +6,6 @@ import contextlib
 import json
 import logging
 import os
-import queue
 import re
 import threading
 import time
@@ -106,6 +105,11 @@ from api.streaming_agent_status import make_agent_status_callback as _make_agent
 from api.streaming_event_sink import StreamingEventSink as _StreamingEventSink
 from api.streaming_live_usage import LiveUsageTracker as _LiveUsageTracker
 from api.streaming_metering import StreamingMeteringTicker as _StreamingMeteringTicker
+from api.streaming_process_notifications import (
+    drain_webui_process_notifications as _drain_webui_process_notifications_impl,
+    format_process_notification as _format_process_notification_impl,
+    mark_process_completion_consumed as _mark_process_completion_consumed_impl,
+)
 from api.streaming_product_turn import ProductTurnFinalizer as _ProductTurnFinalizer
 from api.streaming_titles import (
     LEGACY_WORKSPACE_PREFIX_ANY_RE as _LEGACY_WORKSPACE_PREFIX_ANY_RE,
@@ -378,88 +382,15 @@ def _build_agent_thread_env(profile_runtime_env: dict | None, workspace: str, se
 
 
 def _format_process_notification(evt: dict) -> str:
-    """Format a completed background process notification for agent input."""
-    if not isinstance(evt, dict):
-        return ''
-    if evt.get('type') != 'completion':
-        return ''
-    _sid = evt.get('session_id', '')
-    _cmd = evt.get('command', '')
-    _exit = evt.get('exit_code', '')
-    _out = evt.get('output') or ''
-    if len(_out) > 4000:
-        _out = _out[:4000] + '\n... (truncated)'
-    return (
-        f"[IMPORTANT: Background process {_sid} completed (exit code {_exit}).\n"
-        f"Command: {_cmd}\n"
-        f"Output:\n{_out}]"
-    )
+    return _format_process_notification_impl(evt)
 
 
 def _mark_process_completion_consumed(process_registry, process_id: str) -> None:
-    """Best-effort bridge to the agent registry's private completion marker."""
-    try:
-        with process_registry._lock:
-            process_registry._completion_consumed.add(process_id)
-    except Exception:
-        logger.debug("Failed to mark process completion consumed", exc_info=True)
+    _mark_process_completion_consumed_impl(process_registry, process_id, logger=logger)
 
 
 def _drain_webui_process_notifications(session_id: str) -> list[str]:
-    """Return completion notifications that belong to this WebUI session.
-
-    The agent registry completion queue is process-wide and events do not carry
-    the WebUI session key directly. Look up the live process session before
-    delivery so completions from other tabs remain queued for their owners.
-    """
-    if not session_id:
-        return []
-    try:
-        from tools.process_registry import process_registry
-    except Exception:
-        return []
-
-    notifications: list[str] = []
-    skipped_events: list[dict] = []
-    completion_queue = getattr(process_registry, 'completion_queue', None)
-    if completion_queue is None:
-        return []
-
-    while True:
-        try:
-            evt = completion_queue.get_nowait()
-        except queue.Empty:
-            break
-        except Exception:
-            logger.debug("Failed to drain process completion queue", exc_info=True)
-            break
-
-        evt_sid = str(evt.get('session_id') or '') if isinstance(evt, dict) else ''
-        if not evt_sid:
-            skipped_events.append(evt)
-            continue
-        try:
-            if process_registry.is_completion_consumed(evt_sid):
-                continue
-            proc = process_registry.get(evt_sid)
-        except Exception:
-            proc = None
-        if getattr(proc, 'session_key', None) != session_id:
-            skipped_events.append(evt)
-            continue
-
-        notification = _format_process_notification(evt)
-        if notification:
-            notifications.append(notification)
-            _mark_process_completion_consumed(process_registry, evt_sid)
-
-    for evt in skipped_events:
-        try:
-            completion_queue.put(evt)
-        except Exception:
-            logger.debug("Failed to requeue process completion event", exc_info=True)
-            break
-    return notifications
+    return _drain_webui_process_notifications_impl(session_id, logger=logger)
 
 
 def _strip_xml_tool_calls(text: str) -> str:
