@@ -116,6 +116,79 @@ def test_apply_completed_turn_writeback_state_applies_pre_save_mutations(monkeyp
     assert calls[6][4] == {'resolved_model': 'model-a', 'resolved_provider': 'provider-a'}
 
 
+def test_prepare_success_turn_writeback_skips_stale_stream_without_mutation():
+    session = Session()
+    session.active_stream_id = 'newer-stream'
+    calls = []
+    logger = SimpleNamespace(info=lambda *args: calls.append(('log', args)))
+
+    ok = writeback.prepare_success_turn_writeback(
+        session,
+        stream_id='stream-1',
+        ephemeral=False,
+        stream_writeback_is_current=lambda session_arg, stream_id: calls.append(
+            ('current', session_arg, stream_id)
+        ) or False,
+        cancel_event=SimpleNamespace(is_set=lambda: False),
+        finalize_cancelled_turn=lambda *_args, **_kwargs: calls.append(('finalize',)),
+        put_cancel=lambda: calls.append(('cancel',)),
+        logger=logger,
+    )
+
+    assert ok is False
+    assert calls[0] == ('current', session, 'stream-1')
+    assert calls[1][0] == 'log'
+    assert 'Skipping stale stream writeback' in calls[1][1][0]
+    assert all(call[0] not in {'finalize', 'cancel'} for call in calls)
+
+
+def test_prepare_success_turn_writeback_cancel_finalizes_and_interrupts(monkeypatch):
+    session = Session()
+    calls = []
+    monkeypatch.setattr(
+        writeback,
+        'append_interrupted_turn_event',
+        lambda session_id, stream_id, **kwargs: calls.append(('interrupted', session_id, stream_id, kwargs)),
+    )
+
+    ok = writeback.prepare_success_turn_writeback(
+        session,
+        stream_id='stream-1',
+        ephemeral=False,
+        stream_writeback_is_current=lambda *_args: True,
+        cancel_event=SimpleNamespace(is_set=lambda: True),
+        finalize_cancelled_turn=lambda session_arg, **kwargs: calls.append(('finalize', session_arg, kwargs)),
+        put_cancel=lambda: calls.append(('cancel',)),
+    )
+
+    assert ok is False
+    assert calls == [
+        ('finalize', session, {'ephemeral': False}),
+        ('interrupted', 'sid-1', 'stream-1', {'logger': None}),
+        ('cancel',),
+    ]
+
+
+def test_prepare_success_turn_writeback_allows_current_stream():
+    session = Session()
+    calls = []
+
+    ok = writeback.prepare_success_turn_writeback(
+        session,
+        stream_id='stream-1',
+        ephemeral=False,
+        stream_writeback_is_current=lambda session_arg, stream_id: calls.append(
+            ('current', session_arg, stream_id)
+        ) or True,
+        cancel_event=SimpleNamespace(is_set=lambda: False),
+        finalize_cancelled_turn=lambda *_args, **_kwargs: calls.append(('finalize',)),
+        put_cancel=lambda: calls.append(('cancel',)),
+    )
+
+    assert ok is True
+    assert calls == [('current', session, 'stream-1')]
+
+
 def test_save_completed_turn_and_journal_orders_save_journal_and_memory(monkeypatch):
     session = Session()
     agent = object()

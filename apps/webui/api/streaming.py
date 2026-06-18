@@ -155,6 +155,7 @@ from api.streaming_terminal import (
 from api.streaming_turn_start import prepare_streaming_turn_input as _prepare_streaming_turn_input
 from api.streaming_turn_writeback import (
     apply_completed_turn_writeback_state as _apply_completed_turn_writeback_state,
+    prepare_success_turn_writeback as _prepare_success_turn_writeback,
     save_completed_turn_and_journal as _save_completed_turn_and_journal,
 )
 from api.streaming_usage import build_done_usage_payload as _build_done_usage_payload
@@ -1014,18 +1015,16 @@ def _run_agent_streaming(
             ):
                 return
             with _agent_lock:
-                if not ephemeral and not _stream_writeback_is_current(s, stream_id):
-                    logger.info(
-                        "Skipping stale stream writeback for session %s stream %s; active_stream_id=%s",
-                        getattr(s, 'session_id', session_id),
-                        stream_id,
-                        getattr(s, 'active_stream_id', None),
-                    )
-                    return
-                if cancel_event.is_set():
-                    _finalize_cancelled_turn(s, ephemeral=False)
-                    _append_interrupted_turn_event(s.session_id, stream_id, logger=logger)
-                    _put_cancel()
+                if not _prepare_success_turn_writeback(
+                    s,
+                    stream_id=stream_id,
+                    ephemeral=ephemeral,
+                    stream_writeback_is_current=_stream_writeback_is_current,
+                    cancel_event=cancel_event,
+                    finalize_cancelled_turn=_finalize_cancelled_turn,
+                    put_cancel=_put_cancel,
+                    logger=logger,
+                ):
                     return
                 _result_messages = _apply_agent_result_to_session(
                     s,

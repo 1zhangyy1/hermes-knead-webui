@@ -99,6 +99,35 @@ def apply_completed_turn_writeback_state(
     )
 
 
+def prepare_success_turn_writeback(
+    session,
+    *,
+    stream_id: str,
+    ephemeral: bool,
+    stream_writeback_is_current: Callable[[object, str], bool],
+    cancel_event,
+    finalize_cancelled_turn: Callable,
+    put_cancel: Callable[[], None],
+    logger=None,
+) -> bool:
+    """Guard successful result writeback before mutating the session transcript."""
+    if not ephemeral and not stream_writeback_is_current(session, stream_id):
+        if logger is not None:
+            logger.info(
+                "Skipping stale stream writeback for session %s stream %s; active_stream_id=%s",
+                getattr(session, 'session_id', None),
+                stream_id,
+                getattr(session, 'active_stream_id', None),
+            )
+        return False
+    if cancel_event.is_set():
+        finalize_cancelled_turn(session, ephemeral=False)
+        append_interrupted_turn_event(session.session_id, stream_id, logger=logger)
+        put_cancel()
+        return False
+    return True
+
+
 def save_completed_turn_and_journal(
     session,
     agent,

@@ -334,7 +334,7 @@ class TestIssue765FollowupHardening:
         stop_idx = src.find("_stop_checkpoint_thread(_checkpoint_stop, _ckpt_thread)")
         lock_idx = src.find(
             "with _agent_lock:\n"
-            "                if not ephemeral and not _stream_writeback_is_current(s, stream_id):"
+            "                if not _prepare_success_turn_writeback("
         )
         save_idx = src.find("_apply_agent_result_to_session(")
 
@@ -356,7 +356,7 @@ class TestIssue765FollowupHardening:
         )
         outer_lock_idx = src.find(
             "with _agent_lock:\n"
-            "                if not ephemeral and not _stream_writeback_is_current(s, stream_id):"
+            "                if not _prepare_success_turn_writeback("
         )
         silent_failure_idx = src.find("if not _assistant_added and not _output_bridge.token_sent:")
         inner_lock_idx = src.find("with _agent_lock:", outer_lock_idx + 1)
