@@ -4,9 +4,16 @@ from __future__ import annotations
 
 import hashlib
 import json
+from dataclasses import dataclass
 from typing import Any
 
 from api.streaming_agent_runtime import agent_cache_api_key_sig
+
+
+@dataclass
+class AgentForTurn:
+    agent: Any
+    agent_sig: str | None
 
 
 def build_agent_cache_signature(
@@ -244,3 +251,56 @@ def get_cached_or_new_agent_for_turn(
     agent = agent_factory(**agent_kwargs)
     cache_new_fn(session_id, agent, agent_sig, logger=logger)
     return agent
+
+
+def get_agent_for_turn(
+    *,
+    session_id: str,
+    agent_factory,
+    agent_kwargs: dict[str, Any],
+    ephemeral: bool,
+    resolved_model: str | None,
+    resolved_api_key: str | None,
+    resolved_base_url: str | None,
+    resolved_provider: str | None,
+    runtime: dict[str, Any] | None,
+    max_iterations: Any,
+    max_tokens: Any,
+    fallback_resolved: Any,
+    toolsets: Any,
+    reasoning_config: Any,
+    profile_home: str | None,
+    session_db: Any | None = None,
+    cache_signature_fn=build_agent_cache_signature,
+    cached_or_new_fn=get_cached_or_new_agent_for_turn,
+    logger: Any | None = None,
+) -> AgentForTurn:
+    """Return the agent for a streaming turn, using cache unless the turn is ephemeral."""
+    if ephemeral:
+        agent = agent_factory(**agent_kwargs)
+        if logger is not None:
+            logger.debug('[webui] Created ephemeral agent for session %s', session_id)
+        return AgentForTurn(agent=agent, agent_sig=None)
+
+    agent_sig = cache_signature_fn(
+        resolved_model=resolved_model,
+        resolved_api_key=resolved_api_key,
+        resolved_base_url=resolved_base_url,
+        resolved_provider=resolved_provider,
+        runtime=runtime,
+        max_iterations=max_iterations,
+        max_tokens=max_tokens,
+        fallback_resolved=fallback_resolved,
+        toolsets=toolsets,
+        reasoning_config=reasoning_config,
+        profile_home=profile_home,
+    )
+    agent = cached_or_new_fn(
+        session_id,
+        agent_sig,
+        agent_kwargs,
+        agent_factory=agent_factory,
+        session_db=session_db,
+        logger=logger,
+    )
+    return AgentForTurn(agent=agent, agent_sig=agent_sig)

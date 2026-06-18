@@ -1,7 +1,9 @@
 from api.streaming_agent_cache import (
+    AgentForTurn,
     build_agent_cache_signature,
     cache_new_agent_for_signature,
     cached_agent_for_signature,
+    get_agent_for_turn,
     get_cached_or_new_agent_for_turn,
     handle_evicted_agent_cache_items,
     register_agent_for_lifecycle,
@@ -331,6 +333,90 @@ def test_get_cached_or_new_agent_for_turn_rebuilds_when_cache_misses_or_refresh_
         ("factory", {"api_key": "fresh"}),
         ("cache_new", "sid-1", fresh, "sig-1"),
     ]
+
+
+def test_get_agent_for_turn_creates_ephemeral_without_cache_signature():
+    fresh = _Agent()
+    calls = []
+
+    result = get_agent_for_turn(
+        session_id="sid-1",
+        agent_factory=lambda **kwargs: calls.append(("factory", kwargs)) or fresh,
+        agent_kwargs={"api_key": "fresh"},
+        ephemeral=True,
+        resolved_model="model-a",
+        resolved_api_key="key-a",
+        resolved_base_url=None,
+        resolved_provider="provider-a",
+        runtime={},
+        max_iterations=None,
+        max_tokens=None,
+        fallback_resolved=None,
+        toolsets=[],
+        reasoning_config=None,
+        profile_home="/profiles/alpha",
+        cache_signature_fn=lambda **_kwargs: (_ for _ in ()).throw(AssertionError("cache signature")),
+        cached_or_new_fn=lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("cache lookup")),
+    )
+
+    assert isinstance(result, AgentForTurn)
+    assert result.agent is fresh
+    assert result.agent_sig is None
+    assert calls == [("factory", {"api_key": "fresh"})]
+
+
+def test_get_agent_for_turn_uses_cache_signature_with_profile_home():
+    cached = _Agent()
+    calls = []
+
+    def cache_signature_fn(**kwargs):
+        calls.append(("signature", kwargs))
+        return "sig-1"
+
+    def cached_or_new_fn(session_id, agent_sig, agent_kwargs, *, agent_factory, session_db=None, logger=None):
+        calls.append(("cached_or_new", session_id, agent_sig, agent_kwargs, agent_factory, session_db, logger))
+        return cached
+
+    result = get_agent_for_turn(
+        session_id="sid-1",
+        agent_factory=_Agent,
+        agent_kwargs={"api_key": "fresh"},
+        ephemeral=False,
+        resolved_model="model-a",
+        resolved_api_key="key-a",
+        resolved_base_url="https://example.invalid",
+        resolved_provider="provider-a",
+        runtime={"api_mode": "responses"},
+        max_iterations=12,
+        max_tokens=4096,
+        fallback_resolved={"model": "fallback"},
+        toolsets=["terminal"],
+        reasoning_config={"effort": "medium"},
+        profile_home="/profiles/alpha",
+        session_db="db",
+        cache_signature_fn=cache_signature_fn,
+        cached_or_new_fn=cached_or_new_fn,
+    )
+
+    assert result.agent is cached
+    assert result.agent_sig == "sig-1"
+    assert calls[0] == (
+        "signature",
+        {
+            "resolved_model": "model-a",
+            "resolved_api_key": "key-a",
+            "resolved_base_url": "https://example.invalid",
+            "resolved_provider": "provider-a",
+            "runtime": {"api_mode": "responses"},
+            "max_iterations": 12,
+            "max_tokens": 4096,
+            "fallback_resolved": {"model": "fallback"},
+            "toolsets": ["terminal"],
+            "reasoning_config": {"effort": "medium"},
+            "profile_home": "/profiles/alpha",
+        },
+    )
+    assert calls[1] == ("cached_or_new", "sid-1", "sig-1", {"api_key": "fresh"}, _Agent, "db", None)
 
 
 def test_handle_evicted_agent_cache_items_commits_unregisters_and_closes(monkeypatch):

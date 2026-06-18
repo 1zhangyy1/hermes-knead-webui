@@ -55,7 +55,8 @@ def test_auto_compression_running_sse_is_emitted_from_agent_lifecycle_status():
     assert "'status_callback' in agent_params" in agent_config
     assert "kwargs['status_callback'] = status_callback" in agent_config
     assert "status_callback=_agent_status_callback" in src
-    assert "_get_cached_or_new_agent_for_turn(" in src
+    assert "_get_agent_for_turn(" in src
+    assert "get_cached_or_new_agent_for_turn(" in agent_cache
     assert "refresh_for_turn_fn(agent, agent_kwargs" in agent_cache
     assert "agent.status_callback = agent_kwargs.get('status_callback')" in agent_cache
 

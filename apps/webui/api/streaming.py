@@ -128,8 +128,7 @@ from api.streaming_agent_runtime import (
     refresh_cached_agent_runtime as _refresh_cached_agent_runtime,
 )
 from api.streaming_agent_cache import (
-    build_agent_cache_signature as _build_agent_cache_signature,
-    get_cached_or_new_agent_for_turn as _get_cached_or_new_agent_for_turn,
+    get_agent_for_turn as _get_agent_for_turn,
 )
 from api.streaming_agent_config import (
     build_agent_kwargs as _build_agent_kwargs_impl,
@@ -962,35 +961,27 @@ def _run_agent_streaming(
                 runtime=_rt,
             )
 
-            # ── Agent cache: reuse across messages in the same session ──
-            # Mirrors gateway _agent_cache.  Keeps _user_turn_count alive so
-            # injectionFrequency: "first-turn" actually suppresses after turn 1.
-            if ephemeral:
-                agent = _AIAgent(**_agent_kwargs)
-                logger.debug('[webui] Created ephemeral agent for session %s', session_id)
-            else:
-                _agent_sig = _build_agent_cache_signature(
-                    resolved_model=resolved_model,
-                    resolved_api_key=resolved_api_key,
-                    resolved_base_url=resolved_base_url,
-                    resolved_provider=resolved_provider,
-                    runtime=_rt,
-                    max_iterations=_max_iterations_cfg,
-                    max_tokens=_max_tokens_cfg,
-                    fallback_resolved=_fallback_resolved,
-                    toolsets=_toolsets,
-                    reasoning_config=_reasoning_config,
-                    profile_home=_profile_home,
-                )
-
-                agent = _get_cached_or_new_agent_for_turn(
-                    session_id,
-                    _agent_sig,
-                    _agent_kwargs,
-                    agent_factory=_AIAgent,
-                    session_db=_session_db,
-                    logger=logger,
-                )
+            _agent_for_turn = _get_agent_for_turn(
+                session_id=session_id,
+                agent_factory=_AIAgent,
+                agent_kwargs=_agent_kwargs,
+                ephemeral=ephemeral,
+                resolved_model=resolved_model,
+                resolved_api_key=resolved_api_key,
+                resolved_base_url=resolved_base_url,
+                resolved_provider=resolved_provider,
+                runtime=_rt,
+                max_iterations=_max_iterations_cfg,
+                max_tokens=_max_tokens_cfg,
+                fallback_resolved=_fallback_resolved,
+                toolsets=_toolsets,
+                reasoning_config=_reasoning_config,
+                profile_home=_profile_home,
+                session_db=_session_db,
+                logger=logger,
+            )
+            agent = _agent_for_turn.agent
+            _agent_sig = _agent_for_turn.agent_sig
 
             # Store agent instance for cancel/interrupt propagation
             if not _register_agent_instance_or_cancel(
@@ -1182,10 +1173,11 @@ def _run_agent_streaming(
                             agent = _AIAgent(**_agent_kwargs)
                             with STREAMS_LOCK:
                                 AGENT_INSTANCES[stream_id] = agent
-                            from api.config import SESSION_AGENT_CACHE as _SAC, SESSION_AGENT_CACHE_LOCK as _SAC_L
-                            with _SAC_L:
-                                _SAC[session_id] = (agent, _agent_sig)
-                                _SAC.move_to_end(session_id)
+                            if not ephemeral and _agent_sig is not None:
+                                from api.config import SESSION_AGENT_CACHE as _SAC, SESSION_AGENT_CACHE_LOCK as _SAC_L
+                                with _SAC_L:
+                                    _SAC[session_id] = (agent, _agent_sig)
+                                    _SAC.move_to_end(session_id)
                             # Retry the conversation once with fresh credentials
                             _self_healed = True
                             _output_bridge.token_sent = False
@@ -1508,10 +1500,11 @@ def _run_agent_streaming(
                     _heal_agent = _AIAgent(**_heal_kwargs)
                     with STREAMS_LOCK:
                         AGENT_INSTANCES[stream_id] = _heal_agent
-                    from api.config import SESSION_AGENT_CACHE as _SAC2, SESSION_AGENT_CACHE_LOCK as _SAC2_L
-                    with _SAC2_L:
-                        _SAC2[session_id] = (_heal_agent, _agent_sig)
-                        _SAC2.move_to_end(session_id)
+                    if not ephemeral and _agent_sig is not None:
+                        from api.config import SESSION_AGENT_CACHE as _SAC2, SESSION_AGENT_CACHE_LOCK as _SAC2_L
+                        with _SAC2_L:
+                            _SAC2[session_id] = (_heal_agent, _agent_sig)
+                            _SAC2.move_to_end(session_id)
                     # Retry the conversation
                     if _output_bridge is not None:
                         _output_bridge.token_sent = False
