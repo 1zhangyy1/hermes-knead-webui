@@ -32,26 +32,27 @@ def test_config_exports_pending_goal_continuation():
 
 
 # ---------------------------------------------------------------------------
-# Test 3: streaming.py gates evaluate_goal_after_turn on STREAM_GOAL_RELATED
+# Test 3: streaming goal hook gates evaluate_goal_after_turn on goal_related
 # ---------------------------------------------------------------------------
 
 def test_streaming_source_code_gates_on_stream_goal_related():
-    """The streaming code must check STREAM_GOAL_RELATED[stream_id] before
+    """The streaming goal hook must check goal_related before
     calling evaluate_goal_after_turn, so unrelated turns skip the hook."""
     from pathlib import Path
     streaming_py = (Path(__file__).resolve().parents[1] / "api" / "streaming.py").read_text()
+    streaming_goal_py = (Path(__file__).resolve().parents[1] / "api" / "streaming_goal.py").read_text()
 
-    # Must import STREAM_GOAL_RELATED
+    # The worker still owns stream-flag cleanup.
     assert "STREAM_GOAL_RELATED" in streaming_py, (
         "streaming.py must import STREAM_GOAL_RELATED from api.config"
     )
 
-    # Must check it before calling evaluate_goal_after_turn
-    goal_related_check = streaming_py.find("STREAM_GOAL_RELATED")
-    eval_call = streaming_py.find("evaluate_goal_after_turn")
+    # The hook must check goal_related before calling evaluate_goal_after_turn.
+    goal_related_check = streaming_goal_py.find("if not goal_related")
+    eval_call = streaming_goal_py.find("evaluate_goal_after_turn_fn(")
     assert goal_related_check != -1 and eval_call != -1
     assert goal_related_check < eval_call, (
-        "STREAM_GOAL_RELATED check must appear before evaluate_goal_after_turn call"
+        "goal_related check must appear before evaluate_goal_after_turn call"
     )
 
 
@@ -60,18 +61,18 @@ def test_streaming_source_code_gates_on_stream_goal_related():
 # ---------------------------------------------------------------------------
 
 def test_streaming_sets_pending_goal_continuation_on_goal_continue():
-    """When goal_continue is emitted, streaming.py must set
+    """When goal_continue is emitted, the streaming goal hook must set
     PENDING_GOAL_CONTINUATION so the next /chat/start marks the stream."""
     from pathlib import Path
-    streaming_py = (Path(__file__).resolve().parents[1] / "api" / "streaming.py").read_text()
+    streaming_goal_py = (Path(__file__).resolve().parents[1] / "api" / "streaming_goal.py").read_text()
 
-    assert "PENDING_GOAL_CONTINUATION" in streaming_py, (
-        "streaming.py must reference PENDING_GOAL_CONTINUATION"
+    assert "pending_goal_continuation" in streaming_goal_py, (
+        "streaming goal hook must reference pending_goal_continuation"
     )
 
     # The PENDING_GOAL_CONTINUATION set must happen near goal_continue
-    goal_continue_idx = streaming_py.find("goal_continue")
-    pending_idx = streaming_py.find("PENDING_GOAL_CONTINUATION")
+    goal_continue_idx = streaming_goal_py.find("goal_continue")
+    pending_idx = streaming_goal_py.find("pending_goal_continuation")
     assert goal_continue_idx != -1 and pending_idx != -1
 
 

@@ -12,6 +12,7 @@ COMMANDS_JS = (REPO_ROOT / "static" / "commands.js").read_text(encoding="utf-8")
 MESSAGES_JS = (REPO_ROOT / "static" / "messages.js").read_text(encoding="utf-8")
 ROUTES_PY = (REPO_ROOT / "api" / "routes.py").read_text(encoding="utf-8")
 STREAMING_PY = (REPO_ROOT / "api" / "streaming.py").read_text(encoding="utf-8")
+STREAMING_GOAL_PY = (REPO_ROOT / "api" / "streaming_goal.py").read_text(encoding="utf-8")
 
 
 def test_goal_command_payload_matches_gateway_controls(monkeypatch):
@@ -239,26 +240,26 @@ def test_routes_register_goal_endpoint_and_kickoff_stream():
 
 
 def test_streaming_post_turn_goal_hook_surfaces_and_continues():
-    assert "evaluate_goal_after_turn" in STREAMING_PY
-    assert "put('goal'" in STREAMING_PY
-    assert "decision.get('should_continue')" in STREAMING_PY
-    assert "continuation_prompt" in STREAMING_PY
-    assert "put('goal_continue'" in STREAMING_PY
-    goal_idx = STREAMING_PY.find("evaluate_goal_after_turn")
+    assert "evaluate_goal_after_turn" in STREAMING_GOAL_PY
+    assert "put('goal'" in STREAMING_GOAL_PY
+    assert "decision.get('should_continue')" in STREAMING_GOAL_PY
+    assert "continuation_prompt" in STREAMING_GOAL_PY
+    assert "put('goal_continue'" in STREAMING_GOAL_PY
+    goal_idx = STREAMING_PY.find("_run_post_turn_goal_hook")
     done_idx = STREAMING_PY.find("put('done'", goal_idx)
     assert goal_idx != -1 and done_idx != -1
     assert goal_idx < done_idx, "goal status should be emitted before the terminal done payload"
 
 
 def test_streaming_goal_hook_emits_evaluating_state_before_judge():
-    evaluating_idx = STREAMING_PY.find("'state': 'evaluating'")
-    judge_idx = STREAMING_PY.find("_goal_decision = evaluate_goal_after_turn")
-    done_idx = STREAMING_PY.find("put('done'", judge_idx)
+    evaluating_idx = STREAMING_GOAL_PY.find("'state': 'evaluating'")
+    judge_idx = STREAMING_GOAL_PY.find("decision = evaluate_goal_after_turn_fn")
+    done_idx = STREAMING_PY.find("put('done'", STREAMING_PY.find("_run_post_turn_goal_hook"))
     assert evaluating_idx != -1, "goal hook should emit an evaluating state before judge round-trip"
     assert judge_idx != -1 and done_idx != -1
-    assert evaluating_idx < judge_idx < done_idx
-    assert "Evaluating goal progress…" in STREAMING_PY
-    assert "'state': 'continuing' if decision.get('should_continue') else 'idle'" in STREAMING_PY
+    assert evaluating_idx < judge_idx
+    assert "Evaluating goal progress\\u2026" in STREAMING_GOAL_PY
+    assert "'state': 'continuing' if decision.get('should_continue') else 'idle'" in STREAMING_GOAL_PY
 
 
 def test_frontend_has_goal_slash_command_and_status_event_handler():

@@ -25,6 +25,10 @@ def _read_streaming():
     return Path(__file__).parents[1].joinpath("api", "streaming.py").read_text(encoding="utf-8")
 
 
+def _read_streaming_goal():
+    return Path(__file__).parents[1].joinpath("api", "streaming_goal.py").read_text(encoding="utf-8")
+
+
 def _read_routes():
     return Path(__file__).parents[1].joinpath("api", "routes.py").read_text(encoding="utf-8")
 
@@ -110,12 +114,12 @@ def test_goal_continue_set_marker_before_emitting_event():
     """Source-code ordering check: PENDING_GOAL_CONTINUATION.add must
     happen BEFORE the goal_continue SSE event is put on the queue, so the
     marker is observable by the time the frontend reacts."""
-    src = _read_streaming()
-    add_idx = src.find("PENDING_GOAL_CONTINUATION.add(session_id)")
+    src = _read_streaming_goal()
+    add_idx = src.find("pending_goal_continuation.add(session_id)")
     if add_idx == -1:
         # Tolerate slight phrasing variations.
-        m = re.search(r"PENDING_GOAL_CONTINUATION\.add\([^)]*\)", src)
-        assert m is not None, "PENDING_GOAL_CONTINUATION.add not found"
+        m = re.search(r"pending_goal_continuation\.add\([^)]*\)", src)
+        assert m is not None, "pending_goal_continuation.add not found"
         add_idx = m.start()
 
     # Find the next goal_continue SSE event AFTER the add.
