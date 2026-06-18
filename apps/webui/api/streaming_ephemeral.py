@@ -36,3 +36,60 @@ def emit_ephemeral_done(
         Path(session_path).unlink(missing_ok=True)
     except Exception:
         pass
+
+
+def handle_completed_conversation_post_run(
+    result: dict,
+    *,
+    session,
+    session_id: str,
+    stream_id: str,
+    cancel_event,
+    agent_lock,
+    finalize_cancelled_turn,
+    put_cancel,
+    ephemeral: bool,
+    checkpoint_stop,
+    checkpoint_thread,
+    put,
+    handle_post_run_cancel,
+    stop_checkpoint_thread_fn,
+    emit_ephemeral_done_fn=emit_ephemeral_done,
+    logger=None,
+) -> bool:
+    """Handle cancel/ephemeral/checkpoint gates after ``run_conversation``."""
+    if handle_post_run_cancel(
+        cancel_event,
+        session,
+        stream_id,
+        agent_lock,
+        finalize_cancelled_turn,
+        put_cancel,
+        ephemeral=ephemeral,
+        checkpoint_stop=checkpoint_stop,
+        checkpoint_thread=checkpoint_thread,
+        logger=logger,
+    ):
+        return True
+    if ephemeral:
+        emit_ephemeral_done_fn(
+            result,
+            session_id=session_id,
+            session_path=session.path,
+            checkpoint_stop=checkpoint_stop,
+            put=put,
+        )
+        return True
+    stop_checkpoint_thread_fn(checkpoint_stop, checkpoint_thread)
+    if handle_post_run_cancel(
+        cancel_event,
+        session,
+        stream_id,
+        agent_lock,
+        finalize_cancelled_turn,
+        put_cancel,
+        ephemeral=False,
+        logger=logger,
+    ):
+        return True
+    return False

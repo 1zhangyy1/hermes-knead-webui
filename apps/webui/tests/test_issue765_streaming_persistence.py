@@ -331,14 +331,18 @@ class TestIssue765FollowupHardening:
         src = (Path(__file__).parent.parent / "api" / "streaming.py").read_text(
             encoding="utf-8"
         )
-        stop_idx = src.find("_stop_checkpoint_thread(_checkpoint_stop, _ckpt_thread)")
+        ephemeral_src = (Path(__file__).parent.parent / "api" / "streaming_ephemeral.py").read_text(
+            encoding="utf-8"
+        )
+        stop_idx = src.find("_handle_completed_conversation_post_run(")
         lock_idx = src.find(
             "with _agent_lock:\n"
             "                if not _prepare_success_turn_writeback("
         )
         save_idx = src.find("_apply_agent_result_to_session(")
 
-        assert stop_idx != -1, "Success path must stop the checkpoint thread"
+        assert stop_idx != -1, "Success path must pass through the post-run checkpoint/cancel helper"
+        assert "stop_checkpoint_thread_fn(checkpoint_stop, checkpoint_thread)" in ephemeral_src
         assert lock_idx != -1, "Success path must serialize mutation with _agent_lock"
         assert save_idx != -1, "Success path restore/mutation block not found"
         assert stop_idx < lock_idx <= save_idx, (

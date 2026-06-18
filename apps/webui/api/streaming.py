@@ -72,7 +72,7 @@ from api.streaming_error_writeback import (
     emit_and_persist_exception_streaming_error as _emit_and_persist_exception_streaming_error,
     emit_and_persist_silent_failure_error as _emit_and_persist_silent_failure_error,
 )
-from api.streaming_ephemeral import emit_ephemeral_done as _emit_ephemeral_done
+from api.streaming_ephemeral import handle_completed_conversation_post_run as _handle_completed_conversation_post_run
 from api.streaming_attachments import (
     IMAGE_MAGIC as _IMAGE_MAGIC,
     NATIVE_IMAGE_MAX_BYTES as _NATIVE_IMAGE_MAX_BYTES,
@@ -901,38 +901,21 @@ def _run_agent_streaming(
                 task_id=session_id,
                 persist_user_message=msg_text,
             )
-            if _handle_post_run_cancel(
-                cancel_event,
-                s,
-                stream_id,
-                _agent_lock,
-                _finalize_cancelled_turn,
-                _put_cancel,
+            if _handle_completed_conversation_post_run(
+                result,
+                session=s,
+                session_id=session_id,
+                stream_id=stream_id,
+                cancel_event=cancel_event,
+                agent_lock=_agent_lock,
+                finalize_cancelled_turn=_finalize_cancelled_turn,
+                put_cancel=_put_cancel,
                 ephemeral=ephemeral,
                 checkpoint_stop=_checkpoint_stop,
                 checkpoint_thread=_ckpt_thread,
-                logger=logger,
-            ):
-                return
-            # ── Ephemeral mode (/btw): deliver answer, skip persistence, cleanup ──
-            if ephemeral:
-                _emit_ephemeral_done(
-                    result,
-                    session_id=session_id,
-                    session_path=s.path,
-                    checkpoint_stop=_checkpoint_stop,
-                    put=put,
-                )
-                return  # skip all normal persistence for ephemeral sessions
-            _stop_checkpoint_thread(_checkpoint_stop, _ckpt_thread)
-            if _handle_post_run_cancel(
-                cancel_event,
-                s,
-                stream_id,
-                _agent_lock,
-                _finalize_cancelled_turn,
-                _put_cancel,
-                ephemeral=False,
+                put=put,
+                handle_post_run_cancel=_handle_post_run_cancel,
+                stop_checkpoint_thread_fn=_stop_checkpoint_thread,
                 logger=logger,
             ):
                 return
