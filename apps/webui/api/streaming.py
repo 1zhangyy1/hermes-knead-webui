@@ -113,16 +113,7 @@ from api.streaming_agent_runtime import (
     refresh_cached_agent_primary_runtime_snapshot as _refresh_cached_agent_primary_runtime_snapshot,
     refresh_cached_agent_runtime as _refresh_cached_agent_runtime,
 )
-from api.streaming_agent_cache import (
-    get_and_register_agent_for_turn as _get_and_register_agent_for_turn,
-)
-from api.streaming_agent_config import (
-    initialize_session_db as _initialize_session_db,
-    load_agent_config_and_toolsets as _load_agent_config_and_toolsets,
-    prepare_webui_agent_kwargs as _prepare_webui_agent_kwargs,
-    resolve_agent_runtime_connection as _resolve_agent_runtime_connection,
-)
-from api.streaming_bridges import initialize_webui_streaming_bridges as _initialize_streaming_bridges
+from api.streaming_agent_turn_setup import prepare_streaming_agent_turn_setup as _prepare_streaming_agent_turn_setup
 from api.streaming_process_notifications import (
     drain_webui_process_notifications as _drain_webui_process_notifications_impl,
     format_process_notification as _format_process_notification_impl,
@@ -657,6 +648,7 @@ def _run_agent_streaming(
     a streaming answer without persisting to the parent session.
     """
     agent = None
+    _agent_setup_runtime_vars = {}
     _worker_context = _initialize_streaming_worker_context(
         stream_id=stream_id,
         session_id=session_id,
@@ -727,89 +719,47 @@ def _run_agent_streaming(
 
         try:
             _self_healed = False  # (#1401) prevents infinite self-heal retries
-            _bridge_bundle = _initialize_streaming_bridges(
+            _agent_setup = _prepare_streaming_agent_turn_setup(
                 stream_id=stream_id,
                 session_id=session_id,
+                session=s,
+                model=model,
+                provider_context=provider_context,
+                profile_home=_profile_home,
                 run_state=_run_state,
                 put=put,
                 tool_result_snippet=_tool_result_snippet,
-                logger=logger,
-            )
-            _output_bridge = _bridge_bundle.output_bridge
-            _tool_bridge = _bridge_bundle.tool_bridge
-            _live_tool_calls = _bridge_bundle.live_tool_calls
-            _checkpoint_activity = _bridge_bundle.checkpoint_activity
-
-            _AIAgent = _get_ai_agent()
-            if _AIAgent is None:
-                raise ImportError(_aiagent_import_error_detail())
-
-            _session_db = _initialize_session_db()
-            resolved_model, resolved_provider, resolved_base_url = resolve_model_provider(
-                model_with_provider_context(model, provider_context)
-            )
-
-            _rt, resolved_api_key, resolved_provider, resolved_base_url = _resolve_agent_runtime_connection(
-                resolved_provider=resolved_provider,
-                resolved_base_url=resolved_base_url,
-                custom_provider_resolver=resolve_custom_provider_connection,
-            )
-
-            _cfg, _toolsets = _load_agent_config_and_toolsets(session_id)
-
-            _agent_kwargs_state = _prepare_webui_agent_kwargs(
-                agent_cls=_AIAgent,
-                config=_cfg,
-                model=resolved_model,
-                provider=resolved_provider,
-                base_url=resolved_base_url,
-                api_key=resolved_api_key,
-                enabled_toolsets=_toolsets,
-                session_id=session_id,
-                session_db=_session_db,
-                output_bridge=_output_bridge,
-                tool_bridge=_tool_bridge,
-                run_state=_run_state,
                 cancel_event=cancel_event,
+                agent_lock=_agent_lock,
+                ephemeral=ephemeral,
                 clarify_timeout_seconds=_clarify_timeout_seconds,
                 webui_clarify_callback=_webui_clarify_callback_impl,
-                runtime=_rt,
-            )
-            _agent_kwargs = _agent_kwargs_state.agent_kwargs
-            _agent_params = _agent_kwargs_state.agent_params
-            _fallback_resolved = _agent_kwargs_state.fallback_resolved
-            _max_iterations_cfg = _agent_kwargs_state.max_iterations
-            _max_tokens_cfg = _agent_kwargs_state.max_tokens
-            _reasoning_config = _agent_kwargs_state.reasoning_config
-
-            _registered_agent = _get_and_register_agent_for_turn(
-                session_id=session_id,
-                stream_id=stream_id,
-                session=s,
-                agent_factory=_AIAgent,
-                agent_kwargs=_agent_kwargs,
-                ephemeral=ephemeral,
-                resolved_model=resolved_model,
-                resolved_api_key=resolved_api_key,
-                resolved_base_url=resolved_base_url,
-                resolved_provider=resolved_provider,
-                runtime=_rt,
-                max_iterations=_max_iterations_cfg,
-                max_tokens=_max_tokens_cfg,
-                fallback_resolved=_fallback_resolved,
-                toolsets=_toolsets,
-                reasoning_config=_reasoning_config,
-                profile_home=_profile_home,
-                session_db=_session_db,
-                agent_lock=_agent_lock,
-                finalize_cancelled_turn_fn=_finalize_cancelled_turn,
-                put_cancel_fn=_put_cancel,
+                finalize_cancelled_turn=_finalize_cancelled_turn,
+                put_cancel=_put_cancel,
+                get_ai_agent=_get_ai_agent,
+                aiagent_import_error_detail_fn=_aiagent_import_error_detail,
+                resolve_model_provider_fn=resolve_model_provider,
+                model_with_provider_context_fn=model_with_provider_context,
+                custom_provider_resolver=resolve_custom_provider_connection,
                 logger=logger,
+                runtime_state=_agent_setup_runtime_vars,
             )
-            if not _registered_agent.should_continue:
+            if not _agent_setup.should_continue:
                 return
-            agent = _registered_agent.agent
-            _agent_sig = _registered_agent.agent_sig
+            _output_bridge = _agent_setup.output_bridge
+            _live_tool_calls = _agent_setup.live_tool_calls
+            _checkpoint_activity = _agent_setup.checkpoint_activity
+            _AIAgent = _agent_setup.agent_factory
+            _rt = _agent_setup.runtime
+            resolved_api_key = _agent_setup.resolved_api_key
+            resolved_model = _agent_setup.resolved_model
+            resolved_provider = _agent_setup.resolved_provider
+            resolved_base_url = _agent_setup.resolved_base_url
+            _cfg = _agent_setup.config
+            _agent_kwargs = _agent_setup.agent_kwargs
+            _agent_params = _agent_setup.agent_params
+            agent = _agent_setup.agent
+            _agent_sig = _agent_setup.agent_sig
 
             _turn_input = _prepare_streaming_turn_input(
                 session=s,
@@ -957,6 +907,16 @@ def _run_agent_streaming(
             _agent_kwargs = _success_result.agent_kwargs
             agent = _success_result.agent
             _self_healed = _success_result.self_healed
+            _agent_setup_runtime_vars.update(
+                {
+                    '_rt': _rt,
+                    'resolved_api_key': resolved_api_key,
+                    'resolved_provider': resolved_provider,
+                    'resolved_base_url': resolved_base_url,
+                    '_agent_kwargs': _agent_kwargs,
+                    'agent': agent,
+                }
+            )
             if _success_result.should_return:
                 return
         finally:
@@ -970,9 +930,11 @@ def _run_agent_streaming(
             )
 
     except Exception as e:
+        _exception_runtime_vars = dict(locals())
+        _exception_runtime_vars.update(_agent_setup_runtime_vars)
         _exception_result = _handle_streaming_exception(
             e,
-            runtime_vars=locals(),
+            runtime_vars=_exception_runtime_vars,
             self_healed=locals().get('_self_healed', False),
             session=s,
             stream_id=stream_id,
@@ -999,7 +961,7 @@ def _run_agent_streaming(
             streams_lock=STREAMS_LOCK,
             sanitize_messages_for_api=_sanitize_messages_for_api,
             apply_agent_result_to_session=_apply_agent_result_to_session,
-            agent_factory=locals().get('_AIAgent'),
+            agent_factory=_exception_runtime_vars.get('_AIAgent'),
         )
         if _exception_result.self_healed:
             _self_healed = True

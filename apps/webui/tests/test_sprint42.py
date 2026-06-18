@@ -21,6 +21,7 @@ from unittest import mock
 REPO_ROOT = pathlib.Path(__file__).parent.parent
 STREAMING_PY = (REPO_ROOT / "api" / "streaming.py").read_text()
 STREAMING_AGENT_CONFIG_PY = (REPO_ROOT / "api" / "streaming_agent_config.py").read_text()
+STREAMING_AGENT_TURN_SETUP_PY = (REPO_ROOT / "api" / "streaming_agent_turn_setup.py").read_text()
 
 
 # ── Shared helpers for sprint-42 additional tests ────────────────────────────
@@ -80,13 +81,14 @@ class TestSessionDBInjection(unittest.TestCase):
 
     def test_session_db_initialized_before_agent_construction(self):
         """SessionDB initialization must appear before the AIAgent(...) constructor call."""
-        db_pos = STREAMING_PY.find("_session_db = _initialize_session_db()")
-        agent_pos = STREAMING_PY.find("session_db=_session_db")
+        db_pos = STREAMING_AGENT_TURN_SETUP_PY.find("session_db = initialize_session_db_fn()")
+        agent_pos = STREAMING_AGENT_TURN_SETUP_PY.find("prepare_webui_agent_kwargs_fn(")
         self.assertGreater(
             agent_pos,
             db_pos,
             "SessionDB init must appear before AIAgent construction (PR #356)",
         )
+        self.assertIn("session_db=session_db", STREAMING_AGENT_TURN_SETUP_PY)
 
     def test_session_db_default_is_none(self):
         """The helper must default to no SessionDB factory before its guarded import."""
