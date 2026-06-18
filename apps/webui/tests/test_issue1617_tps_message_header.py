@@ -10,6 +10,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 CONFIG_PY = (REPO / "api" / "config.py").read_text(encoding="utf-8")
 STREAMING_PY = (REPO / "api" / "streaming.py").read_text(encoding="utf-8")
+STREAMING_LIVE_USAGE_PY = (REPO / "api" / "streaming_live_usage.py").read_text(encoding="utf-8")
 BOOT_JS = (REPO / "static" / "boot.js").read_text(encoding="utf-8")
 INDEX_HTML = (REPO / "static" / "index.html").read_text(encoding="utf-8")
 MESSAGES_JS = (REPO / "static" / "messages.js").read_text(encoding="utf-8")
@@ -64,12 +65,12 @@ def test_live_metering_usage_is_provisional_until_done():
 
 
 def test_live_prompt_estimate_reanchors_to_fresh_exact_prompt_tokens():
-    assert "_live_prompt_exact_tokens = [0]" in STREAMING_PY, (
+    assert "self._live_prompt_exact_tokens = 0" in STREAMING_LIVE_USAGE_PY, (
         "live prompt estimates need a separate exact-token anchor"
     )
-    assert "_real_prompt_tokens = int(_usage.get('last_prompt_tokens') or 0)" in STREAMING_PY
-    assert "_real_prompt_tokens != _live_prompt_exact_tokens[0]" in STREAMING_PY
-    assert "_live_prompt_estimate_tokens[0] = _real_prompt_tokens" in STREAMING_PY
+    assert "_real_prompt_tokens = int(_usage.get('last_prompt_tokens') or 0)" in STREAMING_LIVE_USAGE_PY
+    assert "_real_prompt_tokens != self._live_prompt_exact_tokens" in STREAMING_LIVE_USAGE_PY
+    assert "self._live_prompt_estimate_tokens = _real_prompt_tokens" in STREAMING_LIVE_USAGE_PY
 
 
 def test_done_payload_persists_final_tps_when_exact_usage_available():
