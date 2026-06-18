@@ -1,6 +1,10 @@
 import threading
 
-from api.streaming_cancellation import handle_post_run_cancel, register_agent_instance_or_cancel
+from api.streaming_cancellation import (
+    handle_exception_cancel,
+    handle_post_run_cancel,
+    register_agent_instance_or_cancel,
+)
 
 
 class _Agent:
@@ -139,3 +143,91 @@ def test_handle_post_run_cancel_cleans_ephemeral_session_without_interrupted_eve
 
     assert ok is True
     assert calls == [("cleanup", session), ("put_cancel",)]
+
+
+def test_handle_exception_cancel_returns_false_when_not_cancelled():
+    cancel_event = threading.Event()
+
+    assert handle_exception_cancel(
+        cancel_event,
+        _Session(),
+        "stream-1",
+        threading.Lock(),
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("finalize")),
+        lambda: (_ for _ in ()).throw(AssertionError("put")),
+        ephemeral=False,
+        append_interrupted_turn_event_fn=lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("append")),
+    ) is False
+
+
+def test_handle_exception_cancel_without_session_only_emits_cancel():
+    cancel_event = threading.Event()
+    cancel_event.set()
+    calls = []
+
+    ok = handle_exception_cancel(
+        cancel_event,
+        None,
+        "stream-1",
+        None,
+        lambda *args, **kwargs: calls.append(("finalize",)),
+        lambda: calls.append(("put_cancel",)),
+        ephemeral=False,
+        stop_checkpoint_thread_fn=lambda *args, **kwargs: calls.append(("stop",)),
+        append_interrupted_turn_event_fn=lambda *args, **kwargs: calls.append(("interrupted",)),
+    )
+
+    assert ok is True
+    assert calls == [("put_cancel",)]
+
+
+def test_handle_exception_cancel_stops_checkpoint_and_persists_interrupted_turn():
+    cancel_event = threading.Event()
+    cancel_event.set()
+    session = _Session()
+    calls = []
+
+    ok = handle_exception_cancel(
+        cancel_event,
+        session,
+        "stream-1",
+        threading.Lock(),
+        lambda session_arg, *, ephemeral=False: calls.append(("finalize", session_arg, ephemeral)),
+        lambda: calls.append(("put_cancel",)),
+        ephemeral=False,
+        checkpoint_stop="stop",
+        checkpoint_thread="thread",
+        stop_checkpoint_thread_fn=lambda stop, thread: calls.append(("stop", stop, thread)),
+        append_interrupted_turn_event_fn=lambda session_id, stream_id, logger=None: calls.append(
+            ("interrupted", session_id, stream_id)
+        ),
+    )
+
+    assert ok is True
+    assert calls == [
+        ("stop", "stop", "thread"),
+        ("finalize", session, False),
+        ("interrupted", "sid-1", "stream-1"),
+        ("put_cancel",),
+    ]
+
+
+def test_handle_exception_cancel_ephemeral_skips_interrupted_event():
+    cancel_event = threading.Event()
+    cancel_event.set()
+    session = _Session()
+    calls = []
+
+    ok = handle_exception_cancel(
+        cancel_event,
+        session,
+        "stream-1",
+        threading.Lock(),
+        lambda session_arg, *, ephemeral=False: calls.append(("finalize", session_arg, ephemeral)),
+        lambda: calls.append(("put_cancel",)),
+        ephemeral=True,
+        append_interrupted_turn_event_fn=lambda *args, **kwargs: calls.append(("interrupted",)),
+    )
+
+    assert ok is True
+    assert calls == [("finalize", session, True), ("put_cancel",)]

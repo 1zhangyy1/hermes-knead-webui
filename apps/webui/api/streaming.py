@@ -46,6 +46,7 @@ from api.streaming_cancellation import (
     capture_cancel_stream_snapshot as _capture_cancel_stream_snapshot_impl,
     cleanup_ephemeral_cancelled_turn as _cleanup_ephemeral_cancelled_turn_impl,
     finalize_cancelled_turn as _finalize_cancelled_turn_impl,
+    handle_exception_cancel as _handle_exception_cancel,
     handle_post_run_cancel as _handle_post_run_cancel,
     persist_cancel_stream_writeback as _persist_cancel_stream_writeback_impl,
     persist_cancelled_turn as _persist_cancelled_turn_impl,
@@ -1654,15 +1655,18 @@ def _run_agent_streaming(
             err_str = _stripped
         _exc_lower = err_str.lower()
         _classification = _classify_provider_error(err_str, e)
-        if cancel_event.is_set():
-            if s is not None:
-                _stop_checkpoint_thread(_checkpoint_stop, _ckpt_thread)
-                _lock_ctx = _agent_lock if _agent_lock is not None else contextlib.nullcontext()
-                with _lock_ctx:
-                    _finalize_cancelled_turn(s, ephemeral=ephemeral)
-                    if not ephemeral:
-                        _append_interrupted_turn_event(s.session_id, stream_id, logger=logger)
-            _put_cancel()
+        if _handle_exception_cancel(
+            cancel_event,
+            s,
+            stream_id,
+            _agent_lock,
+            _finalize_cancelled_turn,
+            _put_cancel,
+            ephemeral=ephemeral,
+            checkpoint_stop=_checkpoint_stop,
+            checkpoint_thread=_ckpt_thread,
+            logger=logger,
+        ):
             return
         _exc_is_quota = _classification['type'] == 'quota_exhausted'
         # Exception quota text still includes: 'more credits' in _exc_lower, 'can only afford' in _exc_lower, 'fewer max_tokens' in _exc_lower.
