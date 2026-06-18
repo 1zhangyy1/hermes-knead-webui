@@ -137,9 +137,6 @@ from api.streaming_turn_journal import (
     append_interrupted_turn_event as _append_interrupted_turn_event,
     append_worker_started_turn_event as _append_worker_started_turn_event,
 )
-from api.streaming_terminal import (
-    emit_completed_turn_done as _emit_completed_turn_done,
-)
 from api.streaming_turn_start import prepare_streaming_turn_input as _prepare_streaming_turn_input
 from api.streaming_usage import build_done_usage_payload as _build_done_usage_payload
 from api.streaming_titles import (
@@ -207,6 +204,7 @@ from api.streaming_runtime_prompt import (
 from api.streaming_completed_writeback import handle_completed_conversation_writeback as _handle_completed_conversation_writeback
 from api.streaming_conversation_run import run_agent_conversation_and_handle_post_run as _run_agent_conversation_and_handle_post_run
 from api.streaming_exception_handling import handle_streaming_exception as _handle_streaming_exception
+from api.streaming_success_completion import handle_completed_conversation_success as _handle_completed_conversation_success
 from api.streaming_worker_startup import prepare_streaming_worker_startup as _prepare_streaming_worker_startup
 
 # Global lock for os.environ writes. Per-session locks (_agent_lock) prevent
@@ -956,35 +954,24 @@ def _run_agent_streaming(
                 extract_gateway_routing_metadata=_extract_gateway_routing_metadata,
                 logger=logger,
             )
-            if _writeback_result.self_healed:
-                _rt = _writeback_result.runtime
-                resolved_api_key = _writeback_result.resolved_api_key
-                resolved_provider = _writeback_result.resolved_provider
-                resolved_base_url = _writeback_result.resolved_base_url
-                _agent_kwargs = _writeback_result.agent_kwargs
-                agent = _writeback_result.agent
-                _self_healed = True
-                if _writeback_result.result is not None:
-                    result = _writeback_result.result
-            if _writeback_result.should_return:
-                return
-            _completed_turn_state = _writeback_result.completed_turn_state
-            # (reasoning trace already attached before completed-turn save)
-            _emit_completed_turn_done(
-                s,
-                original_session_id=session_id,
-                token_usage=_completed_turn_state.token_usage,
-                turn_metadata=_completed_turn_state.turn_metadata,
-                config=_cfg,
-                resolved_model=resolved_model or '',
-                resolved_provider=resolved_provider or '',
+            _success_result = _handle_completed_conversation_success(
+                _writeback_result,
+                current_result=result,
+                runtime=_rt,
+                resolved_api_key=resolved_api_key,
+                resolved_provider=resolved_provider,
+                resolved_base_url=resolved_base_url,
+                agent_kwargs=_agent_kwargs,
                 agent=agent,
+                self_healed=_self_healed,
+                session=s,
+                original_session_id=session_id,
+                config=_cfg,
+                resolved_model=resolved_model,
                 profile_home=_profile_home,
                 goal_related=goal_related,
                 put=put,
                 pending_goal_continuation=PENDING_GOAL_CONTINUATION,
-                tool_calls=_completed_turn_state.tool_calls,
-                title_plan=_completed_turn_state.title_plan,
                 redact_session_data=redact_session_data,
                 build_done_usage_payload=_build_done_usage_payload,
                 apply_context_window_to_usage=_apply_context_window_to_usage,
@@ -996,6 +983,16 @@ def _run_agent_streaming(
                 maybe_schedule_title_refresh=_maybe_schedule_title_refresh,
                 logger=logger,
             )
+            result = _success_result.result
+            _rt = _success_result.runtime
+            resolved_api_key = _success_result.resolved_api_key
+            resolved_provider = _success_result.resolved_provider
+            resolved_base_url = _success_result.resolved_base_url
+            _agent_kwargs = _success_result.agent_kwargs
+            agent = _success_result.agent
+            _self_healed = _success_result.self_healed
+            if _success_result.should_return:
+                return
         finally:
             _finalize_streaming_run_attempt(
                 run_state=_run_state,

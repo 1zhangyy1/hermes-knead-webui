@@ -683,6 +683,7 @@ def test_streaming_persists_reasoning_in_session():
     metadata_src = (REPO / 'api' / 'streaming_turn_metadata.py').read_text()
     terminal_src = (REPO / 'api' / 'streaming_terminal.py').read_text()
     writeback_src = (REPO / 'api' / 'streaming_turn_writeback.py').read_text()
+    success_src = (REPO / 'api' / 'streaming_success_completion.py').read_text()
 
     # The output bridge must accumulate reasoning text that is actually emitted.
     assert "self.reasoning_text = ''" in bridge_src, \
@@ -705,11 +706,12 @@ def test_streaming_persists_reasoning_in_session():
     # Persistence block must come BEFORE the terminal done helper builds raw_session.
     persist_idx = completed_src.index("apply_completed_turn_writeback_state_fn(")
     writeback_idx = src.index("_handle_completed_conversation_writeback(")
-    done_helper_idx = src.index("_emit_completed_turn_done(")
+    success_idx = src.index("_handle_completed_conversation_success(")
+    done_helper_idx = success_src.index("emit_completed_turn_done_fn(")
     assert "raw_session = session.compact()" in terminal_src, \
         "Terminal done helper must build raw_session after streaming.py patches reasoning"
-    assert writeback_idx < done_helper_idx and persist_idx != -1, \
-        "Reasoning persistence block must appear before terminal done emission"
+    assert writeback_idx < success_idx and persist_idx != -1 and done_helper_idx != -1, \
+        "Reasoning persistence block must appear before success terminal emission"
 
 
 def test_done_handler_patches_reasoning_field():
