@@ -362,12 +362,12 @@ class TestIssue765FollowupHardening:
             "with _agent_lock:\n"
             "                if not _prepare_success_turn_writeback("
         )
-        silent_failure_idx = src.find("if _silent_failure.should_handle:")
+        silent_failure_idx = src.find("_handle_silent_failure_after_merge(")
         inner_lock_idx = src.find("with _agent_lock:", outer_lock_idx + 1)
         compression_idx = src.find("# ── Handle context compression side effects ──")
 
         assert outer_lock_idx != -1, "Outer success-path _agent_lock block not found"
-        assert silent_failure_idx != -1, "Silent-failure branch not found"
+        assert silent_failure_idx != -1, "Silent-failure helper call not found"
         assert compression_idx != -1, "Compression marker not found"
         assert not (
             inner_lock_idx != -1 and silent_failure_idx < inner_lock_idx < compression_idx

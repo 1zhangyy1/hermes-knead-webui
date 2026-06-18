@@ -11,6 +11,7 @@ import re
 REPO = pathlib.Path(__file__).parent.parent
 STREAMING_PY = (REPO / "api" / "streaming.py").read_text(encoding="utf-8")
 STREAMING_ERRORS_PY = (REPO / "api" / "streaming_errors.py").read_text(encoding="utf-8")
+STREAMING_SILENT_FAILURE_PY = (REPO / "api" / "streaming_silent_failure.py").read_text(encoding="utf-8")
 CONFIG_PY    = (REPO / "api" / "config.py").read_text(encoding="utf-8")
 ROUTES_PY    = (REPO / "api" / "routes.py").read_text(encoding="utf-8")
 MESSAGES_JS  = (REPO / "static" / "messages.js").read_text(encoding="utf-8")
@@ -24,9 +25,10 @@ class TestSilentErrorDetection:
 
     def test_streaming_detects_no_assistant_reply(self):
         """streaming.py must check if any assistant message was produced."""
-        assert "_assistant_added" in STREAMING_PY, (
-            "streaming.py must check whether an assistant message was produced (#373)"
+        assert "_detect_silent_failure_after_merge(" in STREAMING_PY, (
+            "streaming.py must detect whether an assistant message was produced (#373)"
         )
+        assert "assistant_added" in STREAMING_SILENT_FAILURE_PY
 
     def test_streaming_emits_apperror_on_no_response(self):
         """streaming.py must emit apperror event when agent produced no reply."""
@@ -48,11 +50,11 @@ class TestSilentErrorDetection:
 
     def test_streaming_detects_auth_error_in_result(self):
         """streaming.py must detect auth errors from the result object."""
-        assert "_silent_error.is_auth" in STREAMING_PY, (
-            "streaming.py must detect auth errors in silent failures (#373)"
+        assert "silent_error.is_auth" in STREAMING_SILENT_FAILURE_PY, (
+            "silent-failure helper must detect auth errors (#373)"
         )
-        assert "auth_mismatch" in STREAMING_PY, (
-            "streaming.py must emit auth_mismatch type for auth failures (#373)"
+        assert "auth_mismatch" in STREAMING_ERRORS_PY, (
+            "streaming errors must emit auth_mismatch type for auth failures (#373)"
         )
 
     def test_messages_js_done_handler_detects_no_reply(self):

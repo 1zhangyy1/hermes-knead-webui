@@ -464,14 +464,19 @@ def test_materialize_helper_called_immediately_before_error_path_clears():
         'api',
         'streaming_error_writeback.py',
     ).read_text(encoding='utf-8')
+    silent_failure_src = Path(__file__).parent.parent.joinpath(
+        'api',
+        'streaming_silent_failure.py',
+    ).read_text(encoding='utf-8')
 
     assert 'session.pending_user_message = None' in writeback_src
 
-    silent_idx = src.find("# ── Detect silent agent failure")
-    silent_return_idx = src.find("return  # apperror already closes the stream", silent_idx)
+    silent_idx = src.find("_handle_silent_failure_after_merge(")
+    silent_return_idx = src.find("if _silent_result.should_return:", silent_idx)
     silent_block = src[silent_idx:silent_return_idx]
-    assert "_emit_and_persist_silent_failure_error(" in silent_block
     assert "materialize_pending_user_turn=_materialize_pending_user_turn_before_error" in silent_block
+    assert "emit_and_persist_silent_failure_error_fn(" in silent_failure_src
+    assert "materialize_pending_user_turn=materialize_pending_user_turn" in silent_failure_src
     assert "persist_streaming_error_message(" in writeback_src
 
     outer_idx = src.find("_emit_and_persist_exception_streaming_error(")
