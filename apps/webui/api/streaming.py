@@ -65,7 +65,6 @@ from api.streaming_gateway import (
     normalize_gateway_routing_metadata as _normalize_gateway_routing_metadata,
 )
 from api.streaming_goal import run_post_turn_goal_hook as _run_post_turn_goal_hook
-from api.streaming_ephemeral import handle_completed_conversation_post_run as _handle_completed_conversation_post_run
 from api.streaming_attachments import (
     IMAGE_MAGIC as _IMAGE_MAGIC,
     NATIVE_IMAGE_MAX_BYTES as _NATIVE_IMAGE_MAX_BYTES,
@@ -206,6 +205,7 @@ from api.streaming_runtime_prompt import (
     configure_agent_runtime_prompt as _configure_agent_runtime_prompt,
 )
 from api.streaming_completed_writeback import handle_completed_conversation_writeback as _handle_completed_conversation_writeback
+from api.streaming_conversation_run import run_agent_conversation_and_handle_post_run as _run_agent_conversation_and_handle_post_run
 from api.streaming_exception_handling import handle_streaming_exception as _handle_streaming_exception
 from api.streaming_worker_startup import prepare_streaming_worker_startup as _prepare_streaming_worker_startup
 
@@ -873,15 +873,12 @@ def _run_agent_streaming(
             _checkpoint_stop = _checkpoint_runner.stop_event
             _ckpt_thread = _checkpoint_runner.thread
 
-            result = agent.run_conversation(
+            _conversation_run = _run_agent_conversation_and_handle_post_run(
+                agent=agent,
                 user_message=user_message,
                 system_message=workspace_system_msg,
-                conversation_history=_sanitize_messages_for_api(_previous_context_messages, cfg=_cfg),
-                task_id=session_id,
-                persist_user_message=msg_text,
-            )
-            if _handle_completed_conversation_post_run(
-                result,
+                previous_context_messages=_previous_context_messages,
+                config=_cfg,
                 session=s,
                 session_id=session_id,
                 stream_id=stream_id,
@@ -893,10 +890,14 @@ def _run_agent_streaming(
                 checkpoint_stop=_checkpoint_stop,
                 checkpoint_thread=_ckpt_thread,
                 put=put,
+                msg_text=msg_text,
+                sanitize_messages_for_api=_sanitize_messages_for_api,
                 handle_post_run_cancel=_handle_post_run_cancel,
-                stop_checkpoint_thread_fn=_stop_checkpoint_thread,
+                stop_checkpoint_thread=_stop_checkpoint_thread,
                 logger=logger,
-            ):
+            )
+            result = _conversation_run.result
+            if _conversation_run.should_return:
                 return
             _writeback_result = _handle_completed_conversation_writeback(
                 result,

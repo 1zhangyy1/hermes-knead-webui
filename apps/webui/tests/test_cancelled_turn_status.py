@@ -166,18 +166,22 @@ class TestCancelledTurnPersistenceGuards:
 
     def test_post_run_cancel_guard_runs_before_normal_success_merge(self):
         src = _read("api/streaming.py")
+        conversation_src = _read("api/streaming_conversation_run.py")
         completed_src = _read("api/streaming_completed_writeback.py")
         cancellation_src = _read("api/streaming_cancellation.py")
         ephemeral_src = _read("api/streaming_ephemeral.py")
-        run_idx = src.find("result = agent.run_conversation(")
-        writeback_idx = src.find("_handle_completed_conversation_writeback(", run_idx)
-        assert run_idx != -1 and writeback_idx != -1, "run/writeback path not found"
-        block = src[run_idx:writeback_idx]
+        run_helper_idx = src.find("_run_agent_conversation_and_handle_post_run(")
+        writeback_idx = src.find("_handle_completed_conversation_writeback(", run_helper_idx)
+        assert run_helper_idx != -1 and writeback_idx != -1, "run/writeback path not found"
+        run_idx = conversation_src.find("result = agent.run_conversation(")
+        post_run_idx = conversation_src.find("handle_completed_conversation_post_run_fn(")
+        return_idx = conversation_src.find("return ConversationRunResult", post_run_idx)
 
-        assert "_handle_completed_conversation_post_run(" in block, (
+        assert run_idx != -1 and post_run_idx != -1 and run_idx < post_run_idx, (
             "If cancellation arrives after tokens streamed but before run_conversation returns, "
             "the worker must emit/persist cancel before normal merge/save/completed handling."
         )
+        assert run_helper_idx < writeback_idx
         assert "apply_agent_result_to_session_fn(" in completed_src
         assert "handle_post_run_cancel(" in ephemeral_src
         assert "cancel_event.is_set()" in cancellation_src
@@ -185,7 +189,7 @@ class TestCancelledTurnPersistenceGuards:
         assert "cleanup_ephemeral_cancelled_turn_fn(session)" in cancellation_src
         assert "finalize_cancelled_turn_fn(session, ephemeral=False)" in cancellation_src
         assert "append_interrupted_turn_event_fn(session.session_id, stream_id, logger=logger)" in cancellation_src
-        assert "_handle_completed_conversation_post_run(" in block and "return" in block, (
+        assert post_run_idx != -1 and return_idx != -1 and post_run_idx < return_idx, (
             "Ephemeral cancels must clean up their temporary session before returning."
         )
 

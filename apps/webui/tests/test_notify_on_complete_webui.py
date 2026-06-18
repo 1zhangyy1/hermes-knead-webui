@@ -19,15 +19,17 @@ def test_webui_drains_only_matching_background_completion_events():
 
 def test_webui_injects_process_notifications_without_persisting_them_as_user_text():
     src = (REPO / "api" / "streaming.py").read_text(encoding="utf-8")
+    conversation_src = (REPO / "api" / "streaming_conversation_run.py").read_text(encoding="utf-8")
     turn_start_src = (REPO / "api" / "streaming_turn_start.py").read_text(encoding="utf-8")
     process_src = (REPO / "api" / "streaming_process_notifications.py").read_text(encoding="utf-8")
 
     assert "_turn_input = _prepare_streaming_turn_input(" in src
+    assert "_run_agent_conversation_and_handle_post_run(" in src
     assert "process_notifications = drain_process_notifications_fn(session_id, logger=logger)" in turn_start_src
     assert "message_text_with_process_notifications_fn(msg_text, process_notifications)" in turn_start_src
     assert "[*process_notifications, msg_text]" in process_src
     assert "build_native_multimodal_message_fn(" in turn_start_src
-    assert "persist_user_message=msg_text" in src
+    assert "persist_user_message=msg_text" in conversation_src
 
 
 def test_webui_sets_gateway_session_platform_for_background_watchers():

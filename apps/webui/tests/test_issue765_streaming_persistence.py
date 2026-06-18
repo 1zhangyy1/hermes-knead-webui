@@ -331,23 +331,28 @@ class TestIssue765FollowupHardening:
         src = (Path(__file__).parent.parent / "api" / "streaming.py").read_text(
             encoding="utf-8"
         )
+        conversation_src = (Path(__file__).parent.parent / "api" / "streaming_conversation_run.py").read_text(
+            encoding="utf-8"
+        )
         completed_src = (Path(__file__).parent.parent / "api" / "streaming_completed_writeback.py").read_text(
             encoding="utf-8"
         )
         ephemeral_src = (Path(__file__).parent.parent / "api" / "streaming_ephemeral.py").read_text(
             encoding="utf-8"
         )
-        stop_idx = src.find("_handle_completed_conversation_post_run(")
-        helper_idx = src.find("_handle_completed_conversation_writeback(", stop_idx)
+        run_helper_idx = src.find("_run_agent_conversation_and_handle_post_run(")
+        helper_idx = src.find("_handle_completed_conversation_writeback(", run_helper_idx)
+        post_run_idx = conversation_src.find("handle_completed_conversation_post_run_fn(")
         lock_idx = completed_src.find("with agent_lock:")
         save_idx = completed_src.find("apply_agent_result_to_session_fn(")
 
-        assert stop_idx != -1, "Success path must pass through the post-run checkpoint/cancel helper"
+        assert run_helper_idx != -1, "Success path must pass through the conversation-run helper"
+        assert post_run_idx != -1, "Conversation run helper must pass through the post-run checkpoint/cancel helper"
         assert "stop_checkpoint_thread_fn(checkpoint_stop, checkpoint_thread)" in ephemeral_src
         assert helper_idx != -1, "Success path must enter completed-writeback helper"
         assert lock_idx != -1, "Success path must serialize mutation with agent_lock"
         assert save_idx != -1, "Success path restore/mutation block not found"
-        assert stop_idx < helper_idx and lock_idx < save_idx, (
+        assert run_helper_idx < helper_idx and lock_idx < save_idx, (
             "Checkpoint stop/join must happen before the success-path session mutation block"
         )
 
