@@ -16,6 +16,20 @@ WebUI progress contract:
 """.strip()
 
 
+def build_agent_thread_env(profile_runtime_env: dict | None, workspace: str, session_id: str, profile_home: str) -> dict:
+    """Build thread-local agent env with per-run values overriding profile defaults."""
+    env = dict(profile_runtime_env or {})
+    env.update({
+        'TERMINAL_CWD': str(workspace),
+        'HERMES_EXEC_ASK': '1',
+        'HERMES_SESSION_KEY': session_id,
+        'HERMES_SESSION_ID': session_id,
+        'HERMES_SESSION_PLATFORM': 'webui',
+        'HERMES_HOME': profile_home,
+    })
+    return env
+
+
 def clarify_timeout_seconds(get_config_fn, default: int = 120) -> int:
     """Resolve clarify timeout from config, with bounded fallback."""
     try:
