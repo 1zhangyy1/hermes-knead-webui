@@ -117,6 +117,10 @@ from api.session_paths import (
     active_state_db_path as _active_state_db_path_impl,
     profile_home as _profile_home_impl,
 )
+from api.session_registry import (
+    get_session as _get_session_impl,
+    new_session as _new_session_impl,
+)
 
 logger = logging.getLogger(__name__)
 CLI_VISIBLE_SESSION_LIMIT = 20
@@ -624,33 +628,20 @@ def get_session(sid, metadata_only=False):
     messages list. Use this when you only need compact() metadata and not the
     actual message history (e.g., for fast sidebar switching).
     """
-    cached = _get_cached_session(SESSIONS, LOCK, sid)
-    if cached is not None:
-        return cached
-    if metadata_only:
-        s = Session.load_metadata_only(sid)
-        if s:
-            return s
-    else:
-        s = Session.load(sid)
-    if s:
-        _cache_session(SESSIONS, LOCK, sid, s, SESSIONS_MAX)
-        if not metadata_only:
-            try:
-                repaired = _repair_stale_pending(s)
-                # If repair had to bail because the per-session lock was held,
-                # do not pin the still-stale sidecar in the LRU cache forever.
-                # Leaving it cached would prevent future get_session() calls from
-                # re-entering the cache-miss repair path after the lock holder exits.
-                if not repaired and (len(s.messages) == 0
-                        and s.pending_user_message
-                        and s.active_stream_id
-                        and s.active_stream_id not in _active_stream_ids()):
-                    _evict_cached_session_if_same(SESSIONS, LOCK, sid, s)
-            except Exception:
-                pass  # repair is best-effort
-        return s
-    raise KeyError(sid)
+    return _get_session_impl(
+        sid,
+        metadata_only=metadata_only,
+        sessions=SESSIONS,
+        sessions_lock=LOCK,
+        sessions_max=SESSIONS_MAX,
+        session_cls=Session,
+        get_cached_session=_get_cached_session,
+        cache_session=_cache_session,
+        evict_cached_session_if_same=_evict_cached_session_if_same,
+        repair_stale_pending=_repair_stale_pending,
+        active_stream_ids=_active_stream_ids,
+    )
+
 
 def new_session(workspace=None, model=None, profile=None, model_provider=None, project_id=None, worktree_info=None):
     """Create a new in-memory session.
@@ -677,31 +668,27 @@ def new_session(workspace=None, model=None, profile=None, model_provider=None, p
     supplied, we fall back to the process-level active profile (the pre-#798
     behaviour, preserved for calls that originate outside a request context).
     """
-    if profile is None:
+    def _active_profile_name():
         # Fallback: read process-level global (single-client or startup path)
-        try:
-            from api.profiles import get_active_profile_name
-            profile = get_active_profile_name()
-        except ImportError:
-            profile = None
-    effective_model = model or get_effective_default_model()
-    wt = worktree_info if isinstance(worktree_info, dict) else None
-    workspace_path = (wt.get('path') if wt and wt.get('path') else workspace) if wt else workspace
-    s = Session(
-        workspace=workspace_path or get_last_workspace(),
-        model=effective_model,
-        model_provider=model_provider,
+        from api.profiles import get_active_profile_name
+        return get_active_profile_name()
+
+    return _new_session_impl(
+        workspace=workspace,
+        model=model,
         profile=profile,
+        model_provider=model_provider,
         project_id=project_id,
-        worktree_path=wt.get('path') if wt else None,
-        worktree_branch=wt.get('branch') if wt else None,
-        worktree_repo_root=wt.get('repo_root') if wt else None,
-        worktree_created_at=wt.get('created_at') if wt else None,
+        worktree_info=worktree_info,
+        session_cls=Session,
+        sessions=SESSIONS,
+        sessions_lock=LOCK,
+        sessions_max=SESSIONS_MAX,
+        cache_session=_cache_session,
+        get_active_profile_name=_active_profile_name,
+        get_effective_default_model=get_effective_default_model,
+        get_last_workspace=get_last_workspace,
     )
-    _cache_session(SESSIONS, LOCK, s.session_id, s, SESSIONS_MAX)
-    if wt:
-        s.save()
-    return s
 
 def _hide_from_default_sidebar(session: dict) -> bool:
     return _hide_from_default_sidebar_impl(session)
