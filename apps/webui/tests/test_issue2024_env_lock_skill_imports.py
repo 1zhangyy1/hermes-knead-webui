@@ -21,11 +21,16 @@ import textwrap
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
 STREAMING_PY = REPO / "api" / "streaming.py"
+RUNTIME_HELPERS_PY = REPO / "api" / "streaming_runtime_helpers.py"
 PROFILES_PY = REPO / "api" / "profiles.py"
 
 
 def _read_streaming() -> str:
     return STREAMING_PY.read_text(encoding="utf-8")
+
+
+def _read_runtime_helpers() -> str:
+    return RUNTIME_HELPERS_PY.read_text(encoding="utf-8")
 
 
 # ---------------------------------------------------------------------------
@@ -35,7 +40,7 @@ def _read_streaming() -> str:
 # ---------------------------------------------------------------------------
 
 def _find_env_lock_with_bodies(source: str) -> list[list[ast.stmt]]:
-    """Return the statement-list bodies of all ``with _ENV_LOCK:`` blocks."""
+    """Return statement-list bodies of env-lock ``with`` blocks."""
     tree = ast.parse(source)
     bodies: list[list[ast.stmt]] = []
 
@@ -44,7 +49,7 @@ def _find_env_lock_with_bodies(source: str) -> list[list[ast.stmt]]:
             # Check whether any context-expression is a simple Name `_ENV_LOCK`
             for item in node.items:
                 ctx = item.context_expr
-                if isinstance(ctx, ast.Name) and ctx.id == "_ENV_LOCK":
+                if isinstance(ctx, ast.Name) and ctx.id in {"_ENV_LOCK", "env_lock"}:
                     bodies.append(node.body)
                     break
             self.generic_visit(node)
@@ -75,9 +80,9 @@ class TestNoSkillToolImportsInsideEnvLock:
     inside any ``with _ENV_LOCK:`` block."""
 
     def test_no_skill_imports_in_env_lock(self):
-        source = _read_streaming()
+        source = _read_runtime_helpers()
         bodies = _find_env_lock_with_bodies(source)
-        assert bodies, "Expected at least one `with _ENV_LOCK:` block in streaming.py"
+        assert bodies, "Expected at least one `with env_lock:` block in streaming_runtime_helpers.py"
         for body in bodies:
             found = _imports_in_body(body, _TARGET_MODULES)
             assert found == [], (
@@ -116,21 +121,21 @@ class TestPrewarmHelperExists:
 
     def test_prewarm_called_before_env_lock(self):
         """_prewarm_skill_tool_modules() must be called before the first
-        ``with _ENV_LOCK:`` in _run_agent_streaming."""
+        process-env helper call in _run_agent_streaming."""
         source = _read_streaming()
         lines = source.splitlines()
         prewarm_line = None
-        first_env_lock_line = None
+        env_apply_line = None
         for i, line in enumerate(lines, 1):
             if "_prewarm_skill_tool_modules()" in line and prewarm_line is None:
                 prewarm_line = i
-            if "with _ENV_LOCK:" in line and first_env_lock_line is None:
-                first_env_lock_line = i
+            if "_apply_streaming_profile_process_env(" in line and env_apply_line is None:
+                env_apply_line = i
         assert prewarm_line is not None, "_prewarm_skill_tool_modules() call not found"
-        assert first_env_lock_line is not None, "with _ENV_LOCK: not found"
-        assert prewarm_line < first_env_lock_line, (
+        assert env_apply_line is not None, "_apply_streaming_profile_process_env() call not found"
+        assert prewarm_line < env_apply_line, (
             f"_prewarm_skill_tool_modules() (line {prewarm_line}) must appear "
-            f"before the first `with _ENV_LOCK:` (line {first_env_lock_line})"
+            f"before process env application (line {env_apply_line})"
         )
 
 
@@ -138,9 +143,9 @@ class TestSysModulesLookupInEnvLock:
     """Inside the lock, streaming must use the shared cache patch helper."""
 
     def test_shared_skill_home_patch_helper_used_in_env_lock(self):
-        source = _read_streaming()
+        source = _read_runtime_helpers()
         bodies = _find_env_lock_with_bodies(source)
-        assert bodies, "Expected at least one `with _ENV_LOCK:` block"
+        assert bodies, "Expected at least one `with env_lock:` block"
 
         lines = source.splitlines()
         in_lock = False
@@ -148,7 +153,7 @@ class TestSysModulesLookupInEnvLock:
         depth = 0
         for line in lines:
             stripped = line.strip()
-            if stripped.startswith("with _ENV_LOCK:"):
+            if stripped.startswith("with env_lock:"):
                 in_lock = True
                 depth = 0
                 continue
@@ -202,13 +207,13 @@ class TestSysModulesLookupInEnvLock:
     def test_no_import_statement_for_skill_tools_in_lock(self):
         """Double-check: no bare ``import tools.skills_tool`` or
         ``import tools.skill_manager_tool`` inside the lock body source."""
-        source = _read_streaming()
+        source = _read_runtime_helpers()
         lines = source.splitlines()
         in_lock = False
         depth = 0
         for line in lines:
             stripped = line.strip()
-            if stripped.startswith("with _ENV_LOCK:"):
+            if stripped.startswith("with env_lock:"):
                 in_lock = True
                 depth = 0
                 continue

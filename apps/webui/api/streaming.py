@@ -220,6 +220,7 @@ from api.streaming_recovery import (
 from api.streaming_runtime_helpers import (
     WEBUI_VISIBLE_PROGRESS_PROMPT as _WEBUI_VISIBLE_PROGRESS_PROMPT_IMPL,
     aiagent_import_error_detail as _aiagent_import_error_detail_impl,
+    apply_streaming_profile_process_env as _apply_streaming_profile_process_env,
     build_agent_thread_env as _build_agent_thread_env,
     clarify_timeout_seconds as _clarify_timeout_seconds_impl,
     discover_mcp_tools_for_profile as _discover_mcp_tools_for_profile,
@@ -751,13 +752,8 @@ def _run_agent_streaming(
         _append_worker_started_turn_event(session_id, stream_id, logger=logger)
     s = None
     _rt = {}
-    old_cwd = None
-    old_exec_ask = None
-    old_session_key = None
-    old_session_id = None
-    old_session_platform = None
-    old_hermes_home = None
     old_profile_env = {}
+    old_runtime_env = {}
 
     # MCP discovery moved to AFTER the per-profile HERMES_HOME mutation below
     # (was here at v0.51.30) — the previous placement always read the default
@@ -851,36 +847,17 @@ def _run_agent_streaming(
         # first-time module initialisation (which can be slow) does not
         # block other concurrent sessions waiting on _ENV_LOCK (#2024).
         _prewarm_skill_tool_modules()
-        # Still set process-level env as fallback for tools that bypass thread-local
-        # Acquire lock only for the env mutation, then release before the agent runs.
-        # The finally block re-acquires to restore — keeping critical sections short
-        # and preventing a deadlock where the restore would re-enter the same lock.
-        with _ENV_LOCK:
-            old_profile_env = {key: os.environ.get(key) for key in _profile_runtime_env}
-            old_cwd = os.environ.get('TERMINAL_CWD')
-            old_exec_ask = os.environ.get('HERMES_EXEC_ASK')
-            old_session_key = os.environ.get('HERMES_SESSION_KEY')
-            old_session_id = os.environ.get('HERMES_SESSION_ID')
-            old_session_platform = os.environ.get('HERMES_SESSION_PLATFORM')
-            old_hermes_home = os.environ.get('HERMES_HOME')
-            os.environ.update(_profile_runtime_env)
-            os.environ['TERMINAL_CWD'] = str(s.workspace)
-            os.environ['HERMES_EXEC_ASK'] = '1'
-            os.environ['HERMES_SESSION_KEY'] = session_id
-            os.environ['HERMES_SESSION_ID'] = session_id
-            os.environ['HERMES_SESSION_PLATFORM'] = 'webui'
-            if _profile_home:
-                os.environ['HERMES_HOME'] = _profile_home
-                # Patch module-level caches to match the active profile.
-                # _set_hermes_home() does this for process-wide switches
-                # but per-request switches skip it (#1700).
-                # Modules were prewarmed by _prewarm_skill_tool_modules()
-                # above, so we only do lightweight sys.modules lookups and
-                # attribute assignments here — no first-time import under
-                # the lock (#2024).
-                if patch_skill_home_modules is not None:
-                    patch_skill_home_modules(Path(_profile_home))
-        # Lock released — agent runs without holding it.
+        _process_env_snapshot = _apply_streaming_profile_process_env(
+            profile_runtime_env=_profile_runtime_env,
+            workspace=str(s.workspace),
+            session_id=session_id,
+            profile_home=_profile_home,
+            patch_skill_home_modules=patch_skill_home_modules,
+            env_lock=_ENV_LOCK,
+        )
+        old_profile_env = _process_env_snapshot.profile_env_snapshot
+        old_runtime_env = _process_env_snapshot.runtime_env_snapshot
+        # Process env lock released — agent runs without holding it.
         # MCP discovery must run after the per-session HERMES_HOME mutation so
         # non-default profile MCP servers are loaded from the right config.
         _discover_mcp_tools_for_profile()
@@ -1502,14 +1479,7 @@ def _run_agent_streaming(
             _gateway_notifications.unregister(session_id)
             _restore_agent_process_env(
                 old_profile_env,
-                {
-                    'TERMINAL_CWD': old_cwd,
-                    'HERMES_EXEC_ASK': old_exec_ask,
-                    'HERMES_SESSION_KEY': old_session_key,
-                    'HERMES_SESSION_ID': old_session_id,
-                    'HERMES_SESSION_PLATFORM': old_session_platform,
-                    'HERMES_HOME': old_hermes_home,
-                },
+                old_runtime_env,
                 env_lock=_ENV_LOCK,
             )
 

@@ -34,11 +34,12 @@ def test_discover_mcp_tools_called_after_hermes_home_mutation():
     `HERMES_HOME = _profile_home` assignment, otherwise non-default profile
     MCP servers are never discovered.
     """
-    home_set_line = _line_of(STREAMING_PY, r"os\.environ\['HERMES_HOME'\]\s*=\s*_profile_home", "api/streaming.py")
+    home_set_line = _line_of(STREAMING_PY, r"_apply_streaming_profile_process_env\(", "api/streaming.py")
     discover_call_line = _line_of(STREAMING_PY, r"_discover_mcp_tools_for_profile\(\)\s*$", "api/streaming.py")
+    assert "os.environ['HERMES_HOME'] = profile_home" in RUNTIME_HELPERS_PY
     assert discover_call_line > home_set_line, (
         f"_discover_mcp_tools_for_profile() at line {discover_call_line} must be AFTER the "
-        f"HERMES_HOME mutation at line {home_set_line} (issue #1968). "
+        f"profile env application at line {home_set_line} (issue #1968). "
         "Otherwise non-default profile MCP servers never load."
     )
 
@@ -49,10 +50,10 @@ def test_discover_mcp_tools_called_after_env_lock_release():
     hermes-agent), and holding the env lock across that would serialize all
     concurrent sessions through MCP discovery.
 
-    Lexical check: the discover call must come after the `# Lock released` marker
-    that follows the `with _ENV_LOCK:` block.
+    Lexical check: the discover call must come after the process-env lock release
+    marker that follows process env application.
     """
-    lock_release_marker = _line_of(STREAMING_PY, r"# Lock released — agent runs without holding it", "api/streaming.py")
+    lock_release_marker = _line_of(STREAMING_PY, r"# Process env lock released", "api/streaming.py")
     discover_call_line = _line_of(STREAMING_PY, r"_discover_mcp_tools_for_profile\(\)\s*$", "api/streaming.py")
     assert discover_call_line > lock_release_marker, (
         f"_discover_mcp_tools_for_profile() at line {discover_call_line} should run AFTER "
