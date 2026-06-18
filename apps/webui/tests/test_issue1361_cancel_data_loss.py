@@ -470,7 +470,7 @@ def test_materialize_helper_called_immediately_before_error_path_clears():
     silent_idx = src.find("# ── Detect silent agent failure")
     silent_return_idx = src.find("return  # apperror already closes the stream", silent_idx)
     silent_block = src[silent_idx:silent_return_idx]
-    assert "_emit_and_persist_streaming_error(" in silent_block
+    assert "_emit_and_persist_silent_failure_error(" in silent_block
     assert "materialize_pending_user_turn=_materialize_pending_user_turn_before_error" in silent_block
     assert "persist_streaming_error_message(" in writeback_src
 

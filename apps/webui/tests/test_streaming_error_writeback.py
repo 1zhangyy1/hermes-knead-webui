@@ -1,5 +1,7 @@
 from api.streaming_error_writeback import (
+    classify_silent_failure_error,
     emit_and_persist_exception_streaming_error,
+    emit_and_persist_silent_failure_error,
     emit_and_persist_streaming_error,
     format_streaming_error_content,
     persist_streaming_error_message,
@@ -30,6 +32,11 @@ class Logger:
 
     def info(self, *args, **kwargs):
         self.messages.append((args, kwargs))
+
+
+class Agent:
+    def __init__(self, last_error=None):
+        self._last_error = last_error
 
 
 def test_persist_streaming_error_message_clears_pending_and_saves():
@@ -161,6 +168,85 @@ def test_emit_and_persist_streaming_error_emits_then_persists_payload():
         '_error': True,
         'provider_details': 'provider details',
     }
+
+
+def test_classify_silent_failure_error_prefers_agent_last_error():
+    state = classify_silent_failure_error(
+        Agent(last_error=RuntimeError('401 bad key')),
+        {'error': 'fallback'},
+        classify_provider_error=lambda error_text, last_error, **kwargs: {
+            'label': 'Auth failed',
+            'type': 'auth_mismatch',
+            'hint': 'Run hermes model',
+            'seen': (error_text, last_error, kwargs),
+        },
+    )
+
+    assert state.error_text == '401 bad key'
+    assert isinstance(state.last_error, RuntimeError)
+    assert state.label == 'Auth failed'
+    assert state.error_type == 'auth_mismatch'
+    assert state.hint == 'Run hermes model'
+    assert state.is_auth is True
+    assert state.classification['seen'][0] == '401 bad key'
+    assert state.classification['seen'][2] == {'silent_failure': False}
+
+
+def test_classify_silent_failure_error_marks_empty_result_as_silent_failure():
+    state = classify_silent_failure_error(
+        Agent(),
+        {},
+        classify_provider_error=lambda error_text, last_error, **kwargs: {
+            'label': 'No response',
+            'type': 'no_response',
+            'hint': 'Try again',
+            'seen': (error_text, last_error, kwargs),
+        },
+    )
+
+    assert state.error_text == ''
+    assert state.last_error == ''
+    assert state.is_auth is False
+    assert state.classification['seen'] == ('', '', {'silent_failure': True})
+
+
+def test_emit_and_persist_silent_failure_error_uses_classified_state():
+    events = []
+    session = Session()
+    state = classify_silent_failure_error(
+        Agent(),
+        {},
+        classify_provider_error=lambda *_args, **_kwargs: {
+            'label': 'No response from provider',
+            'type': 'no_response',
+            'hint': 'Provider returned no content',
+        },
+    )
+
+    payload = emit_and_persist_silent_failure_error(
+        session,
+        state,
+        put=lambda event, data: events.append(('put', event, data)),
+        provider_error_payload=lambda message, error_type, hint: events.append(
+            ('payload', message, error_type, hint)
+        ) or {'message': 'No response payload', 'type': error_type},
+        finalize_product_turn=lambda **kwargs: events.append(('finalize', kwargs)),
+        materialize_pending_user_turn=lambda current: events.append(('materialize', current)),
+    )
+
+    assert payload == {'message': 'No response payload', 'type': 'no_response'}
+    assert events == [
+        ('payload', 'No response from provider.', 'no_response', 'Provider returned no content'),
+        ('finalize', {
+            'failed': True,
+            'error_type': 'no_response',
+            'error_message': 'No response payload',
+        }),
+        ('put', 'apperror', payload),
+        ('materialize', session),
+    ]
+    assert session.saved == 1
+    assert session.messages[-1]['content'] == '**No response from provider:** No response payload\n\n*Provider returned no content*'
 
 
 def test_emit_and_persist_exception_streaming_error_persists_before_emitting():

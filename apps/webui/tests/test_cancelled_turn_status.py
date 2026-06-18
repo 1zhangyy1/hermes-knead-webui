@@ -126,7 +126,7 @@ class TestCancelledTurnPersistenceGuards:
         src = _read("api/streaming.py")
         silent_idx = src.find("# ── Detect silent agent failure")
         assert silent_idx != -1, "silent-failure block not found"
-        apperror_idx = src.find("_emit_and_persist_streaming_error(", silent_idx)
+        apperror_idx = src.find("_emit_and_persist_silent_failure_error(", silent_idx)
         assert apperror_idx != -1, "silent-failure apperror emission not found"
         block = src[silent_idx:apperror_idx]
 
