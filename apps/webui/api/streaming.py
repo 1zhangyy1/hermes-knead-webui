@@ -104,6 +104,7 @@ from api.streaming_agent_config import (
 )
 from api.streaming_event_sink import StreamingEventSink as _StreamingEventSink
 from api.streaming_live_usage import LiveUsageTracker as _LiveUsageTracker
+from api.streaming_product_turn import ProductTurnFinalizer as _ProductTurnFinalizer
 from api.streaming_titles import (
     LEGACY_WORKSPACE_PREFIX_ANY_RE as _LEGACY_WORKSPACE_PREFIX_ANY_RE,
     LEGACY_WORKSPACE_PREFIX_RE as _LEGACY_WORKSPACE_PREFIX_RE,
@@ -1062,7 +1063,7 @@ def _run_agent_streaming(
         provider=model_provider,
         ephemeral=bool(ephemeral),
     )
-    product_turn_finalized = False
+    _product_turn_finalizer = _ProductTurnFinalizer(product_context, logger=logger)
 
     def _finalize_product_turn(
         *,
@@ -1070,35 +1071,11 @@ def _run_agent_streaming(
         error_type: str | None = None,
         error_message: str | None = None,
     ) -> None:
-        nonlocal product_turn_finalized
-        if product_turn_finalized:
-            return
-        if not product_context:
-            product_turn_finalized = True
-            return
-        if str(product_context.get("scope") or "") not in {"product_init", "product_builder"}:
-            product_turn_finalized = True
-            return
-        product_id = str(product_context.get("id") or "").strip()
-        if not product_id:
-            product_turn_finalized = True
-            return
-        try:
-            from api.products import finalize_product_generation
-
-            finalize_product_generation(
-                product_id,
-                failed=failed,
-                error_type=error_type,
-                error_message=error_message,
-            )
-            # Only mark done on success: a later call (e.g. the turn-done path after a
-            # cancel-path exception) can still retry instead of stranding "generating".
-            product_turn_finalized = True
-        except Exception:
-            # Surface loudly — a swallowed failure here used to leave the product stuck
-            # in "generating" forever (now also healed by the resolver's timeout).
-            logger.warning("Failed to finalize product generation for %s", product_id, exc_info=True)
+        _product_turn_finalizer.finalize(
+            failed=failed,
+            error_type=error_type,
+            error_message=error_message,
+        )
 
     def _put_cancel(message: str = "Cancelled by user") -> None:
         _finalize_product_turn(failed=True)
