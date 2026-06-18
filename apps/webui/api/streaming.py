@@ -190,6 +190,7 @@ from api.streaming_title_refresh import (
     run_background_title_refresh as _run_background_title_refresh_impl,
     run_background_title_update as _run_background_title_update_impl,
 )
+from api.streaming_title_writeback import prepare_completed_turn_title as _prepare_completed_turn_title
 # Source-guard anchor: MiniMax title calls set reasoning_split in
 # streaming_title_generation while streaming.py keeps the public wrappers.
 from api.streaming_recovery import (
@@ -1641,25 +1642,16 @@ def _run_agent_streaming(
                     logger=logger,
                 )
 
-                # Stamp 'timestamp' on any messages that don't have one yet
-                _now = time.time()
-                for _m in s.messages:
-                    if isinstance(_m, dict) and not _m.get('timestamp') and not _m.get('_ts'):
-                        _m['timestamp'] = int(_now)
-                # Only auto-generate title when still default; preserves user renames
-                if s.title == 'Untitled' or s.title == 'New Chat' or not s.title:
-                    s.title = title_from(s.messages, s.title)
-                _looks_default = (s.title == 'Untitled' or s.title == 'New Chat' or not s.title)
-                _looks_provisional = _is_provisional_title(s.title, s.messages)
-                _invalid_existing_title = _looks_invalid_generated_title(s.title)
-                _should_bg_title = (
-                    (_looks_default or _looks_provisional or _invalid_existing_title)
-                    and (not getattr(s, 'llm_title_generated', False) or _invalid_existing_title)
+                _title_plan = _prepare_completed_turn_title(
+                    s,
+                    title_from_fn=title_from,
+                    is_provisional_title=_is_provisional_title,
+                    looks_invalid_generated_title=_looks_invalid_generated_title,
+                    first_exchange_snippets=_first_exchange_snippets,
                 )
-                _u0 = ''
-                _a0 = ''
-                if _should_bg_title:
-                    _u0, _a0 = _first_exchange_snippets(s.messages)
+                _should_bg_title = _title_plan.should_background_title
+                _u0 = _title_plan.user_text
+                _a0 = _title_plan.assistant_text
                 _token_usage = _apply_agent_token_usage_to_session(s, agent)
                 output_tokens = _token_usage.output_tokens
                 # Persist tool-call summaries even when the final message history only

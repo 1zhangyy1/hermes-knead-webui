@@ -17,22 +17,23 @@ HTML = (REPO_ROOT / "static" / "index.html").read_text()
 MESSAGES_JS = (REPO_ROOT / "static" / "messages.js").read_text()
 STREAMING_PY = (REPO_ROOT / "api" / "streaming.py").read_text()
 STREAMING_TITLE_REFRESH = (REPO_ROOT / "api" / "streaming_title_refresh.py").read_text()
+STREAMING_TITLE_WRITEBACK = (REPO_ROOT / "api" / "streaming_title_writeback.py").read_text()
 
 
 # ── streaming.py: title auto-generation condition ─────────────────────────
 
 class TestTitleAutoGenerationCondition(unittest.TestCase):
-    """Verify the guarded condition in streaming.py covers all default title cases."""
+    """Verify the guarded condition covers all default title cases."""
 
     def _titles_that_trigger(self):
         """Extract the condition from the source so tests stay in sync with code."""
-        # Find the if-condition that calls title_from
+        # Find the helper condition that decides whether a title is still default.
         m = re.search(
-            r'if\s+(s\.title\s*==.*?):\s*\n\s*s\.title\s*=\s*title_from',
-            STREAMING_PY,
+            r'return\s+(title\s*==.*?)\n',
+            STREAMING_TITLE_WRITEBACK,
             re.DOTALL,
         )
-        self.assertIsNotNone(m, "Could not find title auto-generation condition in streaming.py")
+        self.assertIsNotNone(m, "Could not find title default condition in streaming_title_writeback.py")
         return m.group(1)
 
     def test_untitled_in_condition(self):
@@ -45,7 +46,7 @@ class TestTitleAutoGenerationCondition(unittest.TestCase):
 
     def test_empty_title_guard_in_condition(self):
         cond = self._titles_that_trigger()
-        self.assertIn("not s.title", cond, "Empty/falsy title guard must be present (PR #333)")
+        self.assertIn("not title", cond, "Empty/falsy title guard must be present (PR #333)")
 
     def test_condition_logic_covers_all_defaults(self):
         """The condition uses OR so any one default title triggers generation."""
