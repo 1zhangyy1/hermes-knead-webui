@@ -3,9 +3,38 @@
 from __future__ import annotations
 
 import json
+import re
 
 
 TOOL_RESULT_SNIPPET_MAX = 4000
+
+
+def strip_xml_tool_calls(text: str) -> str:
+    """Strip XML-style function_calls blocks that providers may leak as text."""
+    if not text:
+        return text
+    s = str(text)
+    marker_text = s.lower()
+    if 'function_calls' not in marker_text and 'dsml' not in marker_text:
+        return text
+
+    dsml_prefix = r'(?:\s*｜\s*DSML\s*[｜|]\s*)?'
+    open_tag = rf'<{dsml_prefix}function_calls'
+    close_tag = rf'</{dsml_prefix}function_calls>'
+    s = re.sub(
+        rf'{open_tag}>.*?{close_tag}',
+        '',
+        s,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+    s = re.sub(
+        rf'{open_tag}(?:>|$).*$',
+        '',
+        s,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+    s = re.sub(r'<\s*｜\s*DSML\s*[｜|]\s*', '', s, flags=re.IGNORECASE)
+    return s.strip()
 
 
 def tool_result_snippet(raw, limit: int = TOOL_RESULT_SNIPPET_MAX) -> str:

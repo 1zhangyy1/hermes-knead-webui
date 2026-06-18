@@ -92,6 +92,7 @@ from api.streaming_tool_calls import (
     TOOL_RESULT_SNIPPET_MAX as _TOOL_RESULT_SNIPPET_MAX,
     extract_tool_calls_from_messages as _extract_tool_calls_from_messages,
     nearest_assistant_msg_idx as _nearest_assistant_msg_idx,
+    strip_xml_tool_calls as _strip_xml_tool_calls,
     tool_result_snippet as _tool_result_snippet,
     truncate_tool_args as _truncate_tool_args,
 )
@@ -338,46 +339,6 @@ def _mark_process_completion_consumed(process_registry, process_id: str) -> None
 
 def _drain_webui_process_notifications(session_id: str) -> list[str]:
     return _drain_webui_process_notifications_impl(session_id, logger=logger)
-
-
-def _strip_xml_tool_calls(text: str) -> str:
-    """Strip XML-style function_calls blocks that DeepSeek and similar models
-    emit in their raw response text.  These blocks are processed separately as
-    tool calls; leaving them in the assistant content causes them to render
-    visibly in the chat bubble.
-
-    Handles both complete blocks (<function_calls>…</function_calls>) and
-    partial/orphaned opening tags that may appear at the tail of a stream.
-    Also handles variants like <｜DSML｜function_calls> from DeepSeek on Bedrock.
-    """
-    if not text:
-        return text
-    s = str(text)
-    # Check if contains any function_calls/DSML marker (case-insensitive)
-    _lo = s.lower()
-    if 'function_calls' not in _lo and 'dsml' not in _lo:
-        return text
-    
-    _dsml_prefix = r'(?:\s*｜\s*DSML\s*[｜|]\s*)?'
-    open_tag = rf'<{_dsml_prefix}function_calls'
-    close_tag = rf'</{_dsml_prefix}function_calls>'
-    # Strip complete blocks for both <function_calls> and <｜DSML｜function_calls>.
-    s = re.sub(
-        rf'{open_tag}>.*?{close_tag}',
-        '',
-        s,
-        flags=re.IGNORECASE | re.DOTALL
-    )
-    # Strip orphaned/truncated opening tags, including missing ">" at stream tail.
-    s = re.sub(
-        rf'{open_tag}(?:>|$).*$',
-        '',
-        s,
-        flags=re.IGNORECASE | re.DOTALL
-    )
-    # Remove malformed DSML fragments like "<｜DSML |" that can leak in tokens.
-    s = re.sub(r'<\s*｜\s*DSML\s*[｜|]\s*', '', s, flags=re.IGNORECASE)
-    return s.strip()
 
 
 def _get_title_refresh_interval() -> int:
