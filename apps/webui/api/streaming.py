@@ -117,6 +117,7 @@ from api.streaming_agent_runtime import (
     refresh_cached_agent_primary_runtime_snapshot as _refresh_cached_agent_primary_runtime_snapshot,
     refresh_cached_agent_runtime as _refresh_cached_agent_runtime,
 )
+from api.streaming_agent_cache import refresh_cached_agent_for_turn as _refresh_cached_agent_for_turn
 from api.streaming_agent_config import (
     build_agent_kwargs as _build_agent_kwargs_impl,
     resolve_fallback_config as _resolve_fallback_config_impl,
@@ -1182,41 +1183,12 @@ def _run_agent_streaming(
                         agent = None
 
                 if agent is not None:
-                    # Refresh per-turn callbacks — these close over request-scoped
-                    # objects (put queue, cancel_event) that are new each request.
-                    agent.stream_delta_callback = _agent_kwargs.get('stream_delta_callback')
-                    agent.tool_progress_callback = _agent_kwargs.get('tool_progress_callback')
-                    if hasattr(agent, 'tool_start_callback'):
-                        agent.tool_start_callback = _agent_kwargs.get('tool_start_callback')
-                    if hasattr(agent, 'tool_complete_callback'):
-                        agent.tool_complete_callback = _agent_kwargs.get('tool_complete_callback')
-                    if hasattr(agent, 'status_callback'):
-                        agent.status_callback = _agent_kwargs.get('status_callback')
-                    if hasattr(agent, 'interim_assistant_callback'):
-                        agent.interim_assistant_callback = _agent_kwargs.get('interim_assistant_callback')
-                    if hasattr(agent, 'reasoning_callback'):
-                        agent.reasoning_callback = _agent_kwargs.get('reasoning_callback')
-                    if hasattr(agent, 'clarify_callback'):
-                        agent.clarify_callback = _agent_kwargs.get('clarify_callback')
-                    if _session_db is not None:
-                        # Close any previously held SessionDB connection before
-                        # replacing it. Without this, each streaming request creates
-                        # a new SessionDB whose WAL handles leak indefinitely,
-                        # eventually causing EMFILE crashes (#streaming FD leak).
-                        if hasattr(agent, '_session_db') and agent._session_db is not None:
-                            try:
-                                agent._session_db.close()
-                            except Exception:
-                                pass
-                        agent._session_db = _session_db
-                    if hasattr(agent, '_api_call_count'):
-                        agent._api_call_count = 0
-                    # Reset interrupt state from a prior cancel so the reused
-                    # agent does not think it is still interrupted.
-                    if hasattr(agent, '_interrupted'):
-                        agent._interrupted = False
-                    if hasattr(agent, '_interrupt_message'):
-                        agent._interrupt_message = None
+                    _refresh_cached_agent_for_turn(
+                        agent,
+                        _agent_kwargs,
+                        session_db=_session_db,
+                        logger=logger,
+                    )
                 else:
                     agent = _AIAgent(**_agent_kwargs)
                     # Register the new agent with the memory lifecycle so

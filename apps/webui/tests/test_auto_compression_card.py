@@ -42,6 +42,7 @@ def test_auto_compression_running_sse_is_emitted_from_agent_lifecycle_status():
     src = _read("api/streaming.py")
     block = _read("api/streaming_agent_status.py")
     agent_config = _read("api/streaming_agent_config.py")
+    agent_cache = _read("api/streaming_agent_cache.py")
 
     assert "put('compressing'" in block
     assert "'session_id': session_id" in block
@@ -54,7 +55,8 @@ def test_auto_compression_running_sse_is_emitted_from_agent_lifecycle_status():
     assert "'status_callback' in agent_params" in agent_config
     assert "kwargs['status_callback'] = status_callback" in agent_config
     assert "status_callback=_agent_status_callback" in src
-    assert "agent.status_callback = _agent_kwargs.get('status_callback')" in src
+    assert "_refresh_cached_agent_for_turn(" in src
+    assert "agent.status_callback = agent_kwargs.get('status_callback')" in agent_cache
 
 
 def test_auto_compression_completion_transition_is_preserved_after_running_listener():
