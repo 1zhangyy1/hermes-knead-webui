@@ -16,6 +16,13 @@ class AgentForTurn:
     agent_sig: str | None
 
 
+@dataclass
+class RegisteredAgentForTurn:
+    agent: Any
+    agent_sig: str | None
+    should_continue: bool
+
+
 def build_agent_cache_signature(
     *,
     resolved_model: str | None,
@@ -304,3 +311,71 @@ def get_agent_for_turn(
         logger=logger,
     )
     return AgentForTurn(agent=agent, agent_sig=agent_sig)
+
+
+def get_and_register_agent_for_turn(
+    *,
+    session_id: str,
+    stream_id: str,
+    session,
+    agent_factory,
+    agent_kwargs: dict[str, Any],
+    ephemeral: bool,
+    resolved_model: str | None,
+    resolved_api_key: str | None,
+    resolved_base_url: str | None,
+    resolved_provider: str | None,
+    runtime: dict[str, Any] | None,
+    max_iterations: Any,
+    max_tokens: Any,
+    fallback_resolved: Any,
+    toolsets: Any,
+    reasoning_config: Any,
+    profile_home: str | None,
+    session_db: Any | None,
+    agent_lock,
+    finalize_cancelled_turn_fn,
+    put_cancel_fn,
+    register_agent_instance_or_cancel_fn=None,
+    get_agent_for_turn_fn=get_agent_for_turn,
+    logger: Any | None = None,
+) -> RegisteredAgentForTurn:
+    """Return the turn agent and register it for cancel/interrupt propagation."""
+    agent_for_turn = get_agent_for_turn_fn(
+        session_id=session_id,
+        agent_factory=agent_factory,
+        agent_kwargs=agent_kwargs,
+        ephemeral=ephemeral,
+        resolved_model=resolved_model,
+        resolved_api_key=resolved_api_key,
+        resolved_base_url=resolved_base_url,
+        resolved_provider=resolved_provider,
+        runtime=runtime,
+        max_iterations=max_iterations,
+        max_tokens=max_tokens,
+        fallback_resolved=fallback_resolved,
+        toolsets=toolsets,
+        reasoning_config=reasoning_config,
+        profile_home=profile_home,
+        session_db=session_db,
+        logger=logger,
+    )
+    agent = agent_for_turn.agent
+    agent_sig = agent_for_turn.agent_sig
+    if register_agent_instance_or_cancel_fn is None:
+        from api.streaming_cancellation import register_agent_instance_or_cancel as register_agent_instance_or_cancel_fn
+    should_continue = register_agent_instance_or_cancel_fn(
+        stream_id,
+        agent,
+        session,
+        agent_lock=agent_lock,
+        finalize_cancelled_turn_fn=finalize_cancelled_turn_fn,
+        put_cancel_fn=put_cancel_fn,
+        ephemeral=ephemeral,
+        logger=logger,
+    )
+    return RegisteredAgentForTurn(
+        agent=agent,
+        agent_sig=agent_sig,
+        should_continue=bool(should_continue),
+    )
