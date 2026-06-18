@@ -50,12 +50,15 @@ def test_profile_runtime_env_includes_terminal_config_and_dotenv(tmp_path):
 
 def test_streaming_applies_profile_runtime_env_to_agent_run():
     streaming_src = (WEBUI_ROOT / "api" / "streaming.py").read_text(encoding="utf-8")
+    startup_src = (WEBUI_ROOT / "api" / "streaming_worker_startup.py").read_text(encoding="utf-8")
     helper_src = (WEBUI_ROOT / "api" / "streaming_runtime_helpers.py").read_text(encoding="utf-8")
 
     assert "get_profile_runtime_env" in helper_src
     assert "_profile_runtime = resolve_profile_runtime_fn(session)" in helper_src
     assert "_profile_runtime_env" in helper_src
-    assert "old_profile_env = _profile_activation.profile_env_snapshot" in streaming_src
+    assert "_startup = _prepare_streaming_worker_startup(" in streaming_src
+    assert "profile_env_snapshot=activation.profile_env_snapshot" in startup_src
+    assert "old_profile_env = _startup.profile_env_snapshot" in streaming_src
     assert "os.environ.update(profile_runtime_env)" in helper_src
 
 

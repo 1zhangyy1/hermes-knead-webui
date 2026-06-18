@@ -343,14 +343,16 @@ class TestApprovalKeyboardShortcut:
 class TestStreamingApprovalScoping:
 
     def test_gateway_notification_helper_imported(self):
-        src = read(REPO / "api/streaming.py")
+        src = read(REPO / "api/streaming_worker_startup.py")
         assert "from api.streaming_gateway_notifications import register_streaming_gateway_notifications" in src, \
-            "streaming.py should import the gateway notification helper"
+            "startup helper should import the gateway notification helper"
 
     def test_gateway_notifications_registered_once(self):
-        src = read(REPO / "api/streaming.py")
-        assert "_gateway_notifications = _register_streaming_gateway_notifications(" in src, \
-            "streaming.py should register gateway notifications through the helper"
+        streaming_src = read(REPO / "api/streaming.py")
+        startup_src = read(REPO / "api/streaming_worker_startup.py")
+        assert "_startup = _prepare_streaming_worker_startup(" in streaming_src
+        assert "gateway_notifications = register_streaming_gateway_notifications_fn(" in startup_src, \
+            "startup helper should register gateway notifications through the helper"
 
     def test_finally_unregisters_gateway_notifications(self):
         src = read(REPO / "api/streaming.py")
