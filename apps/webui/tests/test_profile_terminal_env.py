@@ -3,6 +3,8 @@ from pathlib import Path
 
 import yaml
 
+WEBUI_ROOT = Path(__file__).resolve().parent.parent
+
 
 def test_profile_runtime_env_includes_terminal_config_and_dotenv(tmp_path):
     from api.profiles import get_profile_runtime_env
@@ -47,18 +49,20 @@ def test_profile_runtime_env_includes_terminal_config_and_dotenv(tmp_path):
 
 
 def test_streaming_applies_profile_runtime_env_to_agent_run():
-    src = Path("api/streaming.py").read_text(encoding="utf-8")
+    streaming_src = (WEBUI_ROOT / "api" / "streaming.py").read_text(encoding="utf-8")
+    helper_src = (WEBUI_ROOT / "api" / "streaming_runtime_helpers.py").read_text(encoding="utf-8")
 
-    assert "get_profile_runtime_env" in src
-    assert "_profile_runtime_env" in src
-    assert "old_profile_env" in src
-    assert "os.environ.update(_profile_runtime_env)" in src
+    assert "get_profile_runtime_env" in helper_src
+    assert "_profile_runtime = _resolve_streaming_profile_runtime(s)" in streaming_src
+    assert "_profile_runtime_env" in streaming_src
+    assert "old_profile_env" in streaming_src
+    assert "os.environ.update(_profile_runtime_env)" in streaming_src
 
 
 def test_streaming_thread_env_allows_profile_terminal_cwd_override():
     from api.streaming_runtime_helpers import build_agent_thread_env
 
-    src = Path("api/streaming.py").read_text(encoding="utf-8")
+    src = (WEBUI_ROOT / "api" / "streaming.py").read_text(encoding="utf-8")
 
     assert "_thread_env = _build_agent_thread_env(" in src
     assert "_set_thread_env(**_thread_env)" in src

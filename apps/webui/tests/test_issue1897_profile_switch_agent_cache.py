@@ -12,6 +12,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 STREAMING_PY = (REPO / "api" / "streaming.py").read_text(encoding="utf-8")
 STREAMING_AGENT_CACHE_PY = (REPO / "api" / "streaming_agent_cache.py").read_text(encoding="utf-8")
+STREAMING_RUNTIME_HELPERS_PY = (REPO / "api" / "streaming_runtime_helpers.py").read_text(encoding="utf-8")
 
 
 def _signature_block() -> str:
@@ -234,9 +235,10 @@ def test_cache_signature_includes_profile_home():
 
 
 def test_profile_home_resolved_before_cache_signature():
-    profile_home_assignment = STREAMING_PY.index("_profile_home = str(_profile_home_path)")
+    profile_runtime_resolve = STREAMING_PY.index("_profile_runtime = _resolve_streaming_profile_runtime(s)")
     sig_start = STREAMING_PY.index("_build_agent_cache_signature(")
-    assert profile_home_assignment < sig_start
+    assert profile_runtime_resolve < sig_start
+    assert "_profile_home = str(_profile_home_path)" in STREAMING_RUNTIME_HELPERS_PY
 
 
 def test_signature_uses_profile_home_with_fallback():

@@ -225,6 +225,7 @@ from api.streaming_runtime_helpers import (
     discover_mcp_tools_for_profile as _discover_mcp_tools_for_profile,
     has_new_assistant_reply as _has_new_assistant_reply_impl,
     restore_agent_process_env as _restore_agent_process_env,
+    resolve_streaming_profile_runtime as _resolve_streaming_profile_runtime,
     webui_clarify_callback as _webui_clarify_callback_impl,
     webui_ephemeral_system_prompt as _webui_ephemeral_system_prompt_impl,
 )
@@ -833,36 +834,11 @@ def _run_agent_streaming(
         # (stamped at new_session() time from the client's S.activeProfile) so that
         # two concurrent tabs on different profiles don't clobber each other via the
         # process-level active-profile global.  Falls back gracefully.
-        try:
-            from api.profiles import (
-                patch_skill_home_modules,
-                get_hermes_home_for_profile,
-                get_profile_runtime_env,
-            )
-            _profile_home_path = get_hermes_home_for_profile(getattr(s, 'profile', None))
-            _profile_home = str(_profile_home_path)
-            _profile_runtime_env = get_profile_runtime_env(_profile_home_path)
-        except ImportError:
-            _profile_home = os.environ.get('HERMES_HOME', '')
-            _profile_runtime_env = {}
-            patch_skill_home_modules = None
-        
-        # Capture the resolved profile name now, while profile context is
-        # reliable. Used in the compression migration block to stamp s.profile
-        # on the continuation session. We resolve it here rather than calling
-        # get_active_profile_name() at compression time because that function
-        # reads thread-local storage (_tls.profile) set by set_request_profile()
-        # on the HTTP handler thread. The streaming thread is a separate
-        # threading.Thread and does not inherit TLS. At compression time,
-        # get_active_profile_name() would fall back to the process-global
-        # _active_profile, which may belong to a different concurrent tab.
-        _resolved_profile_name = getattr(s, 'profile', None)
-        if not _resolved_profile_name:
-            try:
-                from api.profiles import get_active_profile_name
-                _resolved_profile_name = get_active_profile_name()
-            except Exception:
-                _resolved_profile_name = None
+        _profile_runtime = _resolve_streaming_profile_runtime(s)
+        _profile_home = _profile_runtime.profile_home
+        _profile_runtime_env = _profile_runtime.profile_runtime_env
+        _resolved_profile_name = _profile_runtime.resolved_profile_name
+        patch_skill_home_modules = _profile_runtime.patch_skill_home_modules
         
         _thread_env = _build_agent_thread_env(
             _profile_runtime_env,
