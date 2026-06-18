@@ -34,7 +34,6 @@ from api.helpers import redact_session_data, _redact_text
 from api.compression_anchor import visible_messages_for_anchor
 from api.metering import meter
 from api.run_journal import RunJournalWriter
-from api.turn_journal import append_turn_journal_event_for_stream
 from api.streaming_errors import (
     CANCEL_MARKER_PATTERNS as _CANCEL_MARKER_PATTERNS,
     cancelled_turn_content as _cancelled_turn_content_impl,
@@ -123,6 +122,12 @@ from api.streaming_process_notifications import (
     mark_process_completion_consumed as _mark_process_completion_consumed_impl,
 )
 from api.streaming_product_turn import ProductTurnFinalizer as _ProductTurnFinalizer
+from api.streaming_turn_journal import (
+    append_assistant_started_turn_event as _append_assistant_started_turn_event,
+    append_completed_turn_event as _append_completed_turn_event,
+    append_interrupted_turn_event as _append_interrupted_turn_event,
+    append_worker_started_turn_event as _append_worker_started_turn_event,
+)
 from api.streaming_titles import (
     LEGACY_WORKSPACE_PREFIX_ANY_RE as _LEGACY_WORKSPACE_PREFIX_ANY_RE,
     LEGACY_WORKSPACE_PREFIX_RE as _LEGACY_WORKSPACE_PREFIX_RE,
@@ -696,14 +701,7 @@ def _run_agent_streaming(
         run_journal = None
         logger.debug("Failed to initialize run journal for stream %s", stream_id, exc_info=True)
     if not ephemeral:
-        try:
-            append_turn_journal_event_for_stream(
-                session_id,
-                stream_id,
-                {"event": "worker_started", "created_at": time.time()},
-            )
-        except Exception:
-            logger.debug("Failed to append worker_started turn journal event", exc_info=True)
+        _append_worker_started_turn_event(session_id, stream_id, logger=logger)
     s = None
     _rt = {}
     old_cwd = None
@@ -1427,18 +1425,7 @@ def _run_agent_streaming(
                 else:
                     with _agent_lock:
                         _finalize_cancelled_turn(s, ephemeral=False)
-                        try:
-                            append_turn_journal_event_for_stream(
-                                s.session_id,
-                                stream_id,
-                                {
-                                    "event": "interrupted",
-                                    "created_at": time.time(),
-                                    "reason": "cancelled",
-                                },
-                            )
-                        except Exception:
-                            logger.debug("Failed to append cancelled turn journal event", exc_info=True)
+                        _append_interrupted_turn_event(s.session_id, stream_id, logger=logger)
                 # Emits put('cancel', ...) through _put_cancel() for the
                 # source-guarded post-run cancel path.
                 _put_cancel()
@@ -1471,18 +1458,7 @@ def _run_agent_streaming(
             if cancel_event.is_set():
                 with _agent_lock:
                     _finalize_cancelled_turn(s, ephemeral=False)
-                    try:
-                        append_turn_journal_event_for_stream(
-                            s.session_id,
-                            stream_id,
-                            {
-                                "event": "interrupted",
-                                "created_at": time.time(),
-                                "reason": "cancelled",
-                            },
-                        )
-                    except Exception:
-                        logger.debug("Failed to append cancelled turn journal event", exc_info=True)
+                    _append_interrupted_turn_event(s.session_id, stream_id, logger=logger)
                 _put_cancel()
                 return
             with _agent_lock:
@@ -1497,18 +1473,7 @@ def _run_agent_streaming(
                 _result_messages = result.get('messages') or _previous_context_messages
                 if cancel_event.is_set():
                     _finalize_cancelled_turn(s, ephemeral=False)
-                    try:
-                        append_turn_journal_event_for_stream(
-                            s.session_id,
-                            stream_id,
-                            {
-                                "event": "interrupted",
-                                "created_at": time.time(),
-                                "reason": "cancelled",
-                            },
-                        )
-                    except Exception:
-                        logger.debug("Failed to append cancelled turn journal event", exc_info=True)
+                    _append_interrupted_turn_event(s.session_id, stream_id, logger=logger)
                     _put_cancel()
                     return
                 _next_context_messages = _restore_reasoning_metadata(
@@ -1561,18 +1526,7 @@ def _run_agent_streaming(
                     if cancel_event.is_set():
                         _finalize_cancelled_turn(s, ephemeral=ephemeral)
                         if not ephemeral:
-                            try:
-                                append_turn_journal_event_for_stream(
-                                    s.session_id,
-                                    stream_id,
-                                    {
-                                        "event": "interrupted",
-                                        "created_at": time.time(),
-                                        "reason": "cancelled",
-                                    },
-                                )
-                            except Exception:
-                                logger.debug("Failed to append cancelled turn journal event", exc_info=True)
+                            _append_interrupted_turn_event(s.session_id, stream_id, logger=logger)
                         _put_cancel()
                         return
                     _last_err = getattr(agent, '_last_error', None) or result.get('error') or ''
@@ -2025,75 +1979,25 @@ def _run_agent_streaming(
                         # Better to leave context_length=0 than crash the save.
                         pass
                 if not ephemeral and s.messages:
-                    _latest_assistant_idx = next(
-                        (idx for idx in range(len(s.messages) - 1, -1, -1)
-                         if isinstance(s.messages[idx], dict) and s.messages[idx].get('role') == 'assistant'),
-                        None,
+                    _append_assistant_started_turn_event(
+                        s.session_id,
+                        stream_id,
+                        s.messages,
+                        logger=logger,
                     )
-                    if _latest_assistant_idx is not None:
-                        _latest_assistant = s.messages[_latest_assistant_idx]
-                        try:
-                            append_turn_journal_event_for_stream(
-                                s.session_id,
-                                stream_id,
-                                {
-                                    "event": "assistant_started",
-                                    "created_at": float(_latest_assistant.get('timestamp') or time.time()),
-                                    "assistant_message_index": _latest_assistant_idx,
-                                },
-                            )
-                        except Exception:
-                            logger.debug("Failed to append assistant_started turn journal event", exc_info=True)
                 if cancel_event.is_set():
                     _finalize_cancelled_turn(s, ephemeral=False)
-                    try:
-                        append_turn_journal_event_for_stream(
-                            s.session_id,
-                            stream_id,
-                            {
-                                "event": "interrupted",
-                                "created_at": time.time(),
-                                "reason": "cancelled",
-                            },
-                        )
-                    except Exception:
-                        logger.debug("Failed to append cancelled turn journal event", exc_info=True)
+                    _append_interrupted_turn_event(s.session_id, stream_id, logger=logger)
                     _put_cancel()
                     return
                 s.save()
                 if cancel_event.is_set():
                     _finalize_cancelled_turn(s, ephemeral=False)
-                    try:
-                        append_turn_journal_event_for_stream(
-                            s.session_id,
-                            stream_id,
-                            {
-                                "event": "interrupted",
-                                "created_at": time.time(),
-                                "reason": "cancelled",
-                            },
-                        )
-                    except Exception:
-                        logger.debug("Failed to append cancelled turn journal event", exc_info=True)
+                    _append_interrupted_turn_event(s.session_id, stream_id, logger=logger)
                     _put_cancel()
                     return
                 if not ephemeral:
-                    try:
-                        append_turn_journal_event_for_stream(
-                            s.session_id,
-                            stream_id,
-                            {
-                                "event": "completed",
-                                "created_at": time.time(),
-                                "assistant_message_index": next(
-                                    (idx for idx in range(len(s.messages) - 1, -1, -1)
-                                     if isinstance(s.messages[idx], dict) and s.messages[idx].get('role') == 'assistant'),
-                                    None,
-                                ),
-                            },
-                        )
-                    except Exception:
-                        logger.debug("Failed to append completed turn journal event", exc_info=True)
+                    _append_completed_turn_event(s.session_id, stream_id, s.messages, logger=logger)
                 if not ephemeral:
                     # ── Memory-provider lifecycle: mark turn completed (CLI parity) ──
                     # Completed, non-ephemeral turns are marked dirty/uncommitted so
@@ -2351,18 +2255,7 @@ def _run_agent_streaming(
                 with _lock_ctx:
                     _finalize_cancelled_turn(s, ephemeral=ephemeral)
                     if not ephemeral:
-                        try:
-                            append_turn_journal_event_for_stream(
-                                s.session_id,
-                                stream_id,
-                                {
-                                    "event": "interrupted",
-                                    "created_at": time.time(),
-                                    "reason": "cancelled",
-                                },
-                            )
-                        except Exception:
-                            logger.debug("Failed to append cancelled turn journal event", exc_info=True)
+                        _append_interrupted_turn_event(s.session_id, stream_id, logger=logger)
             _put_cancel()
             return
         _exc_is_quota = _classification['type'] == 'quota_exhausted'
@@ -2522,18 +2415,12 @@ def _run_agent_streaming(
                 except Exception:
                     pass
                 if not ephemeral:
-                    try:
-                        append_turn_journal_event_for_stream(
-                            s.session_id,
-                            stream_id,
-                            {
-                                "event": "interrupted",
-                                "created_at": time.time(),
-                                "reason": _exc_type,
-                            },
-                        )
-                    except Exception:
-                        logger.debug("Failed to append interrupted turn journal event", exc_info=True)
+                    _append_interrupted_turn_event(
+                        s.session_id,
+                        stream_id,
+                        reason=_exc_type,
+                        logger=logger,
+                    )
         _finalize_product_turn(
             failed=True,
             error_type=_error_payload.get('type') or _exc_type,
