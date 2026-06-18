@@ -1,6 +1,16 @@
 """Configuration helpers for WebUI streaming agent construction."""
 
+from dataclasses import dataclass
 from pathlib import Path
+
+
+@dataclass
+class AgentConstructorSettings:
+    agent_params: set
+    fallback_resolved: object
+    max_iterations: int | None
+    max_tokens: int | None
+    reasoning_config: object
 
 
 def initialize_session_db(*, session_db_factory=None, warning_fn=print):
@@ -189,6 +199,38 @@ def resolve_reasoning_config(_cfg, parse_reasoning_effort):
         return parse_reasoning_effort(_effort_raw)
     except Exception:
         return None
+
+
+def resolve_agent_constructor_settings(
+    agent_cls,
+    cfg,
+    *,
+    signature_fn=None,
+    parse_reasoning_effort_fn=None,
+) -> AgentConstructorSettings:
+    """Resolve guarded AIAgent constructor params and config-derived options."""
+    if signature_fn is None:
+        import inspect
+        signature_fn = inspect.signature
+
+    agent_params = set(signature_fn(agent_cls.__init__).parameters)
+    fallback_resolved = resolve_fallback_config(cfg)
+    max_iterations = resolve_max_iterations_config(cfg)
+    max_tokens = resolve_max_tokens_config(cfg)
+    try:
+        if parse_reasoning_effort_fn is None:
+            from api.config import parse_reasoning_effort as parse_reasoning_effort_fn
+        reasoning_config = resolve_reasoning_config(cfg, parse_reasoning_effort_fn)
+    except Exception:
+        reasoning_config = None
+
+    return AgentConstructorSettings(
+        agent_params=agent_params,
+        fallback_resolved=fallback_resolved,
+        max_iterations=max_iterations,
+        max_tokens=max_tokens,
+        reasoning_config=reasoning_config,
+    )
 
 
 def build_agent_kwargs(

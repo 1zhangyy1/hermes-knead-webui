@@ -1,7 +1,9 @@
 from api.streaming_agent_config import (
+    AgentConstructorSettings,
     build_agent_kwargs,
     initialize_session_db,
     load_agent_config_and_toolsets,
+    resolve_agent_constructor_settings,
     resolve_agent_runtime_connection,
     resolve_fallback_config,
     resolve_max_iterations_config,
@@ -173,6 +175,51 @@ def test_load_agent_config_and_toolsets_warns_and_keeps_config_toolsets_on_overr
             True,
         )
     ]
+
+
+class _AgentForConstructorSettings:
+    def __init__(self, max_iterations=None, max_tokens=None, reasoning_config=None):
+        pass
+
+
+def test_resolve_agent_constructor_settings_collects_signature_and_config_values():
+    cfg = {
+        "fallback_model": {"model": "fallback", "provider": "openai"},
+        "agent": {
+            "max_turns": "8",
+            "max_tokens": "2048",
+            "reasoning_effort": "high",
+        },
+    }
+
+    settings = resolve_agent_constructor_settings(
+        _AgentForConstructorSettings,
+        cfg,
+        parse_reasoning_effort_fn=lambda value: {"effort": value},
+    )
+
+    assert isinstance(settings, AgentConstructorSettings)
+    assert {"self", "max_iterations", "max_tokens", "reasoning_config"}.issubset(settings.agent_params)
+    assert settings.fallback_resolved == {
+        "model": "fallback",
+        "provider": "openai",
+        "base_url": None,
+        "api_key": None,
+        "key_env": None,
+    }
+    assert settings.max_iterations == 8
+    assert settings.max_tokens == 2048
+    assert settings.reasoning_config == {"effort": "high"}
+
+
+def test_resolve_agent_constructor_settings_tolerates_reasoning_parser_failure():
+    settings = resolve_agent_constructor_settings(
+        _AgentForConstructorSettings,
+        {"agent": {"reasoning_effort": "high"}},
+        parse_reasoning_effort_fn=lambda _value: (_ for _ in ()).throw(RuntimeError("bad parser")),
+    )
+
+    assert settings.reasoning_config is None
 
 
 def test_build_agent_kwargs_includes_supported_optional_runtime_fields():

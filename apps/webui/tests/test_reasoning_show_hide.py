@@ -356,13 +356,13 @@ class TestStreamingReasoningWiring:
     on the next session)."""
 
     def test_streaming_reads_reasoning_effort_from_config(self):
-        src = read('api/streaming.py')
+        src = read('api/streaming_agent_config.py')
         assert 'parse_reasoning_effort' in src, (
-            "api/streaming.py must import parse_reasoning_effort to translate "
+            "api/streaming_agent_config.py must import parse_reasoning_effort to translate "
             "config.yaml agent.reasoning_effort into AIAgent reasoning_config"
         )
-        assert "reasoning_config" in src and "'reasoning_config' in _agent_params" in src, (
-            "api/streaming.py must guard the reasoning_config kwarg with "
+        assert "reasoning_config" in src and "'reasoning_config' in agent_params" in src, (
+            "api/streaming_agent_config.py must guard the reasoning_config kwarg with "
             "inspect.signature so older hermes-agent builds don't TypeError"
         )
 
