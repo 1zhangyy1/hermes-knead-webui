@@ -468,6 +468,10 @@ def test_materialize_helper_called_immediately_before_error_path_clears():
         'api',
         'streaming_silent_failure.py',
     ).read_text(encoding='utf-8')
+    exception_src = Path(__file__).parent.parent.joinpath(
+        'api',
+        'streaming_exception_handling.py',
+    ).read_text(encoding='utf-8')
 
     assert 'session.pending_user_message = None' in writeback_src
 
@@ -479,11 +483,13 @@ def test_materialize_helper_called_immediately_before_error_path_clears():
     assert "materialize_pending_user_turn=materialize_pending_user_turn" in silent_failure_src
     assert "persist_streaming_error_message(" in writeback_src
 
-    outer_idx = src.find("_emit_and_persist_exception_streaming_error(")
-    outer_return_idx = src.find("):", outer_idx)
+    outer_idx = src.find("_handle_streaming_exception(")
+    outer_return_idx = src.find("if _exception_result.self_healed:", outer_idx)
     outer_block = src[outer_idx:outer_return_idx]
     assert "persist_error_message_fn(" in writeback_src
     assert "materialize_pending_user_turn=_materialize_pending_user_turn_before_error" in outer_block
+    assert "emit_and_persist_exception_streaming_error_fn(" in exception_src
+    assert "materialize_pending_user_turn=materialize_pending_user_turn" in exception_src
 
 
 

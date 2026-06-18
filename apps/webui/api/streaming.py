@@ -7,7 +7,6 @@ import logging
 import os
 import threading
 import time
-import traceback
 from pathlib import Path
 from typing import Optional
 
@@ -36,7 +35,6 @@ from api.streaming_errors import (
     cancelled_turn_hint as _cancelled_turn_hint_impl,
     classify_provider_error as _classify_provider_error_impl,
     is_quota_error_text as _is_quota_error_text_impl,
-    exception_error_copy as _exception_error_copy,
     preferred_agent_display_name as _preferred_agent_display_name_impl,
     provider_error_payload as _provider_error_payload_impl,
     sanitize_provider_error_text as _sanitize_provider_error_text,
@@ -45,7 +43,6 @@ from api.streaming_cancellation import (
     cancel_stream_request as _cancel_stream_request,
     cleanup_ephemeral_cancelled_turn as _cleanup_ephemeral_cancelled_turn_impl,
     finalize_cancelled_turn as _finalize_cancelled_turn_impl,
-    handle_exception_cancel as _handle_exception_cancel,
     handle_post_run_cancel as _handle_post_run_cancel,
     handle_preflight_cancel as _handle_preflight_cancel,
     persist_cancelled_turn as _persist_cancelled_turn_impl,
@@ -67,9 +64,6 @@ from api.streaming_gateway import (
 )
 from api.streaming_gateway_notifications import register_streaming_gateway_notifications as _register_streaming_gateway_notifications
 from api.streaming_goal import run_post_turn_goal_hook as _run_post_turn_goal_hook
-from api.streaming_error_writeback import (
-    emit_and_persist_exception_streaming_error as _emit_and_persist_exception_streaming_error,
-)
 from api.streaming_ephemeral import handle_completed_conversation_post_run as _handle_completed_conversation_post_run
 from api.streaming_attachments import (
     IMAGE_MAGIC as _IMAGE_MAGIC,
@@ -202,7 +196,6 @@ from api.streaming_title_refresh import (
 # streaming_title_generation while streaming.py keeps the public wrappers.
 from api.streaming_recovery import (
     attempt_credential_self_heal as _attempt_credential_self_heal_impl,
-    handle_exception_credential_self_heal as _handle_exception_credential_self_heal,
     last_resort_sync_from_core as _last_resort_sync_from_core_impl,
     materialize_pending_user_turn_before_error as _materialize_pending_user_turn_before_error_impl,
 )
@@ -221,6 +214,7 @@ from api.streaming_runtime_prompt import (
     configure_agent_runtime_prompt as _configure_agent_runtime_prompt,
 )
 from api.streaming_compression import apply_streaming_context_compression_side_effects as _apply_streaming_context_compression_side_effects
+from api.streaming_exception_handling import handle_streaming_exception as _handle_streaming_exception
 from api.streaming_silent_failure import handle_silent_failure_after_merge as _handle_silent_failure_after_merge
 
 # Global lock for os.environ writes. Per-session locks (_agent_lock) prevent
@@ -1093,101 +1087,46 @@ def _run_agent_streaming(
             )
 
     except Exception as e:
-        print('[webui] stream error:\n' + traceback.format_exc(), flush=True)
-        err_str = _sanitize_provider_error_text(str(e))
-        _exc_lower = err_str.lower()
-        _classification = _classify_provider_error(err_str, e)
-        if _handle_exception_cancel(
-            cancel_event,
-            s,
-            stream_id,
-            _agent_lock,
-            _finalize_cancelled_turn,
-            _put_cancel,
-            ephemeral=ephemeral,
-            checkpoint_stop=_checkpoint_stop,
-            checkpoint_thread=_ckpt_thread,
-            logger=logger,
-        ):
-            return
-        _exc_is_quota = _classification['type'] == 'quota_exhausted'
-        # Exception quota text still includes: 'more credits' in _exc_lower, 'can only afford' in _exc_lower, 'fewer max_tokens' in _exc_lower.
-        # Rate-limit detection remains guarded as: (not _exc_is_quota).
-        _exc_is_rate_limit = (_classification['type'] == 'rate_limit') and (not _exc_is_quota)
-        _exc_is_auth = _classification['type'] == 'auth_mismatch'  # detects '401' and 'unauthorized' via _classify_provider_error.
-        _exc_is_not_found = _classification['type'] == 'model_not_found'  # detects '404', 'not found', 'does not exist', and 'invalid model'.
-        _exc_is_cancelled = _classification['type'] == 'cancelled'
-        _exc_is_interrupted = _classification['type'] == 'interrupted'
-
-        if _exc_is_auth:
-            if not _self_healed:
-                # ── Credential self-heal on 401 (#1401) ──
-                _exception_self_heal = _handle_exception_credential_self_heal(
-                    provider_id=resolved_provider or '',
-                    session_id=session_id,
-                    agent_lock=_agent_lock,
-                    agent_factory=_AIAgent,
-                    agent_kwargs=dict(_agent_kwargs) if '_agent_kwargs' in dir() else {},
-                    agent_params=_agent_params,
-                    resolved_model=resolved_model,
-                    resolved_provider=resolved_provider,
-                    resolved_base_url=resolved_base_url,
-                    custom_provider_resolver=resolve_custom_provider_connection,
-                    stream_id=stream_id,
-                    agent_instances=AGENT_INSTANCES,
-                    streams_lock=STREAMS_LOCK,
-                    ephemeral=ephemeral,
-                    agent_sig=_agent_sig,
-                    user_message=user_message,
-                    system_message=workspace_system_msg,
-                    previous_context_messages=_previous_context_messages,
-                    config=_cfg,
-                    persist_user_message=msg_text,
-                    sanitize_messages_for_api=_sanitize_messages_for_api,
-                    output_bridge=_output_bridge,
-                    session=s,
-                    msg_text=msg_text,
-                    checkpoint_stop=_checkpoint_stop,
-                    checkpoint_thread=_ckpt_thread,
-                    stop_checkpoint_thread=_stop_checkpoint_thread,
-                    stream_writeback_is_current=_stream_writeback_is_current,
-                    apply_agent_result_to_session=_apply_agent_result_to_session,
-                    logger=logger,
-                )
-                if _exception_self_heal.self_healed:
-                    _self_healed = True
-                    _rt = _exception_self_heal.runtime
-                    resolved_api_key = _exception_self_heal.resolved_api_key
-                    resolved_provider = _exception_self_heal.resolved_provider
-                    resolved_base_url = _exception_self_heal.resolved_base_url
-                    _agent_kwargs = _exception_self_heal.agent_kwargs
-                if _exception_self_heal.should_return:
-                    return  # skip error emission
-
-        _exc_label, _exc_type, _exc_hint = _exception_error_copy(_classification)
-
-        if not _emit_and_persist_exception_streaming_error(
-            s,
-            err_str=err_str,
-            label=_exc_label,
-            error_type=_exc_type,
-            hint=_exc_hint,
+        _exception_result = _handle_streaming_exception(
+            e,
+            runtime_vars=locals(),
+            self_healed=locals().get('_self_healed', False),
+            session=s,
             stream_id=stream_id,
             session_id=session_id,
-            ephemeral=ephemeral,
+            cancel_event=cancel_event,
             agent_lock=_agent_lock,
             checkpoint_stop=_checkpoint_stop,
             checkpoint_thread=_ckpt_thread,
-            stop_checkpoint_thread=_stop_checkpoint_thread,
-            stream_writeback_is_current=_stream_writeback_is_current,
+            ephemeral=ephemeral,
+            logger=logger,
+            sanitize_provider_error_text=_sanitize_provider_error_text,
+            classify_provider_error=_classify_provider_error,
+            finalize_cancelled_turn=_finalize_cancelled_turn,
+            put_cancel=_put_cancel,
             provider_error_payload=_provider_error_payload,
             finalize_product_turn=_finalize_product_turn,
             put=put,
             append_interrupted_turn_event=_append_interrupted_turn_event,
             materialize_pending_user_turn=_materialize_pending_user_turn_before_error,
-            logger=logger,
-        ):
-            return
+            stop_checkpoint_thread=_stop_checkpoint_thread,
+            stream_writeback_is_current=_stream_writeback_is_current,
+            custom_provider_resolver=resolve_custom_provider_connection,
+            agent_instances=AGENT_INSTANCES,
+            streams_lock=STREAMS_LOCK,
+            sanitize_messages_for_api=_sanitize_messages_for_api,
+            apply_agent_result_to_session=_apply_agent_result_to_session,
+            agent_factory=locals().get('_AIAgent'),
+        )
+        if _exception_result.self_healed:
+            _self_healed = True
+            _rt = _exception_result.runtime
+            resolved_api_key = _exception_result.resolved_api_key
+            resolved_provider = _exception_result.resolved_provider
+            resolved_base_url = _exception_result.resolved_base_url
+            _agent_kwargs = _exception_result.agent_kwargs
+        if _exception_result.should_return:
+            return  # skip error emission or stale exception writeback
     finally:
         _finalize_streaming_worker_exit(
             session=s,

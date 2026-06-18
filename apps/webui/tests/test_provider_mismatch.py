@@ -40,25 +40,24 @@ class TestStreamingAuthErrorDetection:
 
     def test_auth_mismatch_type_defined_in_streaming(self):
         """'auth_mismatch' type must be emitted for auth errors."""
-        src = _read("api/streaming.py")
+        src = _read("api/streaming_exception_handling.py")
         assert "auth_mismatch" in src, (
-            "auth_mismatch type not found in streaming.py — "
+            "auth_mismatch type not found in streaming exception handling — "
             "401/auth errors will not be surfaced with a helpful message"
         )
 
     def test_is_auth_error_flag_defined(self):
         """auth error variable must exist in the error handler (exception path and silent-failure path)."""
-        src = _read("api/streaming.py")
-        # Variable renamed to _exc_is_auth in exception path, _is_auth in silent-failure path
-        assert "_exc_is_auth" in src or "_is_auth" in src, (
-            "auth error flag not found in streaming.py"
+        exception_src = _read("api/streaming_exception_handling.py")
+        silent_src = _read("api/streaming_silent_failure.py")
+        assert "_exc_is_auth" in exception_src and "silent_error.is_auth" in silent_src, (
+            "auth error flag not found in streaming exception/silent-failure handling"
         )
 
     def test_auth_error_detects_401(self):
         """'401' must be part of the auth error detection logic."""
-        src = _read("api/streaming.py")
+        src = _read("api/streaming_exception_handling.py")
         # Find the is_auth_error block
-        # Variable renamed to _exc_is_auth in exception path, _is_auth in silent-failure path
         idx = src.find("_exc_is_auth")
         assert idx != -1
         block = src[idx:idx + 500]
@@ -68,8 +67,7 @@ class TestStreamingAuthErrorDetection:
 
     def test_auth_error_detects_unauthorized(self):
         """'unauthorized' must be part of the auth error detection logic."""
-        src = _read("api/streaming.py")
-        # Variable renamed to _exc_is_auth in exception path
+        src = _read("api/streaming_exception_handling.py")
         idx = src.find("_exc_is_auth")
         block = src[idx:idx + 500]
         assert "unauthorized" in block.lower(), (
@@ -89,13 +87,12 @@ class TestStreamingAuthErrorDetection:
 
     def test_auth_error_does_not_catch_rate_limit(self):
         """Rate limit errors must not be reclassified as auth_mismatch."""
-        src = _read("api/streaming.py")
-        # Variables renamed: _exc_is_rate_limit / _exc_is_auth in exception path
+        src = _read("api/streaming_exception_handling.py")
         # Quota check comes first (before rate limit), then rate limit, then auth
         rl_idx = src.find("_exc_is_rate_limit")
         ae_idx = src.find("_exc_is_auth")
-        assert rl_idx != -1, "_exc_is_rate_limit not found in streaming.py exception path"
-        assert ae_idx != -1, "_exc_is_auth not found in streaming.py exception path"
+        assert rl_idx != -1, "_exc_is_rate_limit not found in streaming exception path"
+        assert ae_idx != -1, "_exc_is_auth not found in streaming exception path"
         assert rl_idx < ae_idx, (
             "_exc_is_rate_limit check should precede _exc_is_auth — "
             "rate limit errors must not be mistaken for auth errors"

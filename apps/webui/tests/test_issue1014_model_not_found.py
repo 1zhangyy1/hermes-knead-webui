@@ -27,22 +27,22 @@ class TestStreamingModelNotFoundDetection:
 
     def test_model_not_found_type_defined_in_streaming(self):
         """'model_not_found' type must be emitted for 404 errors."""
-        src = _read("api/streaming.py")
+        src = _read("api/streaming_exception_handling.py")
         assert "model_not_found" in src, (
-            "model_not_found type not found in streaming.py — "
+            "model_not_found type not found in streaming exception handling — "
             "404 errors will not be surfaced with a helpful message"
         )
 
     def test_is_not_found_flag_defined(self):
         """_exc_is_not_found variable must exist in the exception handler."""
-        src = _read("api/streaming.py")
+        src = _read("api/streaming_exception_handling.py")
         assert "_exc_is_not_found" in src, (
-            "_exc_is_not_found flag not found in streaming.py"
+            "_exc_is_not_found flag not found in streaming exception handling"
         )
 
     def test_not_found_detects_404(self):
         """'404' must be part of the model-not-found detection logic."""
-        src = _read("api/streaming.py")
+        src = _read("api/streaming_exception_handling.py")
         idx = src.find("_exc_is_not_found")
         assert idx != -1, "_exc_is_not_found not found"
         block = src[idx:idx + 600]
@@ -52,7 +52,7 @@ class TestStreamingModelNotFoundDetection:
 
     def test_not_found_detects_not_found_string(self):
         """'not found' must be part of the detection logic."""
-        src = _read("api/streaming.py")
+        src = _read("api/streaming_exception_handling.py")
         idx = src.find("_exc_is_not_found")
         block = src[idx:idx + 600]
         assert "not found" in block.lower(), (
@@ -61,7 +61,7 @@ class TestStreamingModelNotFoundDetection:
 
     def test_not_found_detects_does_not_exist(self):
         """'does not exist' must be part of the detection logic."""
-        src = _read("api/streaming.py")
+        src = _read("api/streaming_exception_handling.py")
         idx = src.find("_exc_is_not_found")
         block = src[idx:idx + 600]
         assert "does not exist" in block.lower(), (
@@ -70,7 +70,7 @@ class TestStreamingModelNotFoundDetection:
 
     def test_not_found_detects_invalid_model(self):
         """'invalid model' must be part of the detection logic."""
-        src = _read("api/streaming.py")
+        src = _read("api/streaming_exception_handling.py")
         idx = src.find("_exc_is_not_found")
         block = src[idx:idx + 600]
         assert "invalid model" in block.lower(), (
@@ -88,7 +88,7 @@ class TestStreamingModelNotFoundDetection:
 
     def test_not_found_check_order_after_auth(self):
         """model_not_found must be checked after auth_mismatch (auth first)."""
-        src = _read("api/streaming.py")
+        src = _read("api/streaming_exception_handling.py")
         auth_idx = src.find("_exc_is_auth")
         nf_idx = src.find("_exc_is_not_found")
         assert auth_idx != -1, "_exc_is_auth not found"
@@ -107,14 +107,16 @@ class TestStreamingHtmlSanitization:
     def test_html_strip_before_classification(self):
         """HTML tags must be stripped before error classification."""
         streaming_src = _read("api/streaming.py")
+        exception_src = _read("api/streaming_exception_handling.py")
         errors_src = _read("api/streaming_errors.py")
+        assert "_handle_streaming_exception(" in streaming_src
         # Find the HTML sanitization helper call in the exception handler.
         # It should appear before _exc_lower = err_str.lower().
-        sanitize_idx = streaming_src.find("_sanitize_provider_error_text(str(e))")
-        exc_lower_idx = streaming_src.find("_exc_lower = err_str.lower()")
+        sanitize_idx = exception_src.find("sanitize_provider_error_text(str(exc))")
+        exc_lower_idx = exception_src.find("_exc_lower = err_str.lower()")
         helper_idx = errors_src.find("re.sub(r'<[^>]+>'")
         assert sanitize_idx != -1, (
-            "HTML sanitization helper call not found in streaming.py exception handler"
+            "HTML sanitization helper call not found in streaming exception handler"
         )
         assert helper_idx != -1, (
             "HTML tag stripping (re.sub) not found in streaming_errors.py helper"
