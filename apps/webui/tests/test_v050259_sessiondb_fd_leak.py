@@ -32,23 +32,23 @@ def test_cached_agent_reuse_closes_old_session_db():
     """The cached-agent reuse path in `_run_agent_streaming` MUST close the
     old `_session_db` before replacing it. Without this, every streaming
     request leaks a SessionDB connection (3 FDs once WAL is active)."""
-    src = (REPO / "api" / "streaming.py").read_text(encoding="utf-8")
+    src = (REPO / "api" / "streaming_agent_cache.py").read_text(encoding="utf-8")
 
-    # Find the cached-agent reuse block (where callbacks are refreshed).
+    # Find the cached-agent reuse helper (where callbacks are refreshed).
     # The replacement of agent._session_db must be preceded by a close().
-    reuse_idx = src.find("Refresh per-turn callbacks")
-    assert reuse_idx != -1, "cached-agent reuse block missing"
+    reuse_idx = src.find("def refresh_cached_agent_for_turn")
+    assert reuse_idx != -1, "cached-agent reuse helper missing"
     block = src[reuse_idx : reuse_idx + 2500]
 
     # Must close before replace.
-    assert "agent._session_db.close()" in block, (
+    assert "previous_session_db.close()" in block, (
         "cached-agent reuse path must call agent._session_db.close() before "
         "replacing it. Without this, FDs leak on every streaming request "
         "and the server EMFILE-crashes after ~73 messages. See PR #1421."
     )
     # And the close must come BEFORE the replacement (lexically).
-    close_idx = block.find("agent._session_db.close()")
-    replace_idx = block.find("agent._session_db = _session_db")
+    close_idx = block.find("previous_session_db.close()")
+    replace_idx = block.find("agent._session_db = session_db")
     assert close_idx != -1 and replace_idx != -1
     assert close_idx < replace_idx, (
         "close() must lexically precede the assignment so the old connection "
@@ -135,8 +135,7 @@ def test_cached_agent_reuse_calls_close_on_old_session_db():
     """End-to-end: simulate the cached-agent reuse code path with a mock
     agent and verify the mock SessionDB.close() is called when _session_db
     is replaced. Pins the runtime behavior, not just the source pattern."""
-    import sys
-    sys.path.insert(0, str(REPO))
+    from api.streaming_agent_cache import refresh_cached_agent_for_turn
 
     class MockSessionDB:
         def __init__(self, name):
@@ -161,13 +160,7 @@ def test_cached_agent_reuse_calls_close_on_old_session_db():
     new_db = MockSessionDB("new")
     agent = MockAgent(old_db)
 
-    # Mirror the production code path:
-    if hasattr(agent, "_session_db") and agent._session_db is not None:
-        try:
-            agent._session_db.close()
-        except Exception:
-            pass
-    agent._session_db = new_db
+    refresh_cached_agent_for_turn(agent, {}, session_db=new_db)
 
     assert old_db.close_calls == 1, (
         "old SessionDB must be closed exactly once when replaced on cached agent"
