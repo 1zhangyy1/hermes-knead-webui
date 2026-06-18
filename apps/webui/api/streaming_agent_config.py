@@ -16,6 +16,43 @@ def initialize_session_db(*, session_db_factory=None, warning_fn=print):
         return None
 
 
+def resolve_agent_runtime_connection(
+    *,
+    resolved_provider,
+    resolved_base_url,
+    custom_provider_resolver,
+    oauth_runtime_resolver=None,
+    runtime_provider_resolver=None,
+    warning_fn=print,
+):
+    """Resolve runtime credentials/base URL for a WebUI agent construction."""
+    runtime = {}
+    resolved_api_key = None
+    try:
+        if oauth_runtime_resolver is None:
+            from api.oauth import resolve_runtime_provider_with_anthropic_env_lock as oauth_runtime_resolver
+        if runtime_provider_resolver is None:
+            from hermes_cli.runtime_provider import resolve_runtime_provider as runtime_provider_resolver
+        runtime = oauth_runtime_resolver(runtime_provider_resolver, requested=resolved_provider)
+        resolved_api_key = runtime.get("api_key")
+        if not resolved_provider:
+            resolved_provider = runtime.get("provider")
+        if not resolved_base_url:
+            resolved_base_url = runtime.get("base_url")
+    except Exception as err:
+        if warning_fn is not None:
+            warning_fn(f"[webui] WARNING: resolve_runtime_provider failed: {err}", flush=True)
+
+    if isinstance(resolved_provider, str) and resolved_provider.startswith("custom:"):
+        custom_key, custom_base = custom_provider_resolver(resolved_provider)
+        if not resolved_api_key and custom_key:
+            resolved_api_key = custom_key
+        if not resolved_base_url and custom_base:
+            resolved_base_url = custom_base
+
+    return runtime, resolved_api_key, resolved_provider, resolved_base_url
+
+
 def resolve_fallback_config(_cfg):
     """Normalize fallback_model/fallback_providers config for AIAgent."""
     # Fallback model from profile config (e.g. for rate-limit recovery)

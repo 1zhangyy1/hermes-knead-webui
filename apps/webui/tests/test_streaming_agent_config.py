@@ -1,6 +1,7 @@
 from api.streaming_agent_config import (
     build_agent_kwargs,
     initialize_session_db,
+    resolve_agent_runtime_connection,
     resolve_fallback_config,
     resolve_max_iterations_config,
     resolve_max_tokens_config,
@@ -29,6 +30,78 @@ def test_initialize_session_db_warns_and_returns_none_on_failure():
     assert warnings == [
         (
             "[webui] WARNING: SessionDB init failed — session_search will be unavailable: missing state",
+            True,
+        )
+    ]
+
+
+def test_resolve_agent_runtime_connection_uses_runtime_provider_values_when_missing():
+    runtime = {
+        "api_key": "runtime-key",
+        "provider": "openai",
+        "base_url": "https://api.example",
+    }
+
+    result = resolve_agent_runtime_connection(
+        resolved_provider=None,
+        resolved_base_url=None,
+        custom_provider_resolver=lambda _provider: (_ for _ in ()).throw(AssertionError("custom")),
+        oauth_runtime_resolver=lambda resolver, *, requested=None: runtime,
+        runtime_provider_resolver=object(),
+    )
+
+    assert result == (runtime, "runtime-key", "openai", "https://api.example")
+
+
+def test_resolve_agent_runtime_connection_keeps_explicit_provider_and_base_url():
+    runtime = {
+        "api_key": "runtime-key",
+        "provider": "ignored-provider",
+        "base_url": "https://ignored.example",
+    }
+
+    result = resolve_agent_runtime_connection(
+        resolved_provider="anthropic",
+        resolved_base_url="https://explicit.example",
+        custom_provider_resolver=lambda _provider: (_ for _ in ()).throw(AssertionError("custom")),
+        oauth_runtime_resolver=lambda resolver, *, requested=None: runtime,
+        runtime_provider_resolver=object(),
+    )
+
+    assert result == (runtime, "runtime-key", "anthropic", "https://explicit.example")
+
+
+def test_resolve_agent_runtime_connection_falls_back_to_custom_provider_values():
+    result = resolve_agent_runtime_connection(
+        resolved_provider="custom:local",
+        resolved_base_url=None,
+        custom_provider_resolver=lambda provider: ("custom-key", f"https://{provider}.example"),
+        oauth_runtime_resolver=lambda resolver, *, requested=None: {},
+        runtime_provider_resolver=object(),
+    )
+
+    assert result == ({}, "custom-key", "custom:local", "https://custom:local.example")
+
+
+def test_resolve_agent_runtime_connection_warns_when_runtime_provider_fails():
+    warnings = []
+
+    def fail(_resolver, *, requested=None):
+        raise RuntimeError("oauth unavailable")
+
+    result = resolve_agent_runtime_connection(
+        resolved_provider="openai",
+        resolved_base_url=None,
+        custom_provider_resolver=lambda _provider: (_ for _ in ()).throw(AssertionError("custom")),
+        oauth_runtime_resolver=fail,
+        runtime_provider_resolver=object(),
+        warning_fn=lambda message, *, flush=False: warnings.append((message, flush)),
+    )
+
+    assert result == ({}, None, "openai", None)
+    assert warnings == [
+        (
+            "[webui] WARNING: resolve_runtime_provider failed: oauth unavailable",
             True,
         )
     ]

@@ -135,6 +135,7 @@ from api.streaming_agent_cache import (
 from api.streaming_agent_config import (
     build_agent_kwargs as _build_agent_kwargs_impl,
     initialize_session_db as _initialize_session_db,
+    resolve_agent_runtime_connection as _resolve_agent_runtime_connection,
     resolve_fallback_config as _resolve_fallback_config_impl,
     resolve_max_iterations_config as _resolve_max_iterations_config_impl,
     resolve_max_tokens_config as _resolve_max_tokens_config_impl,
@@ -1017,33 +1018,11 @@ def _run_agent_streaming(
                 model_with_provider_context(model, provider_context)
             )
 
-            # Resolve API key via Hermes runtime provider (matches gateway behaviour).
-            # Pass the resolved provider so non-default providers get their own credentials.
-            resolved_api_key = None
-            try:
-                from api.oauth import resolve_runtime_provider_with_anthropic_env_lock
-                from hermes_cli.runtime_provider import resolve_runtime_provider
-                _rt = resolve_runtime_provider_with_anthropic_env_lock(
-                    resolve_runtime_provider,
-                    requested=resolved_provider,
-                )
-                resolved_api_key = _rt.get("api_key")
-                if not resolved_provider:
-                    resolved_provider = _rt.get("provider")
-                if not resolved_base_url:
-                    resolved_base_url = _rt.get("base_url")
-            except Exception as _e:
-                print(f"[webui] WARNING: resolve_runtime_provider failed: {_e}", flush=True)
-
-            # Named custom providers (custom:slug) may not be resolvable by
-            # hermes_cli.runtime_provider directly. Fall back to config.yaml
-            # custom_providers[] so WebUI can pass explicit creds/base_url.
-            if isinstance(resolved_provider, str) and resolved_provider.startswith("custom:"):
-                _cp_key, _cp_base = resolve_custom_provider_connection(resolved_provider)
-                if not resolved_api_key and _cp_key:
-                    resolved_api_key = _cp_key
-                if not resolved_base_url and _cp_base:
-                    resolved_base_url = _cp_base
+            _rt, resolved_api_key, resolved_provider, resolved_base_url = _resolve_agent_runtime_connection(
+                resolved_provider=resolved_provider,
+                resolved_base_url=resolved_base_url,
+                custom_provider_resolver=resolve_custom_provider_connection,
+            )
 
             # Read per-profile config at call time (not module-level snapshot)
             from api.config import get_config as _get_config
