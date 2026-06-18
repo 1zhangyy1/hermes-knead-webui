@@ -186,8 +186,8 @@ from api.streaming_runtime_prompt import (
     configure_agent_runtime_prompt as _configure_agent_runtime_prompt,
 )
 from api.streaming_exception_handling import handle_streaming_exception as _handle_streaming_exception
-from api.streaming_turn_pipeline import run_streaming_turn_pipeline as _run_streaming_turn_pipeline
 from api.streaming_worker_context import initialize_streaming_worker_context as _initialize_streaming_worker_context
+from api.streaming_worker_pipeline_facade import run_streaming_turn_pipeline_from_facade as _run_streaming_turn_pipeline
 from api.streaming_worker_startup import prepare_streaming_worker_startup as _prepare_streaming_worker_startup
 
 # Global lock for os.environ writes. Per-session locks (_agent_lock) prevent
@@ -697,42 +697,8 @@ def _run_agent_streaming(
                 ephemeral=ephemeral,
                 goal_related=goal_related,
                 put=put,
-                pending_goal_continuation=PENDING_GOAL_CONTINUATION,
-                redact_session_data=redact_session_data,
-                build_done_usage_payload=_build_done_usage_payload,
-                apply_context_window_to_usage=_apply_context_window_to_usage,
-                drain_pending_steer_leftover=_drain_pending_steer_leftover,
-                run_post_turn_goal_hook=_run_post_turn_goal_hook,
                 finalize_product_turn=_finalize_product_turn,
-                meter_stats_fn=meter().get_stats,
-                run_background_title_update=_run_background_title_update,
-                maybe_schedule_title_refresh=_maybe_schedule_title_refresh,
-                finalize_cancelled_turn=_finalize_cancelled_turn,
                 put_cancel=_put_cancel,
-                handle_post_run_cancel=_handle_post_run_cancel,
-                stop_checkpoint_thread=_stop_checkpoint_thread,
-                sanitize_messages_for_api=_sanitize_messages_for_api,
-                stream_writeback_is_current=_stream_writeback_is_current,
-                classify_provider_error=_classify_provider_error,
-                provider_error_payload=_provider_error_payload,
-                append_interrupted_turn_event=_append_interrupted_turn_event,
-                materialize_pending_user_turn=_materialize_pending_user_turn_before_error,
-                has_new_assistant_reply=_has_new_assistant_reply,
-                assistant_reply_added_after_current_turn=_assistant_reply_added_after_current_turn,
-                preserve_pre_compression_snapshot=_preserve_pre_compression_snapshot,
-                compression_anchor_message_key=_compression_anchor_message_key,
-                compact_summary_text=_compact_summary_text,
-                compression_summary_from_messages=_compression_summary_from_messages,
-                title_from_fn=title_from,
-                is_provisional_title=_is_provisional_title,
-                looks_invalid_generated_title=_looks_invalid_generated_title,
-                first_exchange_snippets=_first_exchange_snippets,
-                extract_gateway_routing_metadata=_extract_gateway_routing_metadata,
-                custom_provider_resolver=resolve_custom_provider_connection,
-                agent_instances=AGENT_INSTANCES,
-                streams_lock=STREAMS_LOCK,
-                webui_ephemeral_system_prompt=_webui_ephemeral_system_prompt,
-                logger=logger,
                 runtime_state=_agent_setup_runtime_vars,
                 checkpoint_state=_checkpoint_state,
             )

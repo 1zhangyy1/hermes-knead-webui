@@ -24,6 +24,7 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 STREAMING_PY = (REPO / "api" / "streaming.py").read_text(encoding="utf-8")
+STREAMING_PIPELINE_FACADE_PY = (REPO / "api" / "streaming_worker_pipeline_facade.py").read_text(encoding="utf-8")
 STREAMING_TURN_PIPELINE_PY = (REPO / "api" / "streaming_turn_pipeline.py").read_text(encoding="utf-8")
 CONTEXT_WINDOW_PY = (REPO / "api" / "streaming_context_window.py").read_text(encoding="utf-8")
 TURN_WRITEBACK_PY = (REPO / "api" / "streaming_turn_writeback.py").read_text(encoding="utf-8")
@@ -51,7 +52,7 @@ def test_streaming_uses_context_window_helper_for_both_paths():
     assert "_run_streaming_turn_pipeline(" in STREAMING_PY
     assert "handle_completed_conversation_writeback_fn(" in STREAMING_TURN_PIPELINE_PY
     assert "apply_completed_turn_writeback_state_fn(" in completed_writeback
-    assert "apply_context_window_to_usage=_apply_context_window_to_usage" in STREAMING_PY
+    assert "apply_context_window_to_usage=streaming_api._apply_context_window_to_usage" in STREAMING_PIPELINE_FACADE_PY
     assert "apply_context_window_to_usage(" in TERMINAL_PY
 
 

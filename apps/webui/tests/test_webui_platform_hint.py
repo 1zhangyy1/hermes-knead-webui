@@ -21,17 +21,19 @@ def _count_platform_kwargs(source: str, platform: str) -> int:
     return len(re.findall(PLATFORM_KWARG_RE.format(platform=re.escape(platform)), source))
 
 
-def test_streaming_uses_webui_platform():
-    """api/streaming.py must pass platform='webui' when constructing AIAgent."""
+def test_streaming_agent_config_uses_webui_platform():
+    """WebUI streaming agent kwargs must pass platform='webui' to AIAgent."""
     streaming_py = _load_source("api/streaming.py")
-    webui_count = _count_platform_kwargs(streaming_py, "webui")
-    cli_count = _count_platform_kwargs(streaming_py, "cli")
+    agent_config_py = _load_source("api/streaming_agent_config.py")
+    webui_count = _count_platform_kwargs(agent_config_py, "webui")
+    cli_count = _count_platform_kwargs(agent_config_py, "cli")
     assert cli_count == 0, (
-        f"streaming.py still has {cli_count} platform='cli' AIAgent call(s); convert to 'webui'"
+        f"streaming_agent_config.py still has {cli_count} platform='cli' AIAgent call(s); convert to 'webui'"
     )
     assert webui_count >= 1, (
-        f"streaming.py expected ≥1 platform='webui' call, found {webui_count}"
+        f"streaming_agent_config.py expected >=1 platform='webui' call, found {webui_count}"
     )
+    assert "_prepare_streaming_agent_turn_setup(" in streaming_py
 
 
 def test_routes_uses_webui_platform_for_all_agent_calls():
