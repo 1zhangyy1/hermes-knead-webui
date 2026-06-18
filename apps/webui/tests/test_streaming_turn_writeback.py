@@ -5,6 +5,7 @@ from api import streaming_turn_writeback as writeback
 
 class Session:
     def __init__(self):
+        self.session_id = 'sid-1'
         self.messages = [
             {'role': 'user', 'content': 'hello'},
             {'role': 'assistant', 'content': 'done'},
@@ -14,6 +15,10 @@ class Session:
         self.pending_user_message = 'hello'
         self.pending_attachments = [{'name': 'a.png'}]
         self.pending_started_at = 123
+        self.saved = 0
+
+    def save(self):
+        self.saved += 1
 
 
 def test_apply_completed_turn_writeback_state_applies_pre_save_mutations(monkeypatch):
@@ -109,3 +114,142 @@ def test_apply_completed_turn_writeback_state_applies_pre_save_mutations(monkeyp
     assert calls[5][4]['requested_provider'] == 'provider-a'
     assert calls[6][3] == {'cfg': True}
     assert calls[6][4] == {'resolved_model': 'model-a', 'resolved_provider': 'provider-a'}
+
+
+def test_save_completed_turn_and_journal_orders_save_journal_and_memory(monkeypatch):
+    session = Session()
+    agent = object()
+    calls = []
+    session.save = lambda: calls.append(('save',))
+
+    monkeypatch.setattr(
+        writeback,
+        'append_assistant_started_turn_event',
+        lambda session_id, stream_id, messages, **kwargs: calls.append(
+            ('assistant_started', session_id, stream_id, messages, kwargs)
+        ),
+    )
+    monkeypatch.setattr(
+        writeback,
+        'append_completed_turn_event',
+        lambda session_id, stream_id, messages, **kwargs: calls.append(
+            ('completed', session_id, stream_id, messages, kwargs)
+        ),
+    )
+    monkeypatch.setattr(
+        writeback,
+        'mark_completed_turn_memory_lifecycle',
+        lambda session_id, agent_arg, **kwargs: calls.append(('memory', session_id, agent_arg, kwargs)),
+    )
+
+    saved = writeback.save_completed_turn_and_journal(
+        session,
+        agent,
+        stream_id='stream-1',
+        cancel_event=SimpleNamespace(is_set=lambda: False),
+        finalize_cancelled_turn=lambda *_args, **_kwargs: calls.append(('finalize',)),
+        put_cancel=lambda: calls.append(('cancel',)),
+        logger='logger',
+    )
+
+    assert saved is True
+    assert calls == [
+        ('assistant_started', 'sid-1', 'stream-1', session.messages, {'logger': 'logger'}),
+        ('save',),
+        ('completed', 'sid-1', 'stream-1', session.messages, {'logger': 'logger'}),
+        ('memory', 'sid-1', agent, {'logger': 'logger'}),
+    ]
+
+
+def test_save_completed_turn_and_journal_cancel_before_save_finalizes_without_saving(monkeypatch):
+    session = Session()
+    calls = []
+    session.save = lambda: calls.append(('save',))
+
+    monkeypatch.setattr(
+        writeback,
+        'append_assistant_started_turn_event',
+        lambda session_id, stream_id, messages, **kwargs: calls.append(('assistant_started',)),
+    )
+    monkeypatch.setattr(
+        writeback,
+        'append_interrupted_turn_event',
+        lambda session_id, stream_id, **kwargs: calls.append(('interrupted', session_id, stream_id, kwargs)),
+    )
+    monkeypatch.setattr(
+        writeback,
+        'append_completed_turn_event',
+        lambda *_args, **_kwargs: calls.append(('completed',)),
+    )
+    monkeypatch.setattr(
+        writeback,
+        'mark_completed_turn_memory_lifecycle',
+        lambda *_args, **_kwargs: calls.append(('memory',)),
+    )
+
+    saved = writeback.save_completed_turn_and_journal(
+        session,
+        object(),
+        stream_id='stream-1',
+        cancel_event=SimpleNamespace(is_set=lambda: True),
+        finalize_cancelled_turn=lambda session_arg, **kwargs: calls.append(('finalize', session_arg, kwargs)),
+        put_cancel=lambda: calls.append(('cancel',)),
+    )
+
+    assert saved is False
+    assert calls == [
+        ('assistant_started',),
+        ('finalize', session, {'ephemeral': False}),
+        ('interrupted', 'sid-1', 'stream-1', {'logger': None}),
+        ('cancel',),
+    ]
+
+
+def test_save_completed_turn_and_journal_cancel_after_save_skips_completed_lifecycle(monkeypatch):
+    session = Session()
+    calls = []
+    cancelled = {'value': False}
+
+    def save():
+        calls.append(('save',))
+        cancelled['value'] = True
+
+    session.save = save
+    monkeypatch.setattr(
+        writeback,
+        'append_assistant_started_turn_event',
+        lambda session_id, stream_id, messages, **kwargs: calls.append(('assistant_started',)),
+    )
+    monkeypatch.setattr(
+        writeback,
+        'append_interrupted_turn_event',
+        lambda session_id, stream_id, **kwargs: calls.append(('interrupted', session_id, stream_id, kwargs)),
+    )
+    monkeypatch.setattr(
+        writeback,
+        'append_completed_turn_event',
+        lambda *_args, **_kwargs: calls.append(('completed',)),
+    )
+    monkeypatch.setattr(
+        writeback,
+        'mark_completed_turn_memory_lifecycle',
+        lambda *_args, **_kwargs: calls.append(('memory',)),
+    )
+
+    saved = writeback.save_completed_turn_and_journal(
+        session,
+        object(),
+        stream_id='stream-1',
+        cancel_event=SimpleNamespace(is_set=lambda: cancelled['value']),
+        finalize_cancelled_turn=lambda session_arg, **kwargs: calls.append(('finalize', session_arg, kwargs)),
+        put_cancel=lambda: calls.append(('cancel',)),
+    )
+
+    assert saved is False
+    assert calls == [
+        ('assistant_started',),
+        ('save',),
+        ('finalize', session, {'ephemeral': False}),
+        ('interrupted', 'sid-1', 'stream-1', {'logger': None}),
+        ('cancel',),
+    ]

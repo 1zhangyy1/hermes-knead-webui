@@ -6,12 +6,17 @@ REPO = Path(__file__).resolve().parents[1]
 
 def test_streaming_initializes_one_run_journal_writer_per_stream():
     src = (REPO / "api" / "streaming.py").read_text(encoding="utf-8")
+    run_state_src = (REPO / "api" / "streaming_run_state.py").read_text(encoding="utf-8")
     register_idx = src.index("register_active_run(")
     writer_idx = src.index("RunJournalWriter(session_id, stream_id)", register_idx)
-    cancel_idx = src.index("cancel_event = threading.Event()", writer_idx)
+    init_idx = src.index("_initialize_streaming_run_state(", writer_idx)
+    cancel_idx = run_state_src.index("cancel_event = event_factory()")
+    stream_register_idx = run_state_src.index("cancel_flags[stream_id] = cancel_event", cancel_idx)
+    sink_idx = run_state_src.index("event_sink = event_sink_factory(", stream_register_idx)
 
     assert "from api.run_journal import RunJournalWriter" in src
-    assert register_idx < writer_idx < cancel_idx
+    assert register_idx < writer_idx < init_idx
+    assert cancel_idx < stream_register_idx < sink_idx
 
 
 def test_streaming_journals_sse_events_before_queue_delivery():

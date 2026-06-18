@@ -108,7 +108,7 @@ def test_fallback_runs_before_save():
     assert fallback_idx != -1
     streaming_src = STREAMING.read_text(encoding="utf-8")
     helper_idx = streaming_src.find("_apply_completed_turn_writeback_state(")
-    save_idx = streaming_src.find("\n                s.save()", helper_idx)
+    save_idx = streaming_src.find("_save_completed_turn_and_journal(", helper_idx)
     assert helper_idx != -1 and save_idx != -1 and helper_idx < save_idx, (
         "Fallback must run BEFORE s.save() — otherwise the resolved context_length "
         "is not persisted to the session JSON."
