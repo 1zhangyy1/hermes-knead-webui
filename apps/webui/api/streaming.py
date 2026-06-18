@@ -120,7 +120,6 @@ from api.streaming_tool_calls import (
     tool_result_snippet as _tool_result_snippet,
     truncate_tool_args as _truncate_tool_args,
 )
-from api.streaming_tool_bridge import StreamingToolEventBridge as _StreamingToolEventBridge
 from api.streaming_agent_runtime import (
     agent_cache_api_key_sig as _agent_cache_api_key_sig,
     refresh_cached_agent_primary_runtime_snapshot as _refresh_cached_agent_primary_runtime_snapshot,
@@ -136,7 +135,7 @@ from api.streaming_agent_config import (
     resolve_agent_constructor_settings as _resolve_agent_constructor_settings,
     resolve_agent_runtime_connection as _resolve_agent_runtime_connection,
 )
-from api.streaming_output_bridge import StreamingOutputBridge as _StreamingOutputBridge
+from api.streaming_bridges import initialize_webui_streaming_bridges as _initialize_streaming_bridges
 from api.streaming_process_notifications import (
     drain_webui_process_notifications as _drain_webui_process_notifications_impl,
     format_process_notification as _format_process_notification_impl,
@@ -815,36 +814,18 @@ def _run_agent_streaming(
 
         try:
             _self_healed = False  # (#1401) prevents infinite self-heal retries
-            _live_tool_calls = []  # tool progress fallback when final messages omit tool IDs
-
-            _output_bridge = _StreamingOutputBridge(
+            _bridge_bundle = _initialize_streaming_bridges(
                 stream_id=stream_id,
                 session_id=session_id,
-                partial_texts=STREAM_PARTIAL_TEXT,
-                reasoning_texts=STREAM_REASONING_TEXT,
-                usage_snapshot=_run_state.live_usage_snapshot,
+                run_state=_run_state,
                 put=put,
-            )
-
-            # Pre-initialise the activity counter here so on_tool (which
-            # closes over it) never captures an unbound name even if this
-            # block is reordered later (Issue #765).
-            _checkpoint_activity = [0]
-
-            _tool_bridge = _StreamingToolEventBridge(
-                stream_id=stream_id,
-                session_id=session_id,
-                live_tool_calls=_live_tool_calls,
-                shared_live_tool_calls=STREAM_LIVE_TOOL_CALLS,
-                checkpoint_activity=_checkpoint_activity,
-                seen_tool_call_ids=_run_state.seen_tool_call_ids,
-                put=put,
-                emit_reasoning=_output_bridge.on_reasoning,
-                usage_snapshot=_run_state.live_usage_snapshot,
-                bump_live_prompt_estimate=_run_state.bump_live_prompt_estimate,
                 tool_result_snippet=_tool_result_snippet,
                 logger=logger,
             )
+            _output_bridge = _bridge_bundle.output_bridge
+            _tool_bridge = _bridge_bundle.tool_bridge
+            _live_tool_calls = _bridge_bundle.live_tool_calls
+            _checkpoint_activity = _bridge_bundle.checkpoint_activity
 
             _AIAgent = _get_ai_agent()
             if _AIAgent is None:
