@@ -10,6 +10,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 CONFIG_PY = (REPO / "api" / "config.py").read_text(encoding="utf-8")
 STREAMING_PY = (REPO / "api" / "streaming.py").read_text(encoding="utf-8")
+STREAMING_USAGE_PY = (REPO / "api" / "streaming_usage.py").read_text(encoding="utf-8")
 STREAMING_LIVE_USAGE_PY = (REPO / "api" / "streaming_live_usage.py").read_text(encoding="utf-8")
 STREAMING_METERING_PY = (REPO / "api" / "streaming_metering.py").read_text(encoding="utf-8")
 BOOT_JS = (REPO / "static" / "boot.js").read_text(encoding="utf-8")
@@ -75,8 +76,8 @@ def test_live_prompt_estimate_reanchors_to_fresh_exact_prompt_tokens():
 
 
 def test_done_payload_persists_final_tps_when_exact_usage_available():
-    assert "usage['tps']" in STREAMING_PY, "done usage payload should include final exact TPS when available"
-    assert "output_tokens" in STREAMING_PY and "duration_seconds" in STREAMING_PY, (
+    assert "usage['tps']" in STREAMING_USAGE_PY, "done usage payload should include final exact TPS when available"
+    assert "output_tokens" in STREAMING_USAGE_PY and "duration_seconds" in STREAMING_USAGE_PY, (
         "final TPS should be based on exact completion tokens over measured turn duration"
     )
     assert "d.usage.tps" in MESSAGES_JS, "done handler should read final TPS from the usage payload"

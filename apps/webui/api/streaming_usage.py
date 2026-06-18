@@ -36,3 +36,26 @@ def apply_agent_token_usage_to_session(session, agent) -> AgentTokenUsage:
         session.cache_write_tokens = usage.cache_write_tokens
 
     return usage
+
+
+def build_done_usage_payload(
+    token_usage: AgentTokenUsage,
+    *,
+    duration_seconds: float,
+    turn_tps: float | None = None,
+    gateway_routing: dict | None = None,
+) -> dict:
+    """Build the terminal SSE usage payload for a completed streaming turn."""
+    usage = {
+        'input_tokens': token_usage.input_tokens,
+        'output_tokens': token_usage.output_tokens,
+        'estimated_cost': token_usage.estimated_cost,
+        'cache_read_tokens': token_usage.cache_read_tokens,
+        'cache_write_tokens': token_usage.cache_write_tokens,
+        'duration_seconds': round(duration_seconds, 3),
+    }
+    if turn_tps is not None:
+        usage['tps'] = turn_tps
+    if gateway_routing:
+        usage['gateway_routing'] = gateway_routing
+    return usage

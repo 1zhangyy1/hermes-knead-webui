@@ -7,6 +7,7 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 STREAMING_PY = (REPO / "api" / "streaming.py").read_text(encoding="utf-8")
+STREAMING_USAGE_PY = (REPO / "api" / "streaming_usage.py").read_text(encoding="utf-8")
 MESSAGES_JS = (REPO / "static" / "messages.js").read_text(encoding="utf-8")
 ROUTES_PY = (REPO / "api" / "routes.py").read_text(encoding="utf-8")
 UI_JS = (REPO / "static" / "ui.js").read_text(encoding="utf-8")
@@ -14,8 +15,8 @@ CSS = (REPO / "static" / "style.css").read_text(encoding="utf-8")
 
 
 def test_streaming_done_payload_includes_backend_turn_duration():
-    assert "duration_seconds" in STREAMING_PY, (
-        "api/streaming.py should include a backend-measured duration_seconds "
+    assert "duration_seconds" in STREAMING_USAGE_PY, (
+        "api/streaming_usage.py should include a backend-measured duration_seconds "
         "field in the done usage payload."
     )
     assert "pending_started_at" in STREAMING_PY and "time.time()" in STREAMING_PY, (
