@@ -9,6 +9,7 @@ from api.streaming import _normalize_gateway_routing_metadata
 REPO = Path(__file__).resolve().parents[1]
 STREAMING_PY = (REPO / "api" / "streaming.py").read_text(encoding="utf-8")
 STREAMING_USAGE_PY = (REPO / "api" / "streaming_usage.py").read_text(encoding="utf-8")
+STREAMING_TURN_METADATA_PY = (REPO / "api" / "streaming_turn_metadata.py").read_text(encoding="utf-8")
 MESSAGES_JS = (REPO / "static" / "messages.js").read_text(encoding="utf-8")
 UI_JS = (REPO / "static" / "ui.js").read_text(encoding="utf-8")
 SESSIONS_JS = (REPO / "static" / "sessions.js").read_text(encoding="utf-8")
@@ -89,8 +90,8 @@ def test_session_persists_latest_gateway_routing_and_history_across_reload():
 def test_streaming_captures_gateway_metadata_into_usage_payload_and_assistant_turn():
     assert "_extract_gateway_routing_metadata" in STREAMING_PY
     assert "usage['gateway_routing']" in STREAMING_USAGE_PY
-    assert "_dm['_gatewayRouting']" in STREAMING_PY
-    assert "s.gateway_routing_history" in STREAMING_PY
+    assert "message['_gatewayRouting']" in STREAMING_TURN_METADATA_PY
+    assert "session.gateway_routing_history" in STREAMING_TURN_METADATA_PY
 
 
 def test_frontend_copies_and_formats_gateway_metadata_without_absent_noise():

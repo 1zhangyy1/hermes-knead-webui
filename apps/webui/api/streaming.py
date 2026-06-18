@@ -138,6 +138,7 @@ from api.streaming_turn_journal import (
     append_interrupted_turn_event as _append_interrupted_turn_event,
     append_worker_started_turn_event as _append_worker_started_turn_event,
 )
+from api.streaming_turn_metadata import apply_completed_turn_metadata as _apply_completed_turn_metadata
 from api.streaming_usage import (
     apply_agent_token_usage_to_session as _apply_agent_token_usage_to_session,
     build_done_usage_payload as _build_done_usage_payload,
@@ -1830,33 +1831,16 @@ def _run_agent_streaming(
                         if isinstance(_rm, dict) and _rm.get('role') == 'assistant':
                             _rm['reasoning'] = _reasoning_text
                             break
-                try:
-                    _turn_duration_seconds = max(0.0, time.time() - float(_turn_started_at))
-                except Exception:
-                    _turn_duration_seconds = 0.0
-                _turn_tps = None
-                if output_tokens and _turn_duration_seconds > 0:
-                    _turn_tps = round(float(output_tokens) / _turn_duration_seconds, 1)
-                _gateway_routing = _extract_gateway_routing_metadata(
+                _turn_metadata = _apply_completed_turn_metadata(
+                    s,
                     agent,
                     result,
+                    turn_started_at=_turn_started_at,
+                    output_tokens=output_tokens,
                     requested_model=resolved_model or model,
                     requested_provider=resolved_provider,
+                    extract_gateway_routing_metadata=_extract_gateway_routing_metadata,
                 )
-                if _gateway_routing:
-                    s.gateway_routing = _gateway_routing
-                    _history = list(getattr(s, 'gateway_routing_history', None) or [])
-                    _history.append(_gateway_routing)
-                    s.gateway_routing_history = _history[-50:]
-                if s.messages:
-                    for _dm in reversed(s.messages):
-                        if isinstance(_dm, dict) and _dm.get('role') == 'assistant':
-                            _dm['_turnDuration'] = round(_turn_duration_seconds, 3)
-                            if _turn_tps is not None:
-                                _dm['_turnTps'] = _turn_tps
-                            if _gateway_routing:
-                                _dm['_gatewayRouting'] = _gateway_routing
-                            break
                 _persist_context_window_on_session(
                     s,
                     agent,
@@ -1903,9 +1887,9 @@ def _run_agent_streaming(
                         logger.debug("Memory lifecycle mark failed for session %s", s.session_id, exc_info=True)
             usage = _build_done_usage_payload(
                 _token_usage,
-                duration_seconds=_turn_duration_seconds,
-                turn_tps=_turn_tps,
-                gateway_routing=_gateway_routing,
+                duration_seconds=_turn_metadata.duration_seconds,
+                turn_tps=_turn_metadata.turn_tps,
+                gateway_routing=_turn_metadata.gateway_routing,
             )
             _apply_context_window_to_usage(
                 usage,
