@@ -48,7 +48,7 @@ class TestSilentErrorDetection:
 
     def test_streaming_detects_auth_error_in_result(self):
         """streaming.py must detect auth errors from the result object."""
-        assert "_is_auth" in STREAMING_PY, (
+        assert "_silent_error.is_auth" in STREAMING_PY, (
             "streaming.py must detect auth errors in silent failures (#373)"
         )
         assert "auth_mismatch" in STREAMING_PY, (

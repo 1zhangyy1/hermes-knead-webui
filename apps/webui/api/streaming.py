@@ -70,8 +70,9 @@ from api.streaming_gateway import (
 from api.streaming_gateway_notifications import register_streaming_gateway_notifications as _register_streaming_gateway_notifications
 from api.streaming_goal import run_post_turn_goal_hook as _run_post_turn_goal_hook
 from api.streaming_error_writeback import (
+    classify_silent_failure_error as _classify_silent_failure_error,
     emit_and_persist_exception_streaming_error as _emit_and_persist_exception_streaming_error,
-    emit_and_persist_streaming_error as _emit_and_persist_streaming_error,
+    emit_and_persist_silent_failure_error as _emit_and_persist_silent_failure_error,
 )
 from api.streaming_ephemeral import emit_ephemeral_done as _emit_ephemeral_done
 from api.streaming_attachments import (
@@ -1062,18 +1063,12 @@ def _run_agent_streaming(
                             _append_interrupted_turn_event(s.session_id, stream_id, logger=logger)
                         _put_cancel()
                         return
-                    _last_err = getattr(agent, '_last_error', None) or result.get('error') or ''
-                    _err_str = str(_last_err) if _last_err else ''
-                    _classification = _classify_provider_error(
-                        _err_str,
-                        _last_err,
-                        silent_failure=not bool(_err_str),
+                    _silent_error = _classify_silent_failure_error(
+                        agent,
+                        result,
+                        classify_provider_error=_classify_provider_error,
                     )
-                    _is_auth = _classification['type'] == 'auth_mismatch'
-                    _err_label = _classification['label']
-                    _err_type = _classification['type']
-                    _err_hint = _classification['hint']
-                    if _is_auth and not _self_healed:
+                    if _silent_error.is_auth and not _self_healed:
                         # ── Credential self-heal on 401 (#1401) ──
                         # Before emitting the error, try re-reading credentials
                         # and retrying once with a fresh agent.
@@ -1128,16 +1123,12 @@ def _run_agent_streaming(
                         # fall through to normal post-result persistence below.
                         pass
                     else:
-                        _emit_and_persist_streaming_error(
+                        _emit_and_persist_silent_failure_error(
                             s,
-                            label=_err_label,
-                            message=_err_str or f'{_err_label}.',
-                            error_type=_err_type,
-                            hint=_err_hint,
+                            _silent_error,
                             put=put,
                             provider_error_payload=_provider_error_payload,
                             finalize_product_turn=_finalize_product_turn,
-                            always_include_hint=True,
                             materialize_pending_user_turn=_materialize_pending_user_turn_before_error,
                             logger=logger,
                         )

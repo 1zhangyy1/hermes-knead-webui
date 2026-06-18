@@ -4,7 +4,31 @@ from __future__ import annotations
 
 import contextlib
 import time
-from typing import Callable
+from dataclasses import dataclass
+from typing import Any, Callable
+
+
+@dataclass(frozen=True)
+class SilentFailureErrorState:
+    last_error: Any
+    error_text: str
+    classification: dict
+
+    @property
+    def label(self) -> str:
+        return self.classification['label']
+
+    @property
+    def error_type(self) -> str:
+        return self.classification['type']
+
+    @property
+    def hint(self) -> str:
+        return self.classification['hint']
+
+    @property
+    def is_auth(self) -> bool:
+        return self.error_type == 'auth_mismatch'
 
 
 def provider_details_label(error_type: str) -> str | None:
@@ -113,6 +137,53 @@ def emit_and_persist_streaming_error(
         logger=logger,
     )
     return error_payload
+
+
+def classify_silent_failure_error(
+    agent,
+    result,
+    *,
+    classify_provider_error: Callable[[str, object], dict],
+) -> SilentFailureErrorState:
+    """Classify an agent result that produced no streamed or final assistant reply."""
+    last_error = getattr(agent, '_last_error', None) or (result or {}).get('error') or ''
+    error_text = str(last_error) if last_error else ''
+    classification = classify_provider_error(
+        error_text,
+        last_error,
+        silent_failure=not bool(error_text),
+    )
+    return SilentFailureErrorState(
+        last_error=last_error,
+        error_text=error_text,
+        classification=classification,
+    )
+
+
+def emit_and_persist_silent_failure_error(
+    session,
+    state: SilentFailureErrorState,
+    *,
+    put,
+    provider_error_payload: Callable[[str, str, str], dict],
+    finalize_product_turn: Callable[..., object],
+    materialize_pending_user_turn: Callable[[object], object] | None = None,
+    logger=None,
+) -> dict:
+    """Emit and persist the app error for a silent agent failure."""
+    return emit_and_persist_streaming_error(
+        session,
+        label=state.label,
+        message=state.error_text or f'{state.label}.',
+        error_type=state.error_type,
+        hint=state.hint,
+        put=put,
+        provider_error_payload=provider_error_payload,
+        finalize_product_turn=finalize_product_turn,
+        always_include_hint=True,
+        materialize_pending_user_turn=materialize_pending_user_turn,
+        logger=logger,
+    )
 
 
 def emit_and_persist_exception_streaming_error(

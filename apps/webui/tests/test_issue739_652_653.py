@@ -72,7 +72,8 @@ class TestErrorPersistence:
 
     def test_silent_failure_appends_error_message(self):
         """Silent-failure path appends an _error-marked message before returning."""
-        assert "_emit_and_persist_streaming_error(" in streaming_src
+        assert "_emit_and_persist_silent_failure_error(" in streaming_src
+        assert "emit_and_persist_streaming_error(" in streaming_error_writeback_src
         assert "persist_streaming_error_message(" in streaming_error_writeback_src
         assert "session.messages.append(" in streaming_error_writeback_src
         assert "'_error': True" in streaming_error_writeback_src
@@ -81,7 +82,7 @@ class TestErrorPersistence:
         """save() must be called after appending the error message."""
         silent_idx = streaming_src.find("# ── Detect silent agent failure")
         assert silent_idx != -1
-        helper_idx = streaming_src.find("_emit_and_persist_streaming_error(", silent_idx)
+        helper_idx = streaming_src.find("_emit_and_persist_silent_failure_error(", silent_idx)
         return_idx = streaming_src.find("return  # apperror already closes the stream", helper_idx)
         assert helper_idx != -1 and return_idx != -1 and helper_idx < return_idx
         assert "session.messages.append(error_message)" in streaming_error_writeback_src
