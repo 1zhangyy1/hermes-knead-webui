@@ -199,6 +199,7 @@ from api.streaming_runtime_helpers import (
     build_agent_thread_env as _build_agent_thread_env,
     clarify_timeout_seconds as _clarify_timeout_seconds_impl,
     has_new_assistant_reply as _has_new_assistant_reply_impl,
+    restore_agent_process_env as _restore_agent_process_env,
     webui_clarify_callback as _webui_clarify_callback_impl,
     webui_ephemeral_system_prompt as _webui_ephemeral_system_prompt_impl,
 )
@@ -1951,22 +1952,18 @@ def _run_agent_streaming(
                     _unreg_clarify_notify(session_id)
                 except Exception:
                     logger.debug("Failed to unregister clarify callback")
-            with _ENV_LOCK:
-                for _key, _old_value in old_profile_env.items():
-                    if _old_value is None: os.environ.pop(_key, None)
-                    else: os.environ[_key] = _old_value
-                if old_cwd is None: os.environ.pop('TERMINAL_CWD', None)
-                else: os.environ['TERMINAL_CWD'] = old_cwd
-                if old_exec_ask is None: os.environ.pop('HERMES_EXEC_ASK', None)
-                else: os.environ['HERMES_EXEC_ASK'] = old_exec_ask
-                if old_session_key is None: os.environ.pop('HERMES_SESSION_KEY', None)
-                else: os.environ['HERMES_SESSION_KEY'] = old_session_key
-                if old_session_id is None: os.environ.pop('HERMES_SESSION_ID', None)
-                else: os.environ['HERMES_SESSION_ID'] = old_session_id
-                if old_session_platform is None: os.environ.pop('HERMES_SESSION_PLATFORM', None)
-                else: os.environ['HERMES_SESSION_PLATFORM'] = old_session_platform
-                if old_hermes_home is None: os.environ.pop('HERMES_HOME', None)
-                else: os.environ['HERMES_HOME'] = old_hermes_home
+            _restore_agent_process_env(
+                old_profile_env,
+                {
+                    'TERMINAL_CWD': old_cwd,
+                    'HERMES_EXEC_ASK': old_exec_ask,
+                    'HERMES_SESSION_KEY': old_session_key,
+                    'HERMES_SESSION_ID': old_session_id,
+                    'HERMES_SESSION_PLATFORM': old_session_platform,
+                    'HERMES_HOME': old_hermes_home,
+                },
+                env_lock=_ENV_LOCK,
+            )
 
     except Exception as e:
         print('[webui] stream error:\n' + traceback.format_exc(), flush=True)
