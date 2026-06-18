@@ -48,6 +48,7 @@ from api.streaming_cancellation import (
     finalize_cancelled_turn as _finalize_cancelled_turn_impl,
     persist_cancel_stream_writeback as _persist_cancel_stream_writeback_impl,
     persist_cancelled_turn as _persist_cancelled_turn_impl,
+    register_agent_instance_or_cancel as _register_agent_instance_or_cancel,
     session_has_cancel_marker as _session_has_cancel_marker_impl,
 )
 from api.streaming_chat_steer import (
@@ -1161,19 +1162,17 @@ def _run_agent_streaming(
                     _cache_new_agent_for_signature(session_id, agent, _agent_sig, logger=logger)
 
             # Store agent instance for cancel/interrupt propagation
-            with STREAMS_LOCK:
-                AGENT_INSTANCES[stream_id] = agent
-                # Check if cancel was requested during agent initialization
-                if stream_id in CANCEL_FLAGS and CANCEL_FLAGS[stream_id].is_set():
-                    # Cancel arrived during agent creation - interrupt immediately
-                    try:
-                        agent.interrupt("Cancelled before start")
-                    except Exception:
-                        logger.debug("Failed to interrupt agent before start")
-                    with _agent_lock:
-                        _finalize_cancelled_turn(s, ephemeral=ephemeral, message='Task cancelled before start.')
-                    _put_cancel()
-                    return
+            if not _register_agent_instance_or_cancel(
+                stream_id,
+                agent,
+                s,
+                agent_lock=_agent_lock,
+                finalize_cancelled_turn_fn=_finalize_cancelled_turn,
+                put_cancel_fn=_put_cancel,
+                ephemeral=ephemeral,
+                logger=logger,
+            ):
+                return
 
             # Prepend workspace context so the agent always knows which directory
             # to use for file operations, regardless of session age or AGENTS.md defaults.
