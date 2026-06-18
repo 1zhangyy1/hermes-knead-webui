@@ -100,7 +100,7 @@ def test_self_heal_retry_success_checks_stream_ownership_before_writeback():
     guard = "if not ephemeral and not _stream_writeback_is_current(s, stream_id):"
 
     assert guard in block
-    assert block.index(guard) < block.index("_result_messages = _heal_result.get('messages') or _previous_context_messages")
+    assert block.index(guard) < block.index("_apply_agent_result_to_session(")
     assert block.index(guard) < block.index("s.save()")
 
 
