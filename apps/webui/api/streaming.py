@@ -2,11 +2,9 @@
 Hermes Web UI -- SSE streaming engine and agent thread runner.
 Includes Sprint 10 cancel support via CANCEL_FLAGS.
 """
-import base64
 import contextlib
 import json
 import logging
-import mimetypes
 import os
 import queue
 import re
@@ -56,6 +54,14 @@ from api.streaming_gateway import (
     extract_gateway_routing_metadata as _extract_gateway_routing_metadata,
     find_gateway_metadata_payload as _find_gateway_metadata_payload,
     normalize_gateway_routing_metadata as _normalize_gateway_routing_metadata,
+)
+from api.streaming_attachments import (
+    IMAGE_MAGIC as _IMAGE_MAGIC,
+    NATIVE_IMAGE_MAX_BYTES as _NATIVE_IMAGE_MAX_BYTES,
+    attachment_name as _attachment_name,
+    build_native_multimodal_message as _build_native_multimodal_message,
+    is_valid_image as _is_valid_image,
+    resolve_image_input_mode as _resolve_image_input_mode,
 )
 
 # Global lock for os.environ writes. Per-session locks (_agent_lock) prevent
@@ -353,8 +359,6 @@ from api.workspace import set_last_workspace
 # metadata added by the webui and must be stripped before the API call.
 _API_SAFE_MSG_KEYS = {'role', 'content', 'tool_calls', 'tool_call_id', 'name', 'refusal', 'reasoning_content'}
 
-_NATIVE_IMAGE_MAX_BYTES = 20 * 1024 * 1024
-
 def _build_agent_thread_env(profile_runtime_env: dict | None, workspace: str, session_id: str, profile_home: str) -> dict:
     """Build thread-local agent env with per-run values overriding profile defaults.
 
@@ -457,150 +461,6 @@ def _drain_webui_process_notifications(session_id: str) -> list[str]:
             logger.debug("Failed to requeue process completion event", exc_info=True)
             break
     return notifications
-
-
-def _attachment_name(att) -> str:
-    if isinstance(att, dict):
-        return str(att.get('name') or att.get('filename') or att.get('path') or '').strip()
-    return str(att or '').strip()
-
-
-_IMAGE_MAGIC: dict[bytes | None, frozenset[str]] = {
-    b'\x89PNG\r\n\x1a\n': frozenset({'image/png'}),
-    b'\xff\xd8\xff': frozenset({'image/jpeg'}),
-    b'GIF87a': frozenset({'image/gif'}),
-    b'GIF89a': frozenset({'image/gif'}),
-    b'RIFF': frozenset({'image/webp'}),
-    b'BM': frozenset({'image/bmp'}),
-    None: frozenset({'image/svg+xml'}),
-}
-
-
-def _is_valid_image(path: Path, mime: str) -> bool:
-    """Check that the file's first bytes match the expected image MIME type.
-
-    Uses simple magic-number detection (no external dependency). SVG is
-    allowed through because it is text-based and has no binary signature.
-    """
-    if not mime.startswith('image/'):
-        return False
-    mime_base = mime.split(';', 1)[0]
-    if mime_base == 'image/svg+xml':
-        return True
-    try:
-        with path.open('rb') as fh:
-            head = fh.read(16)
-    except OSError:
-        return False
-    for magic, mimes in _IMAGE_MAGIC.items():
-        if magic is not None and head.startswith(magic) and mime_base in mimes:
-            return True
-    return False
-
-
-def _resolve_image_input_mode(cfg: dict) -> str:
-    """Return ``"native"`` or ``"text"`` based on config, mirroring
-    ``agent/image_routing.py:decide_image_input_mode``.
-
-    The agent has this logic, but the WebUI's ``_build_native_multimodal_message``
-    was unconditionally embedding images as native ``image_url`` parts, completely
-    bypassing ``image_input_mode``.  This caused silent failures when the main model
-    does not support images and the fallback model is also text-only (#21160-related).
-    """
-    agent_cfg = cfg.get("agent") or {}
-    mode = str(agent_cfg.get("image_input_mode", "auto") or "auto").strip().lower()
-    if mode not in ("auto", "native", "text"):
-        mode = "auto"
-
-    if mode == "native":
-        return "native"
-    if mode == "text":
-        return "text"
-
-    # auto: if auxiliary.vision is explicitly configured → text mode
-    # (user opted into a dedicated vision backend)
-    aux = cfg.get("auxiliary") or {}
-    vision = aux.get("vision") or {}
-    provider = str(vision.get("provider") or "").strip().lower()
-    model_name = str(vision.get("model") or "").strip()
-    base_url = str(vision.get("base_url") or "").strip()
-    if provider not in ("", "auto") or model_name or base_url:
-        return "text"
-
-    # No explicit vision config, no model-capability lookup available in WebUI.
-    # Default to native — the agent's ``_strip_images_from_messages`` guard will
-    # strip images on rejection and retry as text.
-    return "native"
-
-
-def _build_native_multimodal_message(workspace_ctx: str, msg_text: str, attachments, workspace: str, *, cfg: dict = None):
-    """Build native multimodal content parts for current-turn image uploads.
-
-    WebUI uploads files into the active workspace. For image files, pass the
-    bytes to Hermes as OpenAI-style image_url data URLs so vision-capable main
-    models can consume them in the same request. Non-image files intentionally
-    stay as text path attachments so the agent can inspect them with file tools.
-
-    When *cfg* is provided, respects ``agent.image_input_mode`` — if the resolved
-    mode is ``"text"``, returns a plain string (attachments are not embedded) so
-    the agent's text-mode pipeline (``vision_analyze``) handles images.
-    """
-    if not attachments:
-        return workspace_ctx + msg_text
-
-    # ── Check image_input_mode before embedding anything ──
-    if cfg is not None and _resolve_image_input_mode(cfg) == "text":
-        return workspace_ctx + msg_text
-
-    parts = [{'type': 'text', 'text': workspace_ctx + msg_text}]
-    workspace_root = Path(workspace).expanduser().resolve()
-    # Stage-361 maintainer fix (Opus SHOULD-FIX): chat uploads from #2319 now
-    # land in ~/.hermes/webui/attachments/<sid>/ (outside workspace_root by
-    # design). The pre-existing `path.relative_to(workspace_root)` guard would
-    # silently reject every image upload for vision-capable models. Allow the
-    # configured attachment root in addition to workspace_root so native
-    # multimodal embeds still build the base64 image_url part. The
-    # _attachment_root() helper applies expanduser+resolve and is also reused
-    # by _upload_destination — single source of truth for the inbox root.
-    try:
-        from api.upload import _attachment_root
-        attachment_root = _attachment_root()
-        _allowed_roots = (workspace_root, attachment_root)
-    except Exception:
-        _allowed_roots = (workspace_root,)
-    image_count = 0
-
-    for att in attachments or []:
-        if not isinstance(att, dict):
-            continue
-        raw_path = str(att.get('path') or '').strip()
-        if not raw_path:
-            continue
-        try:
-            path = Path(raw_path).expanduser().resolve()
-            # Uploads should live inside the selected workspace OR the
-            # session attachment inbox (#2319). Do not read arbitrary paths
-            # from client-provided attachment metadata.
-            if not any(path.is_relative_to(r) for r in _allowed_roots):
-                continue
-            if not path.is_file():
-                continue
-            size = path.stat().st_size
-            if size <= 0 or size > _NATIVE_IMAGE_MAX_BYTES:
-                continue
-            mime = str(att.get('mime') or '').strip() or (mimetypes.guess_type(path.name)[0] or '')
-            if not mime.startswith('image/') or not _is_valid_image(path, mime):
-                continue
-            data = base64.b64encode(path.read_bytes()).decode('ascii')
-        except Exception:
-            continue
-        parts.append({
-            'type': 'image_url',
-            'image_url': {'url': f'data:{mime};base64,{data}'},
-        })
-        image_count += 1
-
-    return parts if image_count else workspace_ctx + msg_text
 
 
 def _strip_thinking_markup(text: str) -> str:
