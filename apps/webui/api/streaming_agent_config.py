@@ -1,5 +1,7 @@
 """Configuration helpers for WebUI streaming agent construction."""
 
+from pathlib import Path
+
 
 def initialize_session_db(*, session_db_factory=None, warning_fn=print):
     """Create SessionDB for WebUI agents, falling back to None on failure."""
@@ -51,6 +53,51 @@ def resolve_agent_runtime_connection(
             resolved_base_url = custom_base
 
     return runtime, resolved_api_key, resolved_provider, resolved_base_url
+
+
+def load_agent_config_and_toolsets(
+    session_id: str,
+    *,
+    get_config_fn=None,
+    resolve_toolsets_fn=None,
+    session_cls=None,
+    session_dir=None,
+    warning_fn=print,
+):
+    """Load active config and apply any per-session toolset override."""
+    if get_config_fn is None:
+        from api.config import get_config as get_config_fn
+    if resolve_toolsets_fn is None:
+        from api.config import _resolve_cli_toolsets as resolve_toolsets_fn
+
+    cfg = get_config_fn()
+    toolsets = resolve_toolsets_fn(cfg)
+
+    try:
+        if session_cls is None or session_dir is None:
+            from api.models import Session, SESSION_DIR
+            if session_cls is None:
+                session_cls = Session
+            if session_dir is None:
+                session_dir = SESSION_DIR
+        session_path = Path(session_dir) / f"{session_id}.json"
+        if session_path.exists():
+            session_meta = session_cls.load_metadata_only(session_id)
+            # load_metadata_only returns a Session INSTANCE, not a dict.
+            # The previous .get('enabled_toolsets') raised AttributeError
+            # which was swallowed by the bare except below — the entire
+            # per-session toolset override silently no-op'd. Use getattr().
+            override = getattr(session_meta, 'enabled_toolsets', None) if session_meta else None
+            if override:
+                toolsets = override
+    except Exception as err:
+        if warning_fn is not None:
+            warning_fn(
+                f"[webui] WARNING: failed to read per-session toolsets for {session_id}: {err}",
+                flush=True,
+            )
+
+    return cfg, toolsets
 
 
 def resolve_fallback_config(_cfg):
