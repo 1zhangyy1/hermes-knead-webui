@@ -34,6 +34,8 @@ class StreamingOutputBridge:
         self._metering_last_emit = self.clock() - 1
         self._metering_output_deltas = 0
         self._metering_reasoning_deltas = 0
+        self.token_sent = False
+        self.reasoning_text = ''
 
     def emit_metering(self) -> bool:
         now = self.clock()
@@ -55,6 +57,7 @@ class StreamingOutputBridge:
         if self.stream_id in self.partial_texts:
             self.partial_texts[self.stream_id] += text
         self.put('token', {'text': text})
+        self.token_sent = True
         self._metering_output_deltas += 1
         self.meter_factory().record_token(self.stream_id, self._metering_output_deltas)
         self.emit_metering()
@@ -66,6 +69,7 @@ class StreamingOutputBridge:
         text = str(text)
         if self.stream_id in self.reasoning_texts:
             self.reasoning_texts[self.stream_id] += text
+        self.reasoning_text += text
         self.put('reasoning', {'text': text})
         self._metering_reasoning_deltas += 1
         self.meter_factory().record_reasoning(self.stream_id, self._metering_reasoning_deltas)
@@ -83,4 +87,3 @@ class StreamingOutputBridge:
             'already_streamed': bool(cb_kwargs.get('already_streamed', False)),
         })
         return True
-
