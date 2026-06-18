@@ -6,6 +6,7 @@ from api.streaming_runtime_helpers import (
     discover_mcp_tools_for_profile,
     restore_agent_process_env,
     restore_env_snapshot,
+    resolve_streaming_profile_runtime,
 )
 
 
@@ -70,3 +71,35 @@ def test_discover_mcp_tools_for_profile_runs_best_effort(monkeypatch):
 
     mcp_tool.discover_mcp_tools = lambda: (_ for _ in ()).throw(RuntimeError("boom"))
     assert discover_mcp_tools_for_profile() is False
+
+
+def test_resolve_streaming_profile_runtime_uses_session_profile(monkeypatch, tmp_path):
+    from api import profiles
+
+    profile_home = tmp_path / "profiles" / "work"
+    patcher = object()
+    monkeypatch.setattr(profiles, "get_hermes_home_for_profile", lambda profile: profile_home)
+    monkeypatch.setattr(profiles, "get_profile_runtime_env", lambda home: {"PROFILE_HOME": str(home)})
+    monkeypatch.setattr(profiles, "patch_skill_home_modules", patcher)
+    monkeypatch.setattr(profiles, "get_active_profile_name", lambda: "active")
+
+    runtime = resolve_streaming_profile_runtime(types.SimpleNamespace(profile="work"))
+
+    assert runtime.profile_home == str(profile_home)
+    assert runtime.profile_runtime_env == {"PROFILE_HOME": str(profile_home)}
+    assert runtime.resolved_profile_name == "work"
+    assert runtime.patch_skill_home_modules is patcher
+
+
+def test_resolve_streaming_profile_runtime_falls_back_to_active_profile(monkeypatch, tmp_path):
+    from api import profiles
+
+    profile_home = tmp_path / "default-home"
+    monkeypatch.setattr(profiles, "get_hermes_home_for_profile", lambda profile: profile_home)
+    monkeypatch.setattr(profiles, "get_profile_runtime_env", lambda home: {})
+    monkeypatch.setattr(profiles, "get_active_profile_name", lambda: "active")
+
+    runtime = resolve_streaming_profile_runtime(types.SimpleNamespace(profile=None))
+
+    assert runtime.profile_home == str(profile_home)
+    assert runtime.resolved_profile_name == "active"

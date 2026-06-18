@@ -3,7 +3,8 @@
 import os
 import sys
 import time
-from typing import Optional
+from dataclasses import dataclass
+from typing import Callable, Optional
 
 
 WEBUI_VISIBLE_PROGRESS_PROMPT = """
@@ -14,6 +15,14 @@ WebUI progress contract:
 - Do not reveal hidden reasoning, chain-of-thought, private scratchpads, secrets, raw logs, or long tool output.
 - For direct answers or very short tasks, skip progress updates and answer normally.
 """.strip()
+
+
+@dataclass(frozen=True)
+class StreamingProfileRuntime:
+    profile_home: str
+    profile_runtime_env: dict
+    resolved_profile_name: str | None
+    patch_skill_home_modules: Callable | None
 
 
 def build_agent_thread_env(profile_runtime_env: dict | None, workspace: str, session_id: str, profile_home: str) -> dict:
@@ -28,6 +37,42 @@ def build_agent_thread_env(profile_runtime_env: dict | None, workspace: str, ses
         'HERMES_HOME': profile_home,
     })
     return env
+
+
+def resolve_streaming_profile_runtime(session, *, environ=os.environ) -> StreamingProfileRuntime:
+    """Resolve the per-session Hermes profile runtime for a streaming turn."""
+    try:
+        from api.profiles import (
+            patch_skill_home_modules,
+            get_hermes_home_for_profile,
+            get_profile_runtime_env,
+        )
+        _profile_home_path = get_hermes_home_for_profile(getattr(session, 'profile', None))
+        _profile_home = str(_profile_home_path)
+        _profile_runtime_env = get_profile_runtime_env(_profile_home_path)
+    except ImportError:
+        _profile_home = environ.get('HERMES_HOME', '')
+        _profile_runtime_env = {}
+        patch_skill_home_modules = None
+
+    # Capture the resolved profile name now, while session context is reliable.
+    # Streaming runs in a background thread, so request-local profile state from
+    # the HTTP handler thread is not safe to consult later during compression.
+    _resolved_profile_name = getattr(session, 'profile', None)
+    if not _resolved_profile_name:
+        try:
+            from api.profiles import get_active_profile_name
+
+            _resolved_profile_name = get_active_profile_name()
+        except Exception:
+            _resolved_profile_name = None
+
+    return StreamingProfileRuntime(
+        profile_home=_profile_home,
+        profile_runtime_env=_profile_runtime_env,
+        resolved_profile_name=_resolved_profile_name,
+        patch_skill_home_modules=patch_skill_home_modules,
+    )
 
 
 def restore_env_snapshot(snapshot: dict | None) -> None:
