@@ -40,8 +40,10 @@ def _make_bridge(clock_values=None):
 def test_output_bridge_records_token_partial_text_and_metering():
     bridge, events, fake_meter, partials, reasonings = _make_bridge()
 
+    assert bridge.token_sent is False
     assert bridge.on_token("hello") is True
 
+    assert bridge.token_sent is True
     assert partials["stream1"] == "hello"
     assert fake_meter.token_calls == [("stream1", 1)]
     assert events == [
@@ -62,6 +64,7 @@ def test_output_bridge_records_reasoning_text_and_metering():
     emitted = bridge.on_reasoning("thinking")
 
     assert emitted == "thinking"
+    assert bridge.reasoning_text == "thinking"
     assert reasonings["stream1"] == "thinking"
     assert fake_meter.reasoning_calls == [("stream1", 1)]
     assert events[0] == ("reasoning", {"text": "thinking"})

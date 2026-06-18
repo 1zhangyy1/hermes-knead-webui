@@ -752,6 +752,7 @@ def _run_agent_streaming(
         _append_worker_started_turn_event(session_id, stream_id, logger=logger)
     s = None
     _rt = {}
+    _output_bridge = None
     old_profile_env = {}
     old_runtime_env = {}
 
@@ -869,9 +870,7 @@ def _run_agent_streaming(
         )
 
         try:
-            _token_sent = False  # tracks whether any streamed tokens were sent
             _self_healed = False  # (#1401) prevents infinite self-heal retries
-            _reasoning_text = ''  # accumulates reasoning/thinking trace for persistence
             _live_tool_calls = []  # tool progress fallback when final messages omit tool IDs
 
             _output_bridge = _StreamingOutputBridge(
@@ -883,33 +882,10 @@ def _run_agent_streaming(
                 put=put,
             )
 
-            def _emit_metering():
-                _output_bridge.emit_metering()
-
-            def on_token(text):
-                nonlocal _token_sent
-                if _output_bridge.on_token(text):
-                    _token_sent = True
-
-            def on_reasoning(text):
-                nonlocal _reasoning_text
-                emitted = _output_bridge.on_reasoning(text)
-                if emitted:
-                    _reasoning_text += emitted
-
-            def on_interim_assistant(text, **cb_kwargs):
-                _output_bridge.on_interim_assistant(text, **cb_kwargs)
-
             # Pre-initialise the activity counter here so on_tool (which
             # closes over it) never captures an unbound name even if this
             # block is reordered later (Issue #765).
             _checkpoint_activity = [0]
-
-            def _emit_tool_reasoning(reason_text):
-                nonlocal _reasoning_text
-                emitted = _output_bridge.on_reasoning(reason_text)
-                if emitted:
-                    _reasoning_text += emitted
 
             def _emit_tool_metering_snapshot():
                 _tool_stats = meter().get_stats()
@@ -925,7 +901,7 @@ def _run_agent_streaming(
                 checkpoint_activity=_checkpoint_activity,
                 seen_tool_call_ids=_live_prompt_estimate_seen_ids,
                 put=put,
-                emit_reasoning=_emit_tool_reasoning,
+                emit_reasoning=_output_bridge.on_reasoning,
                 emit_metering_snapshot=_emit_tool_metering_snapshot,
                 bump_live_prompt_estimate=_bump_live_prompt_estimate,
                 tool_result_snippet=_tool_result_snippet,
@@ -984,8 +960,8 @@ def _run_agent_streaming(
                 fallback_model=_fallback_resolved,
                 session_id=session_id,
                 session_db=_session_db,
-                stream_delta_callback=on_token,
-                reasoning_callback=on_reasoning,
+                stream_delta_callback=_output_bridge.on_token,
+                reasoning_callback=_output_bridge.on_reasoning,
                 tool_progress_callback=on_tool,
                 clarify_callback=(
                     lambda question, choices: _webui_clarify_callback_impl(
@@ -996,7 +972,7 @@ def _run_agent_streaming(
                         _clarify_timeout_seconds,
                     )
                 ),
-                interim_assistant_callback=on_interim_assistant,
+                interim_assistant_callback=_output_bridge.on_interim_assistant,
                 tool_start_callback=on_tool_start,
                 tool_complete_callback=on_tool_complete,
                 status_callback=_agent_status_callback,
@@ -1172,8 +1148,8 @@ def _run_agent_streaming(
                     _previous_context_messages,
                     msg_text,
                 )
-                # _token_sent tracks whether on_token() was called (any streamed text)
-                if not _assistant_added and not _token_sent:
+                # token_sent tracks whether the output bridge streamed visible text.
+                if not _assistant_added and not _output_bridge.token_sent:
                     if cancel_event.is_set():
                         _finalize_cancelled_turn(s, ephemeral=ephemeral)
                         if not ephemeral:
@@ -1232,7 +1208,7 @@ def _run_agent_streaming(
                                 _SAC.move_to_end(session_id)
                             # Retry the conversation once with fresh credentials
                             _self_healed = True
-                            _token_sent = False
+                            _output_bridge.token_sent = False
                             try:
                                 _heal_result = agent.run_conversation(
                                     user_message=user_message,
@@ -1242,7 +1218,7 @@ def _run_agent_streaming(
                                     persist_user_message=msg_text,
                                 )
                                 _heal_all_msgs = _heal_result.get('messages') or []
-                                _heal_ok = _has_new_assistant_reply(_heal_all_msgs, _prev_len) or _token_sent
+                                _heal_ok = _has_new_assistant_reply(_heal_all_msgs, _prev_len) or _output_bridge.token_sent
                             except Exception as _retry_exc:
                                 logger.warning(
                                     '[webui] self-heal: retry also failed: %s', _retry_exc,
@@ -1387,7 +1363,7 @@ def _run_agent_streaming(
                 # Must run BEFORE s.save() — otherwise the mutation lives only in
                 # memory until the next turn's save, and the last-turn thinking card
                 # is lost when the user reloads immediately after a response.
-                _attach_reasoning_trace_to_last_assistant(s.messages, _reasoning_text)
+                _attach_reasoning_trace_to_last_assistant(s.messages, _output_bridge.reasoning_text)
                 _turn_metadata = _apply_completed_turn_metadata(
                     s,
                     agent,
@@ -1557,7 +1533,8 @@ def _run_agent_streaming(
                         _SAC2[session_id] = (_heal_agent, _agent_sig)
                         _SAC2.move_to_end(session_id)
                     # Retry the conversation
-                    _token_sent = False
+                    if _output_bridge is not None:
+                        _output_bridge.token_sent = False
                     try:
                         _heal_result = _heal_agent.run_conversation(
                             user_message=user_message,
