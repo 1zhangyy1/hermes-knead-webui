@@ -127,10 +127,7 @@ from api.streaming_agent_runtime import (
 )
 from api.streaming_agent_cache import (
     build_agent_cache_signature as _build_agent_cache_signature,
-    cache_new_agent_for_signature as _cache_new_agent_for_signature,
-    cached_agent_for_signature as _cached_agent_for_signature,
-    refresh_or_discard_cached_agent as _refresh_or_discard_cached_agent,
-    refresh_cached_agent_for_turn as _refresh_cached_agent_for_turn,
+    get_cached_or_new_agent_for_turn as _get_cached_or_new_agent_for_turn,
 )
 from api.streaming_agent_config import (
     build_agent_kwargs as _build_agent_kwargs_impl,
@@ -1097,23 +1094,14 @@ def _run_agent_streaming(
                     profile_home=_profile_home,
                 )
 
-                agent = _cached_agent_for_signature(session_id, _agent_sig, logger=logger)
-
-                if agent is not None:
-                    # Refresh volatile runtime credentials selected from provider
-                    # pools without discarding cross-turn agent/provider state.
-                    agent = _refresh_or_discard_cached_agent(session_id, agent, _agent_kwargs, logger=logger)
-
-                if agent is not None:
-                    _refresh_cached_agent_for_turn(
-                        agent,
-                        _agent_kwargs,
-                        session_db=_session_db,
-                        logger=logger,
-                    )
-                else:
-                    agent = _AIAgent(**_agent_kwargs)
-                    _cache_new_agent_for_signature(session_id, agent, _agent_sig, logger=logger)
+                agent = _get_cached_or_new_agent_for_turn(
+                    session_id,
+                    _agent_sig,
+                    _agent_kwargs,
+                    agent_factory=_AIAgent,
+                    session_db=_session_db,
+                    logger=logger,
+                )
 
             # Store agent instance for cancel/interrupt propagation
             if not _register_agent_instance_or_cancel(

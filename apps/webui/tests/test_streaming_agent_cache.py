@@ -2,6 +2,7 @@ from api.streaming_agent_cache import (
     build_agent_cache_signature,
     cache_new_agent_for_signature,
     cached_agent_for_signature,
+    get_cached_or_new_agent_for_turn,
     handle_evicted_agent_cache_items,
     register_agent_for_lifecycle,
     refresh_or_discard_cached_agent,
@@ -273,6 +274,63 @@ def test_refresh_cached_agent_for_turn_ignores_missing_optional_attributes():
     assert agent.stream_delta_callback is callbacks['stream_delta_callback']
     assert agent.tool_progress_callback is callbacks['tool_progress_callback']
     assert not hasattr(agent, 'status_callback')
+
+
+def test_get_cached_or_new_agent_for_turn_refreshes_matching_cached_agent():
+    agent = _Agent()
+    session_db = _SessionDB()
+    calls = []
+
+    result = get_cached_or_new_agent_for_turn(
+        "sid-1",
+        "sig-1",
+        {"api_key": "fresh"},
+        agent_factory=lambda **kwargs: calls.append(("factory", kwargs)),
+        session_db=session_db,
+        cached_agent_fn=lambda session_id, sig, logger=None: calls.append(("cached", session_id, sig)) or agent,
+        refresh_or_discard_fn=lambda session_id, agent_arg, kwargs, logger=None: calls.append(
+            ("refresh_runtime", session_id, agent_arg, kwargs)
+        ) or agent_arg,
+        refresh_for_turn_fn=lambda agent_arg, kwargs, session_db=None, logger=None: calls.append(
+            ("refresh_turn", agent_arg, kwargs, session_db)
+        ),
+        cache_new_fn=lambda *args, **kwargs: calls.append(("cache_new", args, kwargs)),
+    )
+
+    assert result is agent
+    assert calls == [
+        ("cached", "sid-1", "sig-1"),
+        ("refresh_runtime", "sid-1", agent, {"api_key": "fresh"}),
+        ("refresh_turn", agent, {"api_key": "fresh"}, session_db),
+    ]
+
+
+def test_get_cached_or_new_agent_for_turn_rebuilds_when_cache_misses_or_refresh_fails():
+    cached = _Agent()
+    fresh = _Agent()
+    calls = []
+
+    result = get_cached_or_new_agent_for_turn(
+        "sid-1",
+        "sig-1",
+        {"api_key": "fresh"},
+        agent_factory=lambda **kwargs: calls.append(("factory", kwargs)) or fresh,
+        cached_agent_fn=lambda session_id, sig, logger=None: cached,
+        refresh_or_discard_fn=lambda session_id, agent_arg, kwargs, logger=None: calls.append(
+            ("discard", session_id, agent_arg, kwargs)
+        ) or None,
+        refresh_for_turn_fn=lambda *args, **kwargs: calls.append(("refresh_turn", args, kwargs)),
+        cache_new_fn=lambda session_id, agent_arg, sig, logger=None: calls.append(
+            ("cache_new", session_id, agent_arg, sig)
+        ),
+    )
+
+    assert result is fresh
+    assert calls == [
+        ("discard", "sid-1", cached, {"api_key": "fresh"}),
+        ("factory", {"api_key": "fresh"}),
+        ("cache_new", "sid-1", fresh, "sig-1"),
+    ]
 
 
 def test_handle_evicted_agent_cache_items_commits_unregisters_and_closes(monkeypatch):
