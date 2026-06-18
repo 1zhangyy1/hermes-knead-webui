@@ -105,6 +105,7 @@ from api.streaming_agent_status import make_agent_status_callback as _make_agent
 from api.streaming_event_sink import StreamingEventSink as _StreamingEventSink
 from api.streaming_live_usage import LiveUsageTracker as _LiveUsageTracker
 from api.streaming_metering import StreamingMeteringTicker as _StreamingMeteringTicker
+from api.streaming_output_bridge import StreamingOutputBridge as _StreamingOutputBridge
 from api.streaming_process_notifications import (
     drain_webui_process_notifications as _drain_webui_process_notifications_impl,
     format_process_notification as _format_process_notification_impl,
@@ -1251,64 +1252,31 @@ def _run_agent_streaming(
             _reasoning_text = ''  # accumulates reasoning/thinking trace for persistence
             _live_tool_calls = []  # tool progress fallback when final messages omit tool IDs
 
-            # Throttle: emit metering events at most every 100 ms so the per-message
-            # TPS label feels live during fast token streams without flooding SSE.
-            _metering_last_emit = [time.monotonic() - 1]  # fire immediately on first token
-            _metering_output_deltas = [0]
-            _metering_reasoning_deltas = [0]
+            _output_bridge = _StreamingOutputBridge(
+                stream_id=stream_id,
+                session_id=session_id,
+                partial_texts=STREAM_PARTIAL_TEXT,
+                reasoning_texts=STREAM_REASONING_TEXT,
+                usage_snapshot=_live_usage_snapshot,
+                put=put,
+            )
 
             def _emit_metering():
-                now = time.monotonic()
-                if now - _metering_last_emit[0] < 0.1:
-                    return
-                _metering_last_emit[0] = now
-                stats = meter().get_stats()
-                stats['session_id'] = session_id
-                stats['usage'] = _live_usage_snapshot()
-                stats.setdefault('tps_available', False)
-                stats.setdefault('estimated', False)
-                put('metering', stats)
+                _output_bridge.emit_metering()
 
             def on_token(text):
                 nonlocal _token_sent
-                if text is None:
-                    return  # end-of-stream sentinel
-                _token_sent = True
-                # Accumulate partial text so cancel_stream() can persist it (#893)
-                if stream_id in STREAM_PARTIAL_TEXT:
-                    STREAM_PARTIAL_TEXT[stream_id] += str(text)
-                put('token', {'text': text})
-                # Update live throughput from stream delta callbacks, not from
-                # byte/character length. If a backend cannot provide live deltas,
-                # the frontend hides TPS rather than showing an estimate.
-                _metering_output_deltas[0] += 1
-                meter().record_token(stream_id, _metering_output_deltas[0])
-                _emit_metering()
+                if _output_bridge.on_token(text):
+                    _token_sent = True
 
             def on_reasoning(text):
                 nonlocal _reasoning_text
-                if text is None:
-                    return
-                _reasoning_text += str(text)
-                # Mirror to shared dict so cancel_stream() can persist it (#1361 §A)
-                if stream_id in STREAM_REASONING_TEXT:
-                    STREAM_REASONING_TEXT[stream_id] += str(text)
-                put('reasoning', {'text': str(text)})
-                # Track reasoning deltas in the meter so live TPS reflects all AI output.
-                _metering_reasoning_deltas[0] += 1
-                meter().record_reasoning(stream_id, _metering_reasoning_deltas[0])
-                _emit_metering()
+                emitted = _output_bridge.on_reasoning(text)
+                if emitted:
+                    _reasoning_text += emitted
 
             def on_interim_assistant(text, **cb_kwargs):
-                if text is None:
-                    return
-                visible = str(text).strip()
-                if not visible:
-                    return
-                put('interim_assistant', {
-                    'text': visible,
-                    'already_streamed': bool(cb_kwargs.get('already_streamed', False)),
-                })
+                _output_bridge.on_interim_assistant(text, **cb_kwargs)
 
             # Pre-initialise the activity counter here so on_tool (which
             # closes over it) never captures an unbound name even if this
@@ -1317,16 +1285,9 @@ def _run_agent_streaming(
 
             def _emit_tool_reasoning(reason_text):
                 nonlocal _reasoning_text
-                if not reason_text:
-                    return
-                _reasoning_text += str(reason_text)
-                # Mirror to shared dict so cancel_stream() can persist it (#1361 §A)
-                if stream_id in STREAM_REASONING_TEXT:
-                    STREAM_REASONING_TEXT[stream_id] += str(reason_text)
-                put('reasoning', {'text': str(reason_text)})
-                _metering_reasoning_deltas[0] += 1
-                meter().record_reasoning(stream_id, _metering_reasoning_deltas[0])
-                _emit_metering()
+                emitted = _output_bridge.on_reasoning(reason_text)
+                if emitted:
+                    _reasoning_text += emitted
 
             def _emit_tool_metering_snapshot():
                 _tool_stats = meter().get_stats()
