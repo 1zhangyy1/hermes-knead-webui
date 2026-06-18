@@ -2,10 +2,10 @@
 Sprint 42 Tests: SessionDB injection into AIAgent for WebUI sessions (PR #356).
 
 Covers:
-- streaming.py: SessionDB is initialized inside _run_agent_streaming (import present)
-- streaming.py: try/except guards SessionDB init so failures are non-fatal
-- streaming.py: session_db= kwarg is passed to AIAgent constructor
-- streaming.py: SessionDB init failure prints a WARNING (not silently swallowed)
+- streaming_agent_config.py: SessionDB is initialized by a guarded helper
+- streaming_agent_config.py: try/except guards SessionDB init so failures are non-fatal
+- streaming.py: session_db= kwarg is passed into agent kwargs
+- streaming_agent_config.py: SessionDB init failure prints a WARNING (not silently swallowed)
 - streaming.py: SessionDB init is placed before AIAgent construction
 """
 import ast
@@ -37,14 +37,14 @@ def _read_sessions_js():
 # ─────────────────────────────────────────────────────────────────────────────
 
 class TestSessionDBInjection(unittest.TestCase):
-    """Verify SessionDB is initialized and passed to AIAgent in streaming.py."""
+    """Verify SessionDB is initialized and passed to AIAgent for WebUI turns."""
 
     def test_hermes_state_import_present(self):
-        """SessionDB must be imported from hermes_state inside _run_agent_streaming."""
+        """SessionDB must be imported from hermes_state inside the config helper."""
         self.assertIn(
-            "from hermes_state import SessionDB",
-            STREAMING_PY,
-            "SessionDB import missing from streaming.py (PR #356)",
+            "from hermes_state import SessionDB as session_db_factory",
+            STREAMING_AGENT_CONFIG_PY,
+            "SessionDB import missing from streaming_agent_config.py (PR #356)",
         )
 
     def test_session_db_kwarg_passed_to_agent(self):
@@ -58,9 +58,14 @@ class TestSessionDBInjection(unittest.TestCase):
     def test_sessiondb_init_in_try_except(self):
         """SessionDB() init must be wrapped in try/except for non-fatal failure handling."""
         # Check that the try/except pattern surrounding SessionDB() is present
-        pattern = r"try:\s*\n\s*from hermes_state import SessionDB\s*\n\s*_session_db\s*=\s*SessionDB\(\)"
+        pattern = (
+            r"try:\s*\n"
+            r"\s*if session_db_factory is None:\s*\n"
+            r"\s*from hermes_state import SessionDB as session_db_factory\s*\n"
+            r"\s*return session_db_factory\(\)"
+        )
         self.assertRegex(
-            STREAMING_PY,
+            STREAMING_AGENT_CONFIG_PY,
             pattern,
             "SessionDB() init must be inside a try block for non-fatal error handling (PR #356)",
         )
@@ -69,13 +74,13 @@ class TestSessionDBInjection(unittest.TestCase):
         """A failure initializing SessionDB must print a WARNING (not silently drop the error)."""
         self.assertIn(
             "WARNING: SessionDB init failed",
-            STREAMING_PY,
+            STREAMING_AGENT_CONFIG_PY,
             "SessionDB init failure must log a WARNING message (PR #356)",
         )
 
     def test_session_db_initialized_before_agent_construction(self):
         """SessionDB initialization must appear before the AIAgent(...) constructor call."""
-        db_pos = STREAMING_PY.find("from hermes_state import SessionDB")
+        db_pos = STREAMING_PY.find("_session_db = _initialize_session_db()")
         agent_pos = STREAMING_PY.find("session_db=_session_db")
         self.assertGreater(
             agent_pos,
@@ -84,13 +89,12 @@ class TestSessionDBInjection(unittest.TestCase):
         )
 
     def test_session_db_default_is_none(self):
-        """_session_db must be initialized to None before the try block (safe default)."""
-        # Pattern: _session_db = None followed (eventually) by the try/SessionDB block
-        pattern = r"_session_db\s*=\s*None\s*\n\s*try:"
+        """The helper must default to no SessionDB factory before its guarded import."""
+        pattern = r"def initialize_session_db\(\*, session_db_factory=None, warning_fn=print\):"
         self.assertRegex(
-            STREAMING_PY,
+            STREAMING_AGENT_CONFIG_PY,
             pattern,
-            "_session_db must default to None before try/except block (PR #356)",
+            "SessionDB helper must default to None before the guarded import (PR #356)",
         )
 
 
