@@ -75,3 +75,40 @@ def persist_streaming_error_message(
         if logger is not None:
             logger.debug("Failed to save streaming error message", exc_info=True)
     return error_message
+
+
+def emit_and_persist_streaming_error(
+    session,
+    *,
+    label: str,
+    message: str,
+    error_type: str,
+    hint: str = '',
+    put,
+    provider_error_payload: Callable[[str, str, str], dict],
+    finalize_product_turn: Callable[..., object],
+    details=None,
+    always_include_hint: bool = False,
+    materialize_pending_user_turn: Callable[[object], object] | None = None,
+    logger=None,
+) -> dict:
+    """Emit an app error payload and persist the matching assistant error row."""
+    error_payload = provider_error_payload(message, error_type, hint)
+    finalize_product_turn(
+        failed=True,
+        error_type=error_type,
+        error_message=error_payload.get('message') or label,
+    )
+    put('apperror', error_payload)
+    persist_streaming_error_message(
+        session,
+        label=label,
+        message=error_payload.get('message') or label,
+        error_type=error_type,
+        hint=hint,
+        details=details if details is not None else error_payload.get('details'),
+        always_include_hint=always_include_hint,
+        materialize_pending_user_turn=materialize_pending_user_turn,
+        logger=logger,
+    )
+    return error_payload
