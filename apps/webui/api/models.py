@@ -113,6 +113,10 @@ from api.session_projection import (
     session_sort_timestamp as _session_sort_timestamp_impl,
     title_from as _title_from_impl,
 )
+from api.session_paths import (
+    active_state_db_path as _active_state_db_path_impl,
+    profile_home as _profile_home_impl,
+)
 
 logger = logging.getLogger(__name__)
 CLI_VISIBLE_SESSION_LIMIT = 20
@@ -451,11 +455,7 @@ def _get_profile_home(profile) -> Path:
     Prefers the profile-specific helper from api.profiles; falls back to the
     HERMES_HOME environment variable or ~/.hermes, expanding ~ correctly.
     """
-    try:
-        from api.profiles import get_hermes_home_for_profile
-        return Path(get_hermes_home_for_profile(profile))
-    except ImportError:
-        return Path(os.environ.get('HERMES_HOME') or '~/.hermes').expanduser()
+    return _profile_home_impl(profile, environ=os.environ)
 
 
 def _interrupted_recovery_marker(*, recovered_output: bool = False) -> dict:
@@ -732,12 +732,7 @@ def _strip_sidebar_internal_flags(sessions: list[dict]) -> None:
 
 def _active_state_db_path() -> Path:
     """Return state.db for the active Hermes profile, degrading to HERMES_HOME."""
-    try:
-        from api.profiles import get_active_hermes_home
-        hermes_home = Path(get_active_hermes_home()).expanduser().resolve()
-    except Exception:
-        hermes_home = Path(os.getenv('HERMES_HOME', str(HOME / '.hermes'))).expanduser().resolve()
-    return hermes_home / 'state.db'
+    return _active_state_db_path_impl(home=HOME, environ=os.environ)
 
 
 def _sidebar_title_is_generic_webui(title: str | None) -> bool:
