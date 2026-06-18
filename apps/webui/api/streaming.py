@@ -67,6 +67,7 @@ from api.streaming_gateway import (
 )
 from api.streaming_gateway_notifications import register_streaming_gateway_notifications as _register_streaming_gateway_notifications
 from api.streaming_goal import run_post_turn_goal_hook as _run_post_turn_goal_hook
+from api.streaming_error_writeback import persist_streaming_error_message as _persist_streaming_error_message
 from api.streaming_attachments import (
     IMAGE_MAGIC as _IMAGE_MAGIC,
     NATIVE_IMAGE_MAX_BYTES as _NATIVE_IMAGE_MAX_BYTES,
@@ -1631,33 +1632,20 @@ def _run_agent_streaming(
                             error_message=_error_payload.get('message') or _err_label,
                         )
                         put('apperror', _error_payload)
-                        # Clear stream/pending state so the session does not appear
-                        # "agent_running" on reload after a silent failure.
                         # Persist the error so it survives page reload.
                         # _error=True ensures _sanitize_messages_for_api excludes it from
                         # subsequent API calls so the LLM never sees its own error as prior context.
-                        _materialize_pending_user_turn_before_error(s)
-                        s.active_stream_id = None
-                        s.pending_user_message = None
-                        s.pending_attachments = []
-                        s.pending_started_at = None
-                        _error_message = {
-                            'role': 'assistant',
-                            'content': f'**{_err_label}:** {_error_payload.get("message") or _err_label}\n\n*{_err_hint}*',
-                            'timestamp': int(time.time()),
-                            '_error': True,
-                        }
-                        if _error_payload.get('details'):
-                            _error_message['provider_details'] = _error_payload['details']
-                        if _err_type == 'cancelled':
-                            _error_message['provider_details_label'] = 'Cancellation details'
-                        elif _err_type == 'interrupted':
-                            _error_message['provider_details_label'] = 'Interruption details'
-                        s.messages.append(_error_message)
-                        try:
-                            s.save()
-                        except Exception:
-                            pass
+                        _persist_streaming_error_message(
+                            s,
+                            label=_err_label,
+                            message=_error_payload.get("message") or _err_label,
+                            error_type=_err_type,
+                            hint=_err_hint,
+                            details=_error_payload.get('details'),
+                            always_include_hint=True,
+                            materialize_pending_user_turn=_materialize_pending_user_turn_before_error,
+                            logger=logger,
+                        )
                         # Legacy #373 source tests and clients look for the
                         # no_response type; #1765 keeps that type but improves
                         # the catch-all label, hint, and provider details.
@@ -2067,28 +2055,16 @@ def _run_agent_streaming(
                         getattr(s, 'active_stream_id', None),
                     )
                     return
-                _materialize_pending_user_turn_before_error(s)
-                s.active_stream_id = None
-                s.pending_user_message = None
-                s.pending_attachments = []
-                s.pending_started_at = None
-                _error_message = {
-                    'role': 'assistant',
-                    'content': f'**{_exc_label}:** {_error_payload.get("message") or err_str}' + (f'\n\n*{_exc_hint}*' if _exc_hint else ''),
-                    'timestamp': int(time.time()),
-                    '_error': True,
-                }
-                if _error_payload.get('details'):
-                    _error_message['provider_details'] = _error_payload['details']
-                if _exc_type == 'cancelled':
-                    _error_message['provider_details_label'] = 'Cancellation details'
-                elif _exc_type == 'interrupted':
-                    _error_message['provider_details_label'] = 'Interruption details'
-                s.messages.append(_error_message)
-                try:
-                    s.save()
-                except Exception:
-                    pass
+                _persist_streaming_error_message(
+                    s,
+                    label=_exc_label,
+                    message=_error_payload.get("message") or err_str,
+                    error_type=_exc_type,
+                    hint=_exc_hint,
+                    details=_error_payload.get('details'),
+                    materialize_pending_user_turn=_materialize_pending_user_turn_before_error,
+                    logger=logger,
+                )
                 if not ephemeral:
                     _append_interrupted_turn_event(
                         s.session_id,

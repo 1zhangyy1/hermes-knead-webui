@@ -150,9 +150,10 @@ class TestCancelledTurnPersistenceGuards:
             "Exception handling must distinguish user-cancelled/aborted runs before generic errors."
         )
         assert "cancelled" in block.lower() or "interrupted" in block.lower()
-        assert "provider_details_label" in src
-        assert "Cancellation details" in src
-        assert "Interruption details" in src
+        writeback_src = _read("api/streaming_error_writeback.py")
+        assert "provider_details_label" in writeback_src
+        assert "Cancellation details" in writeback_src
+        assert "Interruption details" in writeback_src
 
     def test_post_run_cancel_guard_runs_before_normal_success_merge(self):
         src = _read("api/streaming.py")

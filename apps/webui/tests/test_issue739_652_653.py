@@ -13,6 +13,7 @@ import pathlib
 STREAMING = pathlib.Path(__file__).parent.parent / 'api' / 'streaming.py'
 STREAMING_CONTEXT = pathlib.Path(__file__).parent.parent / 'api' / 'streaming_context.py'
 STREAMING_ERRORS = pathlib.Path(__file__).parent.parent / 'api' / 'streaming_errors.py'
+STREAMING_ERROR_WRITEBACK = pathlib.Path(__file__).parent.parent / 'api' / 'streaming_error_writeback.py'
 STREAMING_TERMINAL = pathlib.Path(__file__).parent.parent / 'api' / 'streaming_terminal.py'
 STREAMING_TITLE_REFRESH = pathlib.Path(__file__).parent.parent / 'api' / 'streaming_title_refresh.py'
 MESSAGES_JS = pathlib.Path(__file__).parent.parent / 'static' / 'messages.js'
@@ -20,6 +21,7 @@ MESSAGES_JS = pathlib.Path(__file__).parent.parent / 'static' / 'messages.js'
 streaming_src = STREAMING.read_text(encoding='utf-8')
 streaming_context_src = STREAMING_CONTEXT.read_text(encoding='utf-8')
 streaming_errors_src = STREAMING_ERRORS.read_text(encoding='utf-8')
+streaming_error_writeback_src = STREAMING_ERROR_WRITEBACK.read_text(encoding='utf-8')
 streaming_terminal_src = STREAMING_TERMINAL.read_text(encoding='utf-8')
 streaming_title_refresh_src = STREAMING_TITLE_REFRESH.read_text(encoding='utf-8')
 messages_js_src = MESSAGES_JS.read_text(encoding='utf-8')
@@ -70,25 +72,24 @@ class TestErrorPersistence:
 
     def test_silent_failure_appends_error_message(self):
         """Silent-failure path appends an _error-marked message before returning."""
-        # Must append to s.messages with _error key
-        assert "s.messages.append(" in streaming_src
-        assert "'_error': True" in streaming_src
+        assert "_persist_streaming_error_message(" in streaming_src
+        assert "session.messages.append(" in streaming_error_writeback_src
+        assert "'_error': True" in streaming_error_writeback_src
 
     def test_silent_failure_calls_save_before_return(self):
         """save() must be called after appending the error message."""
-        # Find the silent failure block area and verify save precedes return
-        pattern = re.compile(
-            r"s\.messages\.append\(.*?'_error': True.*?\).*?s\.save\(\).*?return",
-            re.DOTALL
-        )
-        assert pattern.search(streaming_src), \
-            "save() must be called after appending the error message in the silent-failure path"
+        silent_idx = streaming_src.find("# ── Detect silent agent failure")
+        assert silent_idx != -1
+        helper_idx = streaming_src.find("_persist_streaming_error_message(", silent_idx)
+        return_idx = streaming_src.find("return  # apperror already closes the stream", helper_idx)
+        assert helper_idx != -1 and return_idx != -1 and helper_idx < return_idx
+        assert "session.messages.append(error_message)" in streaming_error_writeback_src
+        assert "session.save()" in streaming_error_writeback_src
 
     def test_exception_path_appends_error_message(self):
         """Exception path also persists the error to the session."""
-        # Both paths should have _error persistence
-        count = streaming_src.count("'_error': True")
-        assert count >= 2, f"Expected at least 2 _error persistence sites, found {count}"
+        count = streaming_src.count("_persist_streaming_error_message(")
+        assert count >= 2, f"Expected at least 2 error persistence call sites, found {count}"
 
     def test_sanitize_skips_error_messages(self):
         """_sanitize_messages_for_api must not send _error messages to the LLM."""
