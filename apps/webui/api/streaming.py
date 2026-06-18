@@ -98,6 +98,10 @@ from api.streaming_titles import (
 )
 # Source-guard anchor: streaming title helpers still reject generic completion
 # phrases such as "all set" before persisting generated session titles.
+from api.streaming_recovery import (
+    attempt_credential_self_heal as _attempt_credential_self_heal_impl,
+    last_resort_sync_from_core as _last_resort_sync_from_core_impl,
+)
 
 # Global lock for os.environ writes. Per-session locks (_agent_lock) prevent
 # concurrent runs of the SAME session, but two DIFFERENT sessions can still
@@ -1749,95 +1753,27 @@ def _materialize_pending_user_turn_before_error(session) -> bool:
 
 
 def _last_resort_sync_from_core(session, stream_id, agent_lock):
-    """Final-exit guard: if the stream exits with pending_user_message still set,
-    sync messages from the core transcript or add an error marker.
-    Called from the outer finally block of _run_agent_streaming.
-    Must never raise.
-    """
     from api.models import _get_profile_home, _apply_core_sync_or_error_marker
-    try:
-        # Guard: if a cancel was already requested, bail out — cancel_stream() has
-        # already saved partial content and we must not double-append error markers.
-        if stream_id in CANCEL_FLAGS and CANCEL_FLAGS[stream_id].is_set():
-            return
-
-        profile_home = _get_profile_home(session.profile)
-        core_path = profile_home / 'sessions' / f'session_{session.session_id}.json'
-
-        _lock_ctx = agent_lock if agent_lock is not None else contextlib.nullcontext()
-        with _lock_ctx:
-            _apply_core_sync_or_error_marker(
-                session,
-                core_path,
-                stream_id_for_recheck=stream_id,
-                require_stream_dead=False,
-            )
-    except Exception:
-        logger.exception(
-            "_last_resort_sync_from_core failed for session %s",
-            getattr(session, 'session_id', '?'),
-        )
+    return _last_resort_sync_from_core_impl(
+        session,
+        stream_id,
+        agent_lock,
+        cancel_flags=CANCEL_FLAGS,
+        get_profile_home=_get_profile_home,
+        apply_core_sync_or_error_marker=_apply_core_sync_or_error_marker,
+        logger=logger,
+    )
 
 
 def _attempt_credential_self_heal(
     provider_id, session_id, _agent_lock_ref,
 ):
-    """Try to silently refresh credentials after a 401/auth error (#1401).
-
-    Returns a new ``(agent, rt_dict)`` tuple on success so the caller can
-    retry the conversation.  Returns ``None`` when self-heal is not
-    applicable (e.g. auth.json unchanged, provider unresolvable).
-
-    Steps:
-    1. Re-read ``~/.hermes/auth.json`` to pick up fresh credentials that
-       may have been written by a concurrent ``hermes model`` CLI invocation.
-    2. Evict the session's cached agent so it is rebuilt with fresh keys.
-    3. Evict the provider's credential-pool cache entry.
-    4. Re-resolve the runtime provider.
-    5. Return a new agent + resolved-provider dict (the caller must
-       re-invoke ``run_conversation`` with these).
-    """
-    try:
-        from api.oauth import (
-            read_auth_json,
-            resolve_runtime_provider_with_anthropic_env_lock,
-        )
-        from api.config import (
-            SESSION_AGENT_CACHE, SESSION_AGENT_CACHE_LOCK,
-            invalidate_credential_pool_cache,
-        )
-        from hermes_cli.runtime_provider import resolve_runtime_provider
-
-        # 1. Re-read auth.json (triggers a fresh credential scan)
-        _fresh_auth = read_auth_json()
-        if not _fresh_auth:
-            logger.debug('[webui] self-heal: auth.json empty or missing, skipping')
-            return None
-
-        # 2. Evict the cached agent for this session
-        with SESSION_AGENT_CACHE_LOCK:
-            SESSION_AGENT_CACHE.pop(session_id, None)
-
-        # 3. Invalidate the credential pool for this provider
-        invalidate_credential_pool_cache(provider_id)
-
-        # 4. Re-resolve runtime provider with fresh credentials
-        _new_rt = resolve_runtime_provider_with_anthropic_env_lock(
-            resolve_runtime_provider,
-            requested=provider_id,
-        )
-
-        logger.info(
-            '[webui] self-heal: credential refresh succeeded for provider=%s session=%s',
-            provider_id, session_id,
-        )
-        return _new_rt
-    except Exception as _heal_err:
-        logger.warning(
-            '[webui] self-heal: failed for provider=%s session=%s: %s',
-            provider_id, session_id, _heal_err,
-        )
-        return None
+    return _attempt_credential_self_heal_impl(
+        provider_id,
+        session_id,
+        _agent_lock_ref,
+        logger=logger,
+    )
 
 
 def _run_agent_streaming(
