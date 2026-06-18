@@ -142,6 +142,7 @@ from api.streaming_runtime_helpers import (
     aiagent_import_error_detail as _aiagent_import_error_detail_impl,
     clarify_timeout_seconds as _clarify_timeout_seconds_impl,
     has_new_assistant_reply as _has_new_assistant_reply_impl,
+    webui_clarify_callback as _webui_clarify_callback_impl,
     webui_ephemeral_system_prompt as _webui_ephemeral_system_prompt_impl,
 )
 
@@ -1463,50 +1464,6 @@ def _run_agent_streaming(
         except ImportError:
             logger.debug("Clarify module not available, falling back to polling")
 
-        def _clarify_callback_impl(question, choices, sid, cancel_evt, put_event):
-            """Bridge Hermes clarify prompts to the WebUI."""
-            timeout = _clarify_timeout_seconds()
-            choices_list = [str(choice) for choice in (choices or [])]
-            data = {
-                'question': str(question or ''),
-                'choices_offered': choices_list,
-                'session_id': sid,
-                'kind': 'clarify',
-                'requested_at': time.time(),
-                'timeout_seconds': timeout,
-            }
-            try:
-                from api.clarify import submit_pending as _submit_clarify_pending, clear_pending as _clear_clarify_pending
-            except ImportError:
-                return (
-                    "The user did not provide a response within the time limit. "
-                    "Use your best judgement to make the choice and proceed."
-                )
-
-            entry = _submit_clarify_pending(sid, data)
-            deadline = time.monotonic() + timeout
-            while True:
-                if cancel_evt.is_set():
-                    _clear_clarify_pending(sid)
-                    return (
-                        "The user did not provide a response within the time limit. "
-                        "Use your best judgement to make the choice and proceed."
-                    )
-                remaining = deadline - time.monotonic()
-                if remaining <= 0:
-                    _clear_clarify_pending(sid)
-                    return (
-                        "The user did not provide a response within the time limit. "
-                        "Use your best judgement to make the choice and proceed."
-                    )
-                if entry.event.wait(timeout=min(1.0, remaining)):
-                    response = str(entry.result or "").strip()
-                    return (
-                        response
-                        or "The user did not provide a response within the time limit. "
-                           "Use your best judgement to make the choice and proceed."
-                    )
-
         try:
             _token_sent = False  # tracks whether any streamed tokens were sent
             _self_healed = False  # (#1401) prevents infinite self-heal retries
@@ -1906,8 +1863,12 @@ def _run_agent_streaming(
                 reasoning_callback=on_reasoning,
                 tool_progress_callback=on_tool,
                 clarify_callback=(
-                    lambda question, choices: _clarify_callback_impl(
-                        question, choices, session_id, cancel_event, put
+                    lambda question, choices: _webui_clarify_callback_impl(
+                        question,
+                        choices,
+                        session_id,
+                        cancel_event,
+                        _clarify_timeout_seconds,
                     )
                 ),
             )

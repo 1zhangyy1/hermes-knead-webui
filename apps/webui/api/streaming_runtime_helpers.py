@@ -2,6 +2,7 @@
 
 import os
 import sys
+import time
 from typing import Optional
 
 
@@ -85,3 +86,48 @@ def aiagent_import_error_detail() -> str:
     lines.append("")
     lines.append('  Full troubleshooting: docs/troubleshooting.md ("AIAgent not available")')
     return "\n".join(lines)
+
+
+def webui_clarify_callback(question, choices, sid, cancel_evt, timeout_fn):
+    """Bridge Hermes clarify prompts to the WebUI pending-clarify queue."""
+    timeout = timeout_fn()
+    choices_list = [str(choice) for choice in (choices or [])]
+    data = {
+        'question': str(question or ''),
+        'choices_offered': choices_list,
+        'session_id': sid,
+        'kind': 'clarify',
+        'requested_at': time.time(),
+        'timeout_seconds': timeout,
+    }
+    try:
+        from api.clarify import submit_pending as _submit_clarify_pending, clear_pending as _clear_clarify_pending
+    except ImportError:
+        return (
+            "The user did not provide a response within the time limit. "
+            "Use your best judgement to make the choice and proceed."
+        )
+
+    entry = _submit_clarify_pending(sid, data)
+    deadline = time.monotonic() + timeout
+    while True:
+        if cancel_evt.is_set():
+            _clear_clarify_pending(sid)
+            return (
+                "The user did not provide a response within the time limit. "
+                "Use your best judgement to make the choice and proceed."
+            )
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            _clear_clarify_pending(sid)
+            return (
+                "The user did not provide a response within the time limit. "
+                "Use your best judgement to make the choice and proceed."
+            )
+        if entry.event.wait(timeout=min(1.0, remaining)):
+            response = str(entry.result or "").strip()
+            return (
+                response
+                or "The user did not provide a response within the time limit. "
+                   "Use your best judgement to make the choice and proceed."
+            )
