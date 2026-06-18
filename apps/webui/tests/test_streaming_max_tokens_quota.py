@@ -30,8 +30,9 @@ def test_streaming_passes_configured_max_tokens_to_agent():
     src = _agent_config_src()
     assert "_raw_max_tokens = _cfg.get('max_tokens')" in src
     assert "_agent_cfg_for_tokens.get('max_tokens')" in src
-    src = _src()
-    assert "_agent_kwargs['max_tokens'] = _max_tokens_cfg" in src
+    assert "if 'max_tokens' in agent_params and max_tokens is not None:" in src
+    assert "kwargs['max_tokens'] = max_tokens" in src
+    assert "max_tokens=_max_tokens_cfg" in _src()
 
 
 def test_streaming_agent_cache_signature_includes_max_tokens_and_fallback():

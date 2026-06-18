@@ -91,3 +91,80 @@ def resolve_reasoning_config(_cfg, parse_reasoning_effort):
     except Exception:
         return None
 
+
+def build_agent_kwargs(
+    *,
+    agent_params,
+    model,
+    provider,
+    base_url,
+    api_key,
+    enabled_toolsets,
+    fallback_model,
+    session_id,
+    session_db,
+    stream_delta_callback,
+    reasoning_callback,
+    tool_progress_callback,
+    clarify_callback,
+    interim_assistant_callback=None,
+    tool_start_callback=None,
+    tool_complete_callback=None,
+    status_callback=None,
+    max_iterations=None,
+    max_tokens=None,
+    reasoning_config=None,
+    runtime=None,
+):
+    """Build AIAgent kwargs while guarding params from newer agent versions."""
+    runtime = runtime or {}
+    kwargs = dict(
+        model=model,
+        provider=provider,
+        base_url=base_url,
+        api_key=api_key,
+        # Identify browser-originated sessions as WebUI so Hermes Agent
+        # does not inject CLI-specific terminal/output guidance.
+        platform='webui',
+        quiet_mode=True,
+        enabled_toolsets=enabled_toolsets,
+        fallback_model=fallback_model,
+        session_id=session_id,
+        session_db=session_db,
+        stream_delta_callback=stream_delta_callback,
+        reasoning_callback=reasoning_callback,
+        tool_progress_callback=tool_progress_callback,
+        clarify_callback=clarify_callback,
+    )
+    # reasoning_config has been an AIAgent param for several releases, but guard
+    # defensively to avoid TypeError on an older agent build.
+    if 'reasoning_config' in agent_params and reasoning_config is not None:
+        kwargs['reasoning_config'] = reasoning_config
+    if 'interim_assistant_callback' in agent_params:
+        kwargs['interim_assistant_callback'] = interim_assistant_callback
+    if 'tool_start_callback' in agent_params:
+        kwargs['tool_start_callback'] = tool_start_callback
+    if 'tool_complete_callback' in agent_params:
+        kwargs['tool_complete_callback'] = tool_complete_callback
+    if 'status_callback' in agent_params:
+        kwargs['status_callback'] = status_callback
+    if 'max_iterations' in agent_params and max_iterations is not None:
+        kwargs['max_iterations'] = max_iterations
+    if 'max_tokens' in agent_params and max_tokens is not None:
+        kwargs['max_tokens'] = max_tokens
+    # Params added in newer hermes-agent — skip if not supported.
+    if 'api_mode' in agent_params:
+        kwargs['api_mode'] = runtime.get('api_mode')
+    if 'acp_command' in agent_params:
+        kwargs['acp_command'] = runtime.get('command')
+    if 'acp_args' in agent_params:
+        kwargs['acp_args'] = runtime.get('args')
+    if 'credential_pool' in agent_params:
+        kwargs['credential_pool'] = runtime.get('credential_pool')
+    # Pin Honcho memory sessions to the stable WebUI session ID. Without this,
+    # 'per-session' Honcho strategy creates a new Honcho session on every
+    # streaming request because HonchoSessionManager is re-instantiated fresh
+    # each turn (#855).
+    if 'gateway_session_key' in agent_params:
+        kwargs['gateway_session_key'] = session_id
+    return kwargs
