@@ -1,6 +1,8 @@
 from api.streaming_agent_cache import (
     build_agent_cache_signature,
+    cached_agent_for_signature,
     handle_evicted_agent_cache_items,
+    register_agent_for_lifecycle,
     refresh_cached_agent_for_turn,
 )
 
@@ -68,6 +70,65 @@ def test_build_agent_cache_signature_ignores_volatile_pool_token():
         resolved_api_key='token-b',
         runtime={},
     )
+
+
+def test_cached_agent_for_signature_returns_match_and_registers_lifecycle(monkeypatch):
+    import api.config as cfg
+    import api.session_lifecycle as lifecycle
+
+    calls = []
+    agent = object()
+    other_agent = object()
+    monkeypatch.setattr(lifecycle, "register_agent", lambda session_id, agent: calls.append((session_id, agent)))
+
+    with cfg.SESSION_AGENT_CACHE_LOCK:
+        snapshot = list(cfg.SESSION_AGENT_CACHE.items())
+        cfg.SESSION_AGENT_CACHE.clear()
+        cfg.SESSION_AGENT_CACHE["other"] = (other_agent, "other-sig")
+        cfg.SESSION_AGENT_CACHE["sid-1"] = (agent, "sig-1")
+    try:
+        result = cached_agent_for_signature("sid-1", "sig-1")
+
+        assert result is agent
+        assert calls == [("sid-1", agent)]
+        with cfg.SESSION_AGENT_CACHE_LOCK:
+            assert list(cfg.SESSION_AGENT_CACHE.keys())[-1] == "sid-1"
+    finally:
+        with cfg.SESSION_AGENT_CACHE_LOCK:
+            cfg.SESSION_AGENT_CACHE.clear()
+            cfg.SESSION_AGENT_CACHE.update(snapshot)
+
+
+def test_cached_agent_for_signature_ignores_signature_mismatch(monkeypatch):
+    import api.config as cfg
+    import api.session_lifecycle as lifecycle
+
+    calls = []
+    agent = object()
+    monkeypatch.setattr(lifecycle, "register_agent", lambda session_id, agent: calls.append((session_id, agent)))
+
+    with cfg.SESSION_AGENT_CACHE_LOCK:
+        snapshot = list(cfg.SESSION_AGENT_CACHE.items())
+        cfg.SESSION_AGENT_CACHE.clear()
+        cfg.SESSION_AGENT_CACHE["sid-1"] = (agent, "sig-1")
+    try:
+        assert cached_agent_for_signature("sid-1", "sig-2") is None
+        assert calls == []
+    finally:
+        with cfg.SESSION_AGENT_CACHE_LOCK:
+            cfg.SESSION_AGENT_CACHE.clear()
+            cfg.SESSION_AGENT_CACHE.update(snapshot)
+
+
+def test_register_agent_for_lifecycle_swallows_failures(monkeypatch):
+    import api.session_lifecycle as lifecycle
+
+    def fail(_session_id, _agent):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(lifecycle, "register_agent", fail)
+
+    register_agent_for_lifecycle("sid-1", object(), agent_kind='new')
 
 
 def test_refresh_cached_agent_for_turn_updates_request_scoped_callbacks():

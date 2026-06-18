@@ -47,6 +47,43 @@ def build_agent_cache_signature(
     return hashlib.sha256(sig_blob.encode()).hexdigest()[:16]
 
 
+def register_agent_for_lifecycle(
+    session_id: str,
+    agent: Any,
+    *,
+    agent_kind: str,
+    logger: Any | None = None,
+) -> None:
+    """Register an agent so lifecycle boundary commits can find it later."""
+    try:
+        from api.session_lifecycle import register_agent
+        register_agent(session_id, agent)
+    except Exception:
+        if logger is not None:
+            logger.debug(
+                "Lifecycle register_agent failed for %s session %s",
+                agent_kind,
+                session_id,
+                exc_info=True,
+            )
+
+
+def cached_agent_for_signature(session_id: str, agent_sig: str, *, logger: Any | None = None) -> Any | None:
+    """Return a matching cached agent and mark it as recently used."""
+    from api.config import SESSION_AGENT_CACHE, SESSION_AGENT_CACHE_LOCK
+
+    agent = None
+    with SESSION_AGENT_CACHE_LOCK:
+        cached = SESSION_AGENT_CACHE.get(session_id)
+        if cached and cached[1] == agent_sig:
+            agent = cached[0]
+            SESSION_AGENT_CACHE.move_to_end(session_id)  # LRU: mark as recently used
+            if logger is not None:
+                logger.debug('[webui] Reusing cached agent for session %s', session_id)
+            register_agent_for_lifecycle(session_id, agent, agent_kind='cached', logger=logger)
+    return agent
+
+
 def handle_evicted_agent_cache_items(evicted_items: list[tuple[str, Any]], *, logger: Any | None = None) -> None:
     """Commit lifecycle state and close evicted cached agents outside the cache lock."""
     for evicted_sid, evicted_entry in evicted_items:

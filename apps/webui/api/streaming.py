@@ -119,7 +119,9 @@ from api.streaming_agent_runtime import (
 )
 from api.streaming_agent_cache import (
     build_agent_cache_signature as _build_agent_cache_signature,
+    cached_agent_for_signature as _cached_agent_for_signature,
     handle_evicted_agent_cache_items as _handle_evicted_agent_cache_items,
+    register_agent_for_lifecycle as _register_agent_for_lifecycle,
     refresh_cached_agent_for_turn as _refresh_cached_agent_for_turn,
 )
 from api.streaming_agent_config import (
@@ -1141,20 +1143,7 @@ def _run_agent_streaming(
                     profile_home=_profile_home,
                 )
 
-                agent = None
-                with SESSION_AGENT_CACHE_LOCK:
-                    _cached = SESSION_AGENT_CACHE.get(session_id)
-                    if _cached and _cached[1] == _agent_sig:
-                        agent = _cached[0]
-                        SESSION_AGENT_CACHE.move_to_end(session_id)  # LRU: mark as recently used
-                        logger.debug('[webui] Reusing cached agent for session %s', session_id)
-                        # Reopened/cache-hit sessions must register the agent
-                        # so later lifecycle commits can find it.
-                        try:
-                            from api.session_lifecycle import register_agent
-                            register_agent(session_id, agent)
-                        except Exception:
-                            logger.debug("Lifecycle register_agent failed for cached session %s", session_id, exc_info=True)
+                agent = _cached_agent_for_signature(session_id, _agent_sig, logger=logger)
 
                 if agent is not None:
                     # Refresh volatile runtime credentials selected from provider
@@ -1182,13 +1171,7 @@ def _run_agent_streaming(
                     )
                 else:
                     agent = _AIAgent(**_agent_kwargs)
-                    # Register the new agent with the memory lifecycle so
-                    # its commit_memory_session() can be found later.
-                    try:
-                        from api.session_lifecycle import register_agent
-                        register_agent(session_id, agent)
-                    except Exception:
-                        logger.debug("Lifecycle register_agent failed for new session %s", session_id, exc_info=True)
+                    _register_agent_for_lifecycle(session_id, agent, agent_kind='new', logger=logger)
                     _evicted_items = []
                     with SESSION_AGENT_CACHE_LOCK:
                         SESSION_AGENT_CACHE[session_id] = (agent, _agent_sig)
