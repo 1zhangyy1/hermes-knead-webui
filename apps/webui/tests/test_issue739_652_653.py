@@ -14,6 +14,7 @@ STREAMING = pathlib.Path(__file__).parent.parent / 'api' / 'streaming.py'
 STREAMING_CONTEXT = pathlib.Path(__file__).parent.parent / 'api' / 'streaming_context.py'
 STREAMING_ERRORS = pathlib.Path(__file__).parent.parent / 'api' / 'streaming_errors.py'
 STREAMING_ERROR_WRITEBACK = pathlib.Path(__file__).parent.parent / 'api' / 'streaming_error_writeback.py'
+STREAMING_EXCEPTION_HANDLING = pathlib.Path(__file__).parent.parent / 'api' / 'streaming_exception_handling.py'
 STREAMING_SILENT_FAILURE = pathlib.Path(__file__).parent.parent / 'api' / 'streaming_silent_failure.py'
 STREAMING_TERMINAL = pathlib.Path(__file__).parent.parent / 'api' / 'streaming_terminal.py'
 STREAMING_TITLE_REFRESH = pathlib.Path(__file__).parent.parent / 'api' / 'streaming_title_refresh.py'
@@ -23,6 +24,7 @@ streaming_src = STREAMING.read_text(encoding='utf-8')
 streaming_context_src = STREAMING_CONTEXT.read_text(encoding='utf-8')
 streaming_errors_src = STREAMING_ERRORS.read_text(encoding='utf-8')
 streaming_error_writeback_src = STREAMING_ERROR_WRITEBACK.read_text(encoding='utf-8')
+streaming_exception_handling_src = STREAMING_EXCEPTION_HANDLING.read_text(encoding='utf-8')
 streaming_silent_failure_src = STREAMING_SILENT_FAILURE.read_text(encoding='utf-8')
 streaming_terminal_src = STREAMING_TERMINAL.read_text(encoding='utf-8')
 streaming_title_refresh_src = STREAMING_TITLE_REFRESH.read_text(encoding='utf-8')
@@ -45,13 +47,13 @@ class TestQuotaDetection:
 
     def test_quota_type_emitted_as_quota_exhausted(self):
         """The apperror type is 'quota_exhausted', not 'error' or 'rate_limit'."""
-        assert "'quota_exhausted'" in streaming_src or '"quota_exhausted"' in streaming_src
+        assert "'quota_exhausted'" in streaming_exception_handling_src or '"quota_exhausted"' in streaming_exception_handling_src
 
     def test_quota_checked_before_rate_limit(self):
         """Quota check must appear before the rate-limit check in the exception path.
         OpenAI billing 429s overlap with rate-limit patterns."""
-        quota_pos = streaming_src.find('_exc_is_quota')
-        rate_pos = streaming_src.find('_exc_is_rate_limit')
+        quota_pos = streaming_exception_handling_src.find('_exc_is_quota')
+        rate_pos = streaming_exception_handling_src.find('_exc_is_rate_limit')
         assert quota_pos != -1, '_exc_is_quota not found in exception path'
         assert rate_pos != -1, '_exc_is_rate_limit not found in exception path'
         assert quota_pos < rate_pos, 'Quota check must appear before rate-limit check'
@@ -59,7 +61,7 @@ class TestQuotaDetection:
     def test_rate_limit_excludes_quota(self):
         """Rate-limit detection must be guarded so quota errors don't also match."""
         # The pattern: _exc_is_rate_limit = (not _exc_is_quota) and (...)
-        assert '(not _exc_is_quota)' in streaming_src
+        assert '(not _exc_is_quota)' in streaming_exception_handling_src
 
     def test_js_quota_label_present(self):
         """messages.js renders a 'quota_exhausted' apperror with a distinct label."""
@@ -94,7 +96,8 @@ class TestErrorPersistence:
 
     def test_exception_path_appends_error_message(self):
         """Exception path also persists the error to the session."""
-        assert "_emit_and_persist_exception_streaming_error(" in streaming_src
+        assert "_handle_streaming_exception(" in streaming_src
+        assert "emit_and_persist_exception_streaming_error_fn(" in streaming_exception_handling_src
         assert "persist_error_message_fn(" in streaming_error_writeback_src
         assert "persist_streaming_error_message(" in streaming_error_writeback_src
 

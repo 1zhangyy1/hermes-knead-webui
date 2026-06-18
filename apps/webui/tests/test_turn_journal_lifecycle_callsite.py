@@ -45,12 +45,14 @@ def test_streaming_appends_completed_after_final_save():
 
 def test_streaming_appends_interrupted_on_provider_error_path():
     src = _read("api/streaming.py")
+    exception_src = _read("api/streaming_exception_handling.py")
     writeback_src = _read("api/streaming_error_writeback.py")
-    err_idx = src.index("print('[webui] stream error:")
-    emit_idx = src.index("_emit_and_persist_exception_streaming_error(", err_idx)
-    callback_idx = src.index("append_interrupted_turn_event=_append_interrupted_turn_event", emit_idx)
+    err_idx = exception_src.index("print('[webui] stream error:")
+    emit_idx = exception_src.index("emit_and_persist_exception_streaming_error_fn(", err_idx)
+    callback_idx = exception_src.index("append_interrupted_turn_event=append_interrupted_turn_event", emit_idx)
     interrupted_idx = writeback_src.index("append_interrupted_turn_event(")
     apperror_idx = writeback_src.index("put('apperror'", interrupted_idx)
 
+    assert "_handle_streaming_exception(" in src
     assert err_idx < emit_idx < callback_idx
     assert interrupted_idx < apperror_idx

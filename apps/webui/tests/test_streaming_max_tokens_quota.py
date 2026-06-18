@@ -13,6 +13,7 @@ STREAMING = Path(__file__).resolve().parents[1] / "api" / "streaming.py"
 STREAMING_AGENT_CACHE = Path(__file__).resolve().parents[1] / "api" / "streaming_agent_cache.py"
 STREAMING_AGENT_CONFIG = Path(__file__).resolve().parents[1] / "api" / "streaming_agent_config.py"
 STREAMING_ERRORS = Path(__file__).resolve().parents[1] / "api" / "streaming_errors.py"
+STREAMING_EXCEPTION_HANDLING = Path(__file__).resolve().parents[1] / "api" / "streaming_exception_handling.py"
 
 
 def _src() -> str:
@@ -29,6 +30,10 @@ def _agent_cache_src() -> str:
 
 def _errors_src() -> str:
     return STREAMING_ERRORS.read_text(encoding="utf-8")
+
+
+def _exception_src() -> str:
+    return STREAMING_EXCEPTION_HANDLING.read_text(encoding="utf-8")
 
 
 def test_streaming_passes_configured_max_tokens_to_agent():
@@ -51,8 +56,8 @@ def test_openrouter_more_credits_error_is_classified_as_quota():
     assert "'more credits' in err_lower" in src
     assert "'can only afford' in err_lower" in src
     assert "'fewer max_tokens' in err_lower" in src
-    src = _src()
-    assert "_classification = _classify_provider_error(err_str, e)" in src
+    src = _exception_src()
+    assert "_classification = classify_provider_error(err_str, exc)" in src
     assert "'more credits' in _exc_lower" in src
     assert "'can only afford' in _exc_lower" in src
     assert "'fewer max_tokens' in _exc_lower" in src

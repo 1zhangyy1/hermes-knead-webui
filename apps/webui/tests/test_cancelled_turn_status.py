@@ -139,17 +139,19 @@ class TestCancelledTurnPersistenceGuards:
         )
 
     def test_exception_path_classifies_after_cancel_event_before_generic_error(self):
-        src = _read("api/streaming.py")
+        streaming_src = _read("api/streaming.py")
+        src = _read("api/streaming_exception_handling.py")
         cancellation_src = _read("api/streaming_cancellation.py")
         errors_src = _read("api/streaming_errors.py")
+        assert "_handle_streaming_exception(" in streaming_src
         except_idx = src.find("print('[webui] stream error:")
         assert except_idx != -1, "stream exception handler not found"
-        classify_idx = src.find("_classify_provider_error", except_idx)
-        copy_idx = src.find("_exception_error_copy", except_idx)
+        classify_idx = src.find("classify_provider_error(", except_idx)
+        copy_idx = src.find("exception_error_copy_fn(", except_idx)
         assert classify_idx != -1 and copy_idx != -1
         block = src[except_idx:copy_idx]
 
-        assert "_handle_exception_cancel(" in block, (
+        assert "handle_exception_cancel_fn(" in block, (
             "Exception handling must distinguish user-cancelled/aborted runs before generic errors."
         )
         assert "return 'Error', 'error', ''" in errors_src
