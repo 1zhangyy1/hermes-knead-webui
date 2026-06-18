@@ -6,7 +6,6 @@ import json
 import logging
 import os
 import threading
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -226,8 +225,7 @@ def _get_ai_agent():
     return AIAgent
 
 
-def _is_quota_error_text(err_text: str) -> bool:
-    return _is_quota_error_text_impl(err_text)
+_is_quota_error_text = _is_quota_error_text_impl
 
 
 def _clarify_timeout_seconds(default: int = 120) -> int:
@@ -236,12 +234,10 @@ def _clarify_timeout_seconds(default: int = 120) -> int:
 
 _WEBUI_VISIBLE_PROGRESS_PROMPT = _WEBUI_VISIBLE_PROGRESS_PROMPT_IMPL
 
-def _webui_ephemeral_system_prompt(personality_prompt: Optional[str], product_prompt: Optional[str] = None) -> str:
-    return _webui_ephemeral_system_prompt_impl(personality_prompt, product_prompt)
+_webui_ephemeral_system_prompt = _webui_ephemeral_system_prompt_impl
 
 
-def _has_new_assistant_reply(all_messages: list, prev_count: int) -> bool:
-    return _has_new_assistant_reply_impl(all_messages, prev_count)
+_has_new_assistant_reply = _has_new_assistant_reply_impl
 
 
 def _preferred_agent_display_name() -> str:
@@ -278,8 +274,7 @@ def _provider_error_payload(message: str, err_type: str, hint: str = '') -> dict
     )
 
 
-def _session_has_cancel_marker(session) -> bool:
-    return _session_has_cancel_marker_impl(session)
+_session_has_cancel_marker = _session_has_cancel_marker_impl
 
 
 def _cancelled_turn_content(message: str = 'Task cancelled.') -> str:
@@ -314,8 +309,7 @@ def _finalize_cancelled_turn(session, *, ephemeral: bool = False, message: str =
     )
 
 
-def _aiagent_import_error_detail() -> str:
-    return _aiagent_import_error_detail_impl()
+_aiagent_import_error_detail = _aiagent_import_error_detail_impl
 from api.models import get_session, title_from
 from api.workspace import set_last_workspace
 
@@ -325,8 +319,7 @@ from api.workspace import set_last_workspace
 _API_SAFE_MSG_KEYS = _API_SAFE_MSG_KEYS_IMPL
 
 
-def _format_process_notification(evt: dict) -> str:
-    return _format_process_notification_impl(evt)
+_format_process_notification = _format_process_notification_impl
 
 
 def _mark_process_completion_consumed(process_registry, process_id: str) -> None:
@@ -337,85 +330,53 @@ def _drain_webui_process_notifications(session_id: str) -> list[str]:
     return _drain_webui_process_notifications_impl(session_id, logger=logger)
 
 
-def _get_title_refresh_interval() -> int:
-    return _get_title_refresh_interval_impl()
+_get_title_refresh_interval = _get_title_refresh_interval_impl
 
 
 def _is_provisional_title(current_title: str, messages) -> bool:
     return _is_provisional_title_impl(current_title, messages, title_from_fn=title_from)
 
 
-def _is_minimax_route(provider: str = '', model: str = '', base_url: str = '') -> bool:
-    return _is_minimax_route_impl(provider, model, base_url)
+_is_minimax_route = _is_minimax_route_impl
 
 
-def _aux_title_configured() -> bool:
-    return _aux_title_configured_impl()
+_aux_title_configured = _aux_title_configured_impl
 
 
-def _aux_title_timeout(default: float = 15.0) -> float:
-    return _aux_title_timeout_impl(default)
+_aux_title_timeout = _aux_title_timeout_impl
 
 
-def _title_completion_budget(provider: str = '', model: str = '', base_url: str = '') -> int:
-    return _title_completion_budget_impl(provider, model, base_url)
+_title_completion_budget = _title_completion_budget_impl
 
 
-def _title_retry_completion_budget(provider: str = '', model: str = '', base_url: str = '') -> int:
-    return _title_retry_completion_budget_impl(provider, model, base_url)
+_title_retry_completion_budget = _title_retry_completion_budget_impl
 
 
-def _title_retry_status(status: str) -> bool:
-    return _title_retry_status_impl(status)
+_title_retry_status = _title_retry_status_impl
 
 
-def _title_should_skip_remaining_attempts(status: str) -> bool:
-    return _title_should_skip_remaining_attempts_impl(status)
+_title_should_skip_remaining_attempts = _title_should_skip_remaining_attempts_impl
 
 
-def _safe_obj_value(obj, key: str):
-    return _safe_obj_value_impl(obj, key)
+_safe_obj_value = _safe_obj_value_impl
 
 
-def _safe_text_value(value) -> str:
-    return _safe_text_value_impl(value)
+_safe_text_value = _safe_text_value_impl
 
 
-def _extract_title_response(resp, *, aux: bool = False) -> tuple[str, str]:
-    return _extract_title_response_impl(resp, aux=aux)
+_extract_title_response = _extract_title_response_impl
 
 
-def generate_title_raw_via_aux(
-    user_text: str,
-    assistant_text: str,
-    provider: str = '',
-    model: str = '',
-    base_url: str = '',
-) -> tuple[Optional[str], str]:
-    return _generate_title_raw_via_aux_impl(
-        user_text,
-        assistant_text,
-        provider=provider,
-        model=model,
-        base_url=base_url,
-    )
+generate_title_raw_via_aux = _generate_title_raw_via_aux_impl
 
 
-def generate_title_raw_via_agent(agent, user_text: str, assistant_text: str) -> tuple[Optional[str], str]:
-    return _generate_title_raw_via_agent_impl(agent, user_text, assistant_text)
+generate_title_raw_via_agent = _generate_title_raw_via_agent_impl
 
 
-def _generate_llm_session_title_for_agent(agent, user_text: str, assistant_text: str) -> tuple[Optional[str], str, str]:
-    return _generate_llm_session_title_for_agent_impl(agent, user_text, assistant_text)
+_generate_llm_session_title_for_agent = _generate_llm_session_title_for_agent_impl
 
 
-def _generate_llm_session_title_via_aux(user_text: str, assistant_text: str, agent=None, *, use_agent_model: bool = False) -> tuple[Optional[str], str, str]:
-    return _generate_llm_session_title_via_aux_impl(
-        user_text,
-        assistant_text,
-        agent=agent,
-        use_agent_model=use_agent_model,
-    )
+_generate_llm_session_title_via_aux = _generate_llm_session_title_via_aux_impl
 
 
 def _put_title_status(put_event, session_id: str, status: str, reason: str = '', title: str = '', raw_preview: str = '') -> None:
@@ -496,72 +457,55 @@ def _maybe_schedule_title_refresh(session, put_event, agent):
     )
 
 
-def _strip_native_image_parts_from_content(content):
-    return _strip_native_image_parts_from_content_impl(content)
+_strip_native_image_parts_from_content = _strip_native_image_parts_from_content_impl
 
 
-def _sanitize_messages_for_api(messages, *, cfg: dict = None):
-    return _sanitize_messages_for_api_impl(messages, cfg=cfg)
+_sanitize_messages_for_api = _sanitize_messages_for_api_impl
 
 
-def _api_safe_message_positions(messages):
-    return _api_safe_message_positions_impl(messages)
+_api_safe_message_positions = _api_safe_message_positions_impl
 
 
-def _restore_reasoning_metadata(previous_messages, updated_messages):
-    return _restore_reasoning_metadata_impl(previous_messages, updated_messages)
+_restore_reasoning_metadata = _restore_reasoning_metadata_impl
 
 
-def _session_context_messages(session):
-    return _session_context_messages_impl(session)
+_session_context_messages = _session_context_messages_impl
 
 
-def _message_identity(msg):
-    return _message_identity_impl(msg)
+_message_identity = _message_identity_impl
 
 
-def _messages_have_prefix(messages, prefix):
-    return _messages_have_prefix_impl(messages, prefix)
+_messages_have_prefix = _messages_have_prefix_impl
 
 
-def _is_context_compression_marker(msg):
-    return _is_context_compression_marker_impl(msg)
+_is_context_compression_marker = _is_context_compression_marker_impl
 
 
-def _compact_summary_text(raw_text: str | None, limit: int = 320) -> str | None:
-    return _compact_summary_text_impl(raw_text, limit)
+_compact_summary_text = _compact_summary_text_impl
 
 
-def _compression_anchor_message_key(message):
-    return _compression_anchor_message_key_impl(message)
+_compression_anchor_message_key = _compression_anchor_message_key_impl
 
 
-def _compression_summary_from_messages(messages):
-    return _compression_summary_from_messages_impl(messages)
+_compression_summary_from_messages = _compression_summary_from_messages_impl
 
 
-def _find_current_user_turn(messages, msg_text):
-    return _find_current_user_turn_impl(messages, msg_text)
+_find_current_user_turn = _find_current_user_turn_impl
 
 
-def _drop_checkpointed_current_user_from_context(messages, msg_text):
-    return _drop_checkpointed_current_user_from_context_impl(messages, msg_text)
+_drop_checkpointed_current_user_from_context = _drop_checkpointed_current_user_from_context_impl
 
 
-def _normalize_fresh_chat_text(text):
-    return _normalize_fresh_chat_text_impl(text)
+_normalize_fresh_chat_text = _normalize_fresh_chat_text_impl
 
 
-def _is_casual_fresh_chat_message(msg_text):
-    return _is_casual_fresh_chat_message_impl(msg_text)
+_is_casual_fresh_chat_message = _is_casual_fresh_chat_message_impl
 
 
-def _has_task_resume_compaction_marker(messages):
-    return _has_task_resume_compaction_marker_impl(messages)
+_has_task_resume_compaction_marker = _has_task_resume_compaction_marker_impl
 
 
-def _context_messages_for_new_turn(session, msg_text):
-    return _context_messages_for_new_turn_impl(session, msg_text)
+_context_messages_for_new_turn = _context_messages_for_new_turn_impl
 
 
 def _stream_writeback_is_current(session, stream_id):
@@ -574,21 +518,10 @@ def _stream_writeback_is_current(session, stream_id):
     return bool(stream_id) and getattr(session, 'active_stream_id', None) == stream_id
 
 
-def _merge_display_messages_after_agent_result(previous_display, previous_context, result_messages, msg_text):
-    return _merge_display_messages_after_agent_result_impl(
-        previous_display,
-        previous_context,
-        result_messages,
-        msg_text,
-    )
+_merge_display_messages_after_agent_result = _merge_display_messages_after_agent_result_impl
 
 
-def _assistant_reply_added_after_current_turn(result_messages, previous_context, msg_text) -> bool:
-    return _assistant_reply_added_after_current_turn_impl(
-        result_messages,
-        previous_context,
-        msg_text,
-    )
+_assistant_reply_added_after_current_turn = _assistant_reply_added_after_current_turn_impl
 
 
 def _sse(handler, event, data):
