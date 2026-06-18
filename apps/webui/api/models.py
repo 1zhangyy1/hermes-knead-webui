@@ -47,9 +47,10 @@ from api.session_cache import (
     evict_cached_session_if_same as _evict_cached_session_if_same,
     get_cached_session as _get_cached_session,
 )
-from api.project_store import (
+from api.project_registry import (
     backfill_project_profiles_if_needed as _backfill_project_profiles_impl,
     ensure_cron_project as _ensure_cron_project_impl,
+    is_cron_session as _is_cron_session_impl,
     load_projects as _load_projects_impl,
     save_projects as _save_projects_impl,
 )
@@ -521,20 +522,6 @@ _projects_migrated = False
 
 
 def _backfill_project_profiles_if_needed(projects: list) -> bool:
-    """Tag any legacy untagged projects (`profile` missing) with a sensible default.
-
-    Strategy:
-      1. For each untagged project, look at the sessions assigned to it via
-         the session index. If any session carries a profile, take that
-         profile.  Most installs are single-profile so this picks up the
-         right answer for everyone.
-      2. Otherwise default to 'default'.
-
-    Returns True if any project was mutated. Safe to call repeatedly — once
-    every project is tagged, this is a no-op. Runs at most once per process
-    (cached via the module-level _projects_migrated flag) but the result is
-    persisted so it's a one-time write.
-    """
     return _backfill_project_profiles_impl(
         projects,
         session_index_file=SESSION_INDEX_FILE,
@@ -552,12 +539,6 @@ def _set_projects_migrated(value: bool) -> None:
 
 
 def load_projects(*, _migrate: bool = True) -> list:
-    """Load project list from disk. Returns list of project dicts.
-
-    On first call, runs a one-time migration to back-fill the `profile` field
-    on legacy untagged projects (#1614). Disable via `_migrate=False` for
-    callsites that want the raw on-disk shape (test fixtures, e.g.).
-    """
     return _load_projects_impl(
         projects_file=PROJECTS_FILE,
         session_index_file=SESSION_INDEX_FILE,
@@ -566,12 +547,11 @@ def load_projects(*, _migrate: bool = True) -> list:
         set_migrated=_set_projects_migrated,
         save_projects_fn=save_projects,
         logger=logger,
-        _migrate=_migrate,
+        migrate=_migrate,
     )
 
 
 def save_projects(projects) -> None:
-    """Write project list to disk."""
     _save_projects_impl(PROJECTS_FILE, projects)
 
 
@@ -580,16 +560,6 @@ _CRON_PROJECT_LOCK = threading.Lock()
 
 
 def ensure_cron_project() -> str:
-    """Return the project_id of the system "Cron Jobs" project for the active profile.
-
-    Each profile gets its own "Cron Jobs" project so cron-spawned sessions in
-    profile A don't surface under the cron chip of profile B (#1614). Lookup
-    keys on (name, profile) — a legacy untagged "Cron Jobs" project (no
-    `profile` field) is treated as belonging to whichever profile first calls
-    this in a given install, then re-tagged.
-
-    Thread-safe and idempotent.  Returns a 12-char hex project_id string.
-    """
     from api.profiles import get_active_profile_name, _is_root_profile
 
     return _ensure_cron_project_impl(
@@ -605,12 +575,7 @@ def ensure_cron_project() -> str:
 
 
 def is_cron_session(session_id: str, source_tag: str = None) -> bool:
-    """Return True if a session originates from a cron job."""
-    if source_tag == 'cron':
-        return True
-    sid = str(session_id or '')
-    return sid.startswith('cron_')
-
+    return _is_cron_session_impl(session_id, source_tag=source_tag)
 
 
 def import_cli_session(
