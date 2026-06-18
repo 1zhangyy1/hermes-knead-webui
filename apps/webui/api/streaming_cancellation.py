@@ -148,6 +148,52 @@ def cleanup_ephemeral_cancelled_turn(session, *, logger=None) -> None:
             logger.debug("Failed to clean up ephemeral cancelled session", exc_info=True)
 
 
+def register_agent_instance_or_cancel(
+    stream_id: str,
+    agent,
+    session,
+    *,
+    agent_lock,
+    finalize_cancelled_turn_fn,
+    put_cancel_fn,
+    ephemeral: bool = False,
+    logger=None,
+    streams_lock=None,
+    agent_instances=None,
+    cancel_flags=None,
+) -> bool:
+    """Register an agent for interruption, or finalize if cancel already won."""
+    if streams_lock is None or agent_instances is None or cancel_flags is None:
+        from api.config import AGENT_INSTANCES, CANCEL_FLAGS, STREAMS_LOCK
+
+        if streams_lock is None:
+            streams_lock = STREAMS_LOCK
+        if agent_instances is None:
+            agent_instances = AGENT_INSTANCES
+        if cancel_flags is None:
+            cancel_flags = CANCEL_FLAGS
+
+    with streams_lock:
+        agent_instances[stream_id] = agent
+        flag = cancel_flags.get(stream_id)
+        if flag is None or not flag.is_set():
+            return True
+
+        try:
+            agent.interrupt("Cancelled before start")
+        except Exception:
+            if logger is not None:
+                logger.debug("Failed to interrupt agent before start")
+        with agent_lock:
+            finalize_cancelled_turn_fn(
+                session,
+                ephemeral=ephemeral,
+                message='Task cancelled before start.',
+            )
+        put_cancel_fn()
+        return False
+
+
 def recover_pending_user_turn_on_cancel(session, *, clock: Callable[[], float] = time.time, logger=None, session_id=None) -> bool:
     """Persist pending_user_message into messages when cancel wins the merge race."""
     try:
