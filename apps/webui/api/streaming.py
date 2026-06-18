@@ -119,6 +119,13 @@ from api.streaming_recovery import (
     attempt_credential_self_heal as _attempt_credential_self_heal_impl,
     last_resort_sync_from_core as _last_resort_sync_from_core_impl,
 )
+from api.streaming_runtime_helpers import (
+    WEBUI_VISIBLE_PROGRESS_PROMPT as _WEBUI_VISIBLE_PROGRESS_PROMPT_IMPL,
+    aiagent_import_error_detail as _aiagent_import_error_detail_impl,
+    clarify_timeout_seconds as _clarify_timeout_seconds_impl,
+    has_new_assistant_reply as _has_new_assistant_reply_impl,
+    webui_ephemeral_system_prompt as _webui_ephemeral_system_prompt_impl,
+)
 
 # Global lock for os.environ writes. Per-session locks (_agent_lock) prevent
 # concurrent runs of the SAME session, but two DIFFERENT sessions can still
@@ -183,67 +190,17 @@ def _is_quota_error_text(err_text: str) -> bool:
 
 
 def _clarify_timeout_seconds(default: int = 120) -> int:
-    """Resolve clarify timeout from config, with bounded fallback."""
-    try:
-        cfg = get_config()
-        raw = cfg.get("clarify", {}).get("timeout", default)
-        timeout_seconds = int(raw)
-        if timeout_seconds <= 0:
-            return default
-        return timeout_seconds
-    except Exception:
-        return default
+    return _clarify_timeout_seconds_impl(get_config, default)
 
 
-_WEBUI_VISIBLE_PROGRESS_PROMPT = """
-WebUI progress contract:
-- For multi-step work that uses tools, provide brief user-visible progress updates as normal assistant content before continuing with tool calls.
-- Each update should say what you are about to check, what you just confirmed, or why the next tool call is needed.
-- Keep updates concise, factual, and in the user's language. One or two short sentences are enough.
-- Do not reveal hidden reasoning, chain-of-thought, private scratchpads, secrets, raw logs, or long tool output.
-- For direct answers or very short tasks, skip progress updates and answer normally.
-""".strip()
+_WEBUI_VISIBLE_PROGRESS_PROMPT = _WEBUI_VISIBLE_PROGRESS_PROMPT_IMPL
 
 def _webui_ephemeral_system_prompt(personality_prompt: Optional[str], product_prompt: Optional[str] = None) -> str:
-    """Build WebUI-only runtime instructions that are not persisted to history."""
-    parts = []
-    if personality_prompt:
-        parts.append(str(personality_prompt).strip())
-    parts.append(_WEBUI_VISIBLE_PROGRESS_PROMPT)
-    if product_prompt:
-        parts.append(str(product_prompt).strip())
-    return "\n\n".join(part for part in parts if part)
+    return _webui_ephemeral_system_prompt_impl(personality_prompt, product_prompt)
 
 
 def _has_new_assistant_reply(all_messages: list, prev_count: int) -> bool:
-    """Return True if *new* messages (beyond ``prev_count``) contain an
-    assistant message with non-empty content.
-
-    ``all_messages`` is ``result.get('messages')`` which includes the full
-    conversation history.  ``prev_count`` is ``len(_previous_context_messages)``
-    — the number of messages present before the current turn started.  Only
-    messages at index >= prev_count are inspected so that historical assistant
-    replies don't mask a silent failure on the current turn.
-
-    If ``len(all_messages) < prev_count`` (an edge-case shrink), there is no
-    reliable new-message slice to inspect. Treat that as "no new assistant
-    reply" so stale historical assistant replies cannot mask a silent failure.
-    When ``len == prev_count``, there are no new messages and we return False.
-    """
-    if len(all_messages) > prev_count:
-        # Normal case: new messages appended beyond the pre-turn history.
-        candidates = all_messages[prev_count:]
-    elif len(all_messages) < prev_count:
-        return False
-    else:
-        # Same length. In production this means no new messages were appended.
-        # However, some test fixtures replace the entire message list rather
-        # than appending, so check whether the tail changed.
-        return False
-    return any(
-        m.get('role') == 'assistant' and str(m.get('content') or '').strip()
-        for m in candidates
-    )
+    return _has_new_assistant_reply_impl(all_messages, prev_count)
 
 
 def _preferred_agent_display_name() -> str:
@@ -361,52 +318,7 @@ def _finalize_cancelled_turn(session, *, ephemeral: bool = False, message: str =
 
 
 def _aiagent_import_error_detail() -> str:
-    """Return a multi-line diagnostic string for the "AIAgent not available" path.
-
-    The bare ImportError ("AIAgent not available -- check that hermes-agent is
-    on sys.path") leaves users guessing at which python is running, where it's
-    looking, and what to fix. We assemble the same evidence a maintainer would
-    ask for first (issue #1695): the python that's running, the agent_dir env
-    var if set, the sys.path entries that mention 'hermes', and the most-common
-    fix (`pip install -e .` in the agent dir).
-
-    Kept as a separate helper so it stays out of the hot path until we actually
-    need to raise — building it on every successful import would be wasted work.
-    """
-    import os as _os
-    import sys as _sys
-
-    lines = ["AIAgent not available -- check that hermes-agent is on sys.path"]
-    lines.append("")
-    lines.append(f"  python:  {_sys.executable}")
-    agent_dir = _os.environ.get("HERMES_WEBUI_AGENT_DIR")
-    if agent_dir:
-        lines.append(f"  HERMES_WEBUI_AGENT_DIR: {agent_dir}")
-    else:
-        lines.append("  HERMES_WEBUI_AGENT_DIR: (not set)")
-
-    # Show only the sys.path entries that look relevant — full sys.path is noisy.
-    relevant = [p for p in _sys.path if "hermes" in p.lower() or "agent" in p.lower()]
-    if relevant:
-        lines.append("  sys.path entries mentioning hermes/agent:")
-        for entry in relevant[:6]:
-            lines.append(f"    - {entry}")
-        if len(relevant) > 6:
-            lines.append(f"    ... and {len(relevant) - 6} more")
-    else:
-        lines.append("  sys.path: (no entries mention hermes or agent)")
-
-    lines.append("")
-    lines.append("  Most common fix: install the agent in editable mode so its modules")
-    lines.append("  appear on sys.path:")
-    lines.append("")
-    lines.append("    cd /path/to/hermes-agent")
-    lines.append("    pip install -e .")
-    lines.append("")
-    lines.append("  Then restart the WebUI.")
-    lines.append("")
-    lines.append('  Full troubleshooting: docs/troubleshooting.md ("AIAgent not available")')
-    return "\n".join(lines)
+    return _aiagent_import_error_detail_impl()
 from api.models import get_session, title_from
 from api.workspace import set_last_workspace
 
