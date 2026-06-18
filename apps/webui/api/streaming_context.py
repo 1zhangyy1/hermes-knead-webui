@@ -236,6 +236,72 @@ def compression_summary_from_messages(messages):
     return None
 
 
+def preserve_pre_compression_snapshot(session, old_sid: str, *, session_dir, logger=None, session_loader=None) -> None:
+    """Persist old_sid as a read-only pre-compression snapshot."""
+    old_path = session_dir / f'{old_sid}.json'
+    if not old_path.exists():
+        return
+    try:
+        existing_text = old_path.read_text(encoding='utf-8')
+        try:
+            existing = json.loads(existing_text)
+            existing_msgs = len(existing.get('messages') or [])
+        except (json.JSONDecodeError, ValueError):
+            existing_msgs = -1
+        if len(session.messages) > existing_msgs:
+            saved_sid = session.session_id
+            saved_snapshot = bool(getattr(session, 'pre_compression_snapshot', False))
+            saved_active_stream_id = getattr(session, 'active_stream_id', None)
+            saved_pending_user_message = getattr(session, 'pending_user_message', None)
+            saved_pending_attachments = list(getattr(session, 'pending_attachments', []) or [])
+            saved_pending_started_at = getattr(session, 'pending_started_at', None)
+
+            session.session_id = old_sid
+            session.pre_compression_snapshot = True
+            session.active_stream_id = None
+            session.pending_user_message = None
+            session.pending_attachments = []
+            session.pending_started_at = None
+            try:
+                session.save(touch_updated_at=False, skip_index=False)
+                if logger is not None:
+                    logger.info(
+                        "Preserved pre-compression session %s (%d messages) to disk",
+                        old_sid, len(session.messages),
+                    )
+            finally:
+                session.session_id = saved_sid
+                session.pre_compression_snapshot = saved_snapshot
+                session.active_stream_id = saved_active_stream_id
+                session.pending_user_message = saved_pending_user_message
+                session.pending_attachments = saved_pending_attachments
+                session.pending_started_at = saved_pending_started_at
+            return
+
+        if session_loader is None:
+            from api.models import Session
+            session_loader = Session.load
+        snapshot = session_loader(old_sid)
+        if snapshot:
+            snapshot.pre_compression_snapshot = True
+            snapshot.active_stream_id = None
+            snapshot.pending_user_message = None
+            snapshot.pending_attachments = []
+            snapshot.pending_started_at = None
+            snapshot.save(touch_updated_at=False, skip_index=False)
+            if logger is not None:
+                logger.info(
+                    "Marked pre-compression session %s as sidebar-hidden snapshot",
+                    old_sid,
+                )
+    except OSError:
+        if logger is not None:
+            logger.debug("Could not read old session file before preservation")
+    except Exception:
+        if logger is not None:
+            logger.debug("Failed to preserve pre-compression session file", exc_info=True)
+
+
 def find_current_user_turn(messages, msg_text):
     needle = " ".join(str(msg_text or '').split())
     fallback = None

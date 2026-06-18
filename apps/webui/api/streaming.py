@@ -83,6 +83,7 @@ from api.streaming_context import (
     message_identity as _message_identity_impl,
     messages_have_prefix as _messages_have_prefix_impl,
     normalize_fresh_chat_text as _normalize_fresh_chat_text_impl,
+    preserve_pre_compression_snapshot as _preserve_pre_compression_snapshot_impl,
     restore_reasoning_metadata as _restore_reasoning_metadata_impl,
     sanitize_messages_for_api as _sanitize_messages_for_api_impl,
     session_context_messages as _session_context_messages_impl,
@@ -486,93 +487,12 @@ def _run_background_title_refresh(session_id: str, user_text: str, assistant_tex
 
 
 def _preserve_pre_compression_snapshot(s, old_sid: str) -> None:
-    """Persist old_sid as a read-only pre-compression snapshot.
-
-    Context compression rotates the active WebUI session id from old_sid to the
-    agent's new continuation id. The old JSON must remain on disk for lineage
-    traversal, but it should not continue to appear as an active sidebar row.
-    """
-    old_path = SESSION_DIR / f'{old_sid}.json'
-    if not old_path.exists():
-        return
-    try:
-        existing_text = old_path.read_text(encoding='utf-8')
-        try:
-            existing = json.loads(existing_text)
-            existing_msgs = len(existing.get('messages') or [])
-            existing_snapshot = bool(existing.get('pre_compression_snapshot'))
-        except (json.JSONDecodeError, ValueError):
-            # Treat corrupt/malformed old JSON as missing history and rewrite it
-            # from the in-memory pre-compression messages below. That is safer
-            # than leaving an unreadable recovery snapshot behind.
-            existing_msgs = -1
-            existing_snapshot = False
-        if len(s.messages) > existing_msgs:
-            # In-memory messages are newer than the file; save the full old
-            # snapshot from the current session object while preserving its
-            # pre-existing parent_session_id lineage.
-            saved_sid = s.session_id
-            saved_snapshot = bool(getattr(s, 'pre_compression_snapshot', False))
-            s.session_id = old_sid
-            s.pre_compression_snapshot = True
-            # Stage-359 / PR #2295: clear runtime stream-state fields on the
-            # archived snapshot so the sidebar does not reopen the parent as
-            # a permanently-running session while the child already holds the
-            # completed answer. The continuation session's live state is
-            # restored from saved_* locals in the finally block.
-            saved_active_stream_id = getattr(s, 'active_stream_id', None)
-            saved_pending_user_message = getattr(s, 'pending_user_message', None)
-            saved_pending_attachments = list(getattr(s, 'pending_attachments', []) or [])
-            saved_pending_started_at = getattr(s, 'pending_started_at', None)
-            s.active_stream_id = None
-            s.pending_user_message = None
-            s.pending_attachments = []
-            s.pending_started_at = None
-            try:
-                # skip_index=False so the snapshot appears in _index.json with
-                # the pre_compression_snapshot marker. The sidebar projection
-                # (#2285) reads that marker to hide the snapshot from active
-                # rows while keeping the JSON discoverable for lineage traversal.
-                s.save(touch_updated_at=False, skip_index=False)
-                logger.info(
-                    "Preserved pre-compression session %s (%d messages) to disk",
-                    old_sid, len(s.messages),
-                )
-            finally:
-                s.session_id = saved_sid
-                s.pre_compression_snapshot = saved_snapshot
-                s.active_stream_id = saved_active_stream_id
-                s.pending_user_message = saved_pending_user_message
-                s.pending_attachments = saved_pending_attachments
-                s.pending_started_at = saved_pending_started_at
-            return
-        # Existing file is already at least as complete as memory; stamp only
-        # the snapshot marker so index/sidebar projection can hide it without
-        # rewriting a shorter messages array over a fuller transcript.
-        from api.models import Session
-        snapshot = Session.load(old_sid)
-        if snapshot:
-            snapshot.pre_compression_snapshot = True
-            # Stage-359 Opus SHOULD-FIX: clear runtime fields on the loaded
-            # snapshot too. If the disk snapshot was last persisted while the
-            # parent was live, it could carry a stale active_stream_id /
-            # pending_* over to disk. The sidebar projection filters snapshot
-            # rows so this is latent today, but the contract should match the
-            # primary branch above so future readers can trust snapshot files
-            # to never contain live runtime state.
-            snapshot.active_stream_id = None
-            snapshot.pending_user_message = None
-            snapshot.pending_attachments = []
-            snapshot.pending_started_at = None
-            snapshot.save(touch_updated_at=False, skip_index=False)
-            logger.info(
-                "Marked pre-compression session %s as sidebar-hidden snapshot",
-                old_sid,
-            )
-    except OSError:
-        logger.debug("Could not read old session file before preservation")
-    except Exception:
-        logger.debug("Failed to preserve pre-compression session file", exc_info=True)
+    return _preserve_pre_compression_snapshot_impl(
+        s,
+        old_sid,
+        session_dir=SESSION_DIR,
+        logger=logger,
+    )
 
 
 def _maybe_schedule_title_refresh(session, put_event, agent):
