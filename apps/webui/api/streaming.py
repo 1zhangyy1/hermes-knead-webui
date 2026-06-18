@@ -84,6 +84,7 @@ from api.streaming_context import (
     API_SAFE_MSG_KEYS as _API_SAFE_MSG_KEYS_IMPL,
     api_safe_message_positions as _api_safe_message_positions_impl,
     assistant_reply_added_after_current_turn as _assistant_reply_added_after_current_turn_impl,
+    capture_turn_start_snapshot as _capture_turn_start_snapshot,
     compact_summary_text as _compact_summary_text_impl,
     compression_anchor_message_key as _compression_anchor_message_key_impl,
     compression_summary_from_messages as _compression_summary_from_messages_impl,
@@ -1123,18 +1124,11 @@ def _run_agent_streaming(
                 webui_ephemeral_system_prompt=_webui_ephemeral_system_prompt,
                 logger=logger,
             )
-            _pending_started_at = getattr(s, 'pending_started_at', None)
-            # Normal chat-start sets pending_started_at before spawning this thread;
-            # fallback to now only for recovered/legacy flows where that marker is absent
-            # or has been zeroed out (e.g. via a buggy migration / manual file edit).
-            # Truthy-check covers None, missing-attr, and 0 uniformly.
-            _turn_started_at = _pending_started_at if _pending_started_at else time.time()
-            _previous_messages = list(s.messages or [])
-            _previous_context_messages = _context_messages_for_new_turn(s, msg_text)
-            _pre_compression_count = getattr(
-                getattr(agent, 'context_compressor', None),
-                'compression_count', 0,
-            )
+            _turn_start = _capture_turn_start_snapshot(s, agent, msg_text)
+            _turn_started_at = _turn_start.started_at
+            _previous_messages = _turn_start.previous_messages
+            _previous_context_messages = _turn_start.previous_context_messages
+            _pre_compression_count = _turn_start.pre_compression_count
 
             # Persist the user message BEFORE streaming starts so it's durable even if
             # the server crashes before the first checkpoint fires (every 15s).

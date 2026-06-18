@@ -3,6 +3,8 @@
 import copy
 import json
 import re
+import time
+from dataclasses import dataclass
 
 from api.streaming_attachments import resolve_image_input_mode as _resolve_image_input_mode
 from api.streaming_titles import (
@@ -21,6 +23,14 @@ API_SAFE_MSG_KEYS = {
     'refusal',
     'reasoning_content',
 }
+
+
+@dataclass
+class TurnStartSnapshot:
+    started_at: float
+    previous_messages: list
+    previous_context_messages: list
+    pre_compression_count: int
 
 
 def strip_native_image_parts_from_content(content):
@@ -401,6 +411,25 @@ def context_messages_for_new_turn(session, msg_text):
     if is_casual_fresh_chat_message(msg_text) and has_task_resume_compaction_marker(history):
         return []
     return history
+
+
+def capture_turn_start_snapshot(session, agent, msg_text, *, now_fn=time.time) -> TurnStartSnapshot:
+    """Capture pre-run session state used by streaming writeback."""
+    pending_started_at = getattr(session, 'pending_started_at', None)
+    started_at = pending_started_at if pending_started_at else now_fn()
+    previous_messages = list(getattr(session, 'messages', None) or [])
+    previous_context_messages = context_messages_for_new_turn(session, msg_text)
+    pre_compression_count = getattr(
+        getattr(agent, 'context_compressor', None),
+        'compression_count',
+        0,
+    )
+    return TurnStartSnapshot(
+        started_at=started_at,
+        previous_messages=previous_messages,
+        previous_context_messages=previous_context_messages,
+        pre_compression_count=pre_compression_count,
+    )
 
 
 def merge_display_messages_after_agent_result(previous_display, previous_context, result_messages, msg_text):
