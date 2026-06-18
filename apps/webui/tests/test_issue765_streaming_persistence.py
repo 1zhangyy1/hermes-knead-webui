@@ -336,7 +336,7 @@ class TestIssue765FollowupHardening:
             "with _agent_lock:\n"
             "                if not ephemeral and not _stream_writeback_is_current(s, stream_id):"
         )
-        save_idx = src.find("s.context_messages = _next_context_messages")
+        save_idx = src.find("_apply_agent_result_to_session(")
 
         assert stop_idx != -1, "Success path must stop the checkpoint thread"
         assert lock_idx != -1, "Success path must serialize mutation with _agent_lock"

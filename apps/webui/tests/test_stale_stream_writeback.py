@@ -82,7 +82,7 @@ def test_success_path_checks_stream_ownership_before_persisting_result():
     src = STREAMING_SRC.read_text(encoding="utf-8")
     guard = "if not ephemeral and not _stream_writeback_is_current(s, stream_id):"
     guard_pos = src.find(guard)
-    result_merge_pos = src.find("_result_messages = result.get('messages') or _previous_context_messages")
+    result_merge_pos = src.find("_apply_agent_result_to_session(")
     compression_pos = src.find("Handle context compression side effects")
 
     assert guard_pos != -1
