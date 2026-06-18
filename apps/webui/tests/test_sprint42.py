@@ -675,21 +675,26 @@ def test_cleanTitle_is_let_not_const():
 def test_streaming_persists_reasoning_in_session():
     """streaming.py must accumulate reasoning_text and patch last assistant message."""
     src = (REPO / 'api' / 'streaming.py').read_text()
+    metadata_src = (REPO / 'api' / 'streaming_turn_metadata.py').read_text()
 
     # _reasoning_text must be initialised
     assert "_reasoning_text = ''" in src, \
         "_reasoning_text variable not initialised in streaming.py"
 
-    # on_reasoning must accumulate into _reasoning_text
-    assert '_reasoning_text += str(text)' in src, \
-        "on_reasoning callback does not accumulate into _reasoning_text"
+    # on_reasoning must accumulate the reasoning text that was actually emitted
+    assert 'emitted = _output_bridge.on_reasoning(text)' in src, \
+        "on_reasoning callback does not route reasoning through the output bridge"
+    assert '_reasoning_text += emitted' in src, \
+        "on_reasoning callback does not accumulate emitted reasoning into _reasoning_text"
 
     # Persistence block must exist before raw_session is built
     assert "Persist reasoning trace in the session so it survives reload" in src, \
         "Reasoning persistence comment not found in streaming.py"
 
-    assert "_rm['reasoning'] = _reasoning_text" in src, \
-        "Code to set _rm['reasoning'] not found in streaming.py"
+    assert "_attach_reasoning_trace_to_last_assistant(s.messages, _reasoning_text)" in src, \
+        "Reasoning trace helper call not found in streaming.py"
+    assert "message['reasoning'] = reasoning_text" in metadata_src, \
+        "Code to set assistant reasoning not found in streaming_turn_metadata.py"
 
     # Persistence block must come BEFORE raw_session assignment
     persist_idx = src.index("Persist reasoning trace in the session")

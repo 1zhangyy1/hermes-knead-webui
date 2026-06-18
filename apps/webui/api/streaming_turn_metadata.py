@@ -14,6 +14,17 @@ class CompletedTurnMetadata:
     gateway_routing: dict | None
 
 
+def attach_reasoning_trace_to_last_assistant(messages, reasoning_text) -> bool:
+    """Attach streamed reasoning text to the last assistant message before save."""
+    if not reasoning_text or not messages:
+        return False
+    for message in reversed(messages):
+        if isinstance(message, dict) and message.get('role') == 'assistant':
+            message['reasoning'] = reasoning_text
+            return True
+    return False
+
+
 def apply_completed_turn_metadata(
     session,
     agent,
