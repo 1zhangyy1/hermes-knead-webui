@@ -887,12 +887,6 @@ def _run_agent_streaming(
             # block is reordered later (Issue #765).
             _checkpoint_activity = [0]
 
-            def _emit_tool_metering_snapshot():
-                _tool_stats = meter().get_stats()
-                _tool_stats['session_id'] = session_id
-                _tool_stats['usage'] = _live_usage_snapshot()
-                put('metering', _tool_stats)
-
             _tool_bridge = _StreamingToolEventBridge(
                 stream_id=stream_id,
                 session_id=session_id,
@@ -902,25 +896,11 @@ def _run_agent_streaming(
                 seen_tool_call_ids=_live_prompt_estimate_seen_ids,
                 put=put,
                 emit_reasoning=_output_bridge.on_reasoning,
-                emit_metering_snapshot=_emit_tool_metering_snapshot,
+                usage_snapshot=_live_usage_snapshot,
                 bump_live_prompt_estimate=_bump_live_prompt_estimate,
                 tool_result_snippet=_tool_result_snippet,
+                logger=logger,
             )
-
-            def on_tool(*cb_args, **cb_kwargs):
-                _tool_bridge.on_tool(*cb_args, **cb_kwargs)
-
-            def on_tool_start(tool_call_id, name, args):
-                try:
-                    _tool_bridge.on_tool_start(tool_call_id, name, args)
-                except Exception:
-                    logger.debug('Failed to update live prompt estimate on tool start', exc_info=True)
-
-            def on_tool_complete(tool_call_id, name, args, function_result):
-                try:
-                    _tool_bridge.on_tool_complete(tool_call_id, name, args, function_result)
-                except Exception:
-                    logger.debug('Failed to update live prompt estimate on tool completion', exc_info=True)
 
             _AIAgent = _get_ai_agent()
             if _AIAgent is None:
@@ -962,7 +942,7 @@ def _run_agent_streaming(
                 session_db=_session_db,
                 stream_delta_callback=_output_bridge.on_token,
                 reasoning_callback=_output_bridge.on_reasoning,
-                tool_progress_callback=on_tool,
+                tool_progress_callback=_tool_bridge.on_tool,
                 clarify_callback=(
                     lambda question, choices: _webui_clarify_callback_impl(
                         question,
@@ -973,8 +953,8 @@ def _run_agent_streaming(
                     )
                 ),
                 interim_assistant_callback=_output_bridge.on_interim_assistant,
-                tool_start_callback=on_tool_start,
-                tool_complete_callback=on_tool_complete,
+                tool_start_callback=_tool_bridge.on_tool_start,
+                tool_complete_callback=_tool_bridge.on_tool_complete,
                 status_callback=_agent_status_callback,
                 max_iterations=_max_iterations_cfg,
                 max_tokens=_max_tokens_cfg,

@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 from typing import Callable
 
+from api.metering import meter
+
 
 class StreamingToolEventBridge:
     """Translate AIAgent tool callbacks into WebUI SSE events and live state."""
@@ -20,9 +22,11 @@ class StreamingToolEventBridge:
         seen_tool_call_ids: set,
         put: Callable[[str, dict], None],
         emit_reasoning: Callable[[str], None],
-        emit_metering_snapshot: Callable[[], None],
+        usage_snapshot: Callable[[], dict],
         bump_live_prompt_estimate: Callable[[list], int],
         tool_result_snippet: Callable[[object], str],
+        meter_factory: Callable = meter,
+        logger=None,
     ):
         self.stream_id = stream_id
         self.session_id = session_id
@@ -32,9 +36,17 @@ class StreamingToolEventBridge:
         self.seen_tool_call_ids = seen_tool_call_ids
         self.put = put
         self.emit_reasoning = emit_reasoning
-        self.emit_metering_snapshot = emit_metering_snapshot
+        self.usage_snapshot = usage_snapshot
         self.bump_live_prompt_estimate = bump_live_prompt_estimate
         self.tool_result_snippet = tool_result_snippet
+        self.meter_factory = meter_factory
+        self.logger = logger
+
+    def emit_metering_snapshot(self):
+        tool_stats = self.meter_factory().get_stats()
+        tool_stats['session_id'] = self.session_id
+        tool_stats['usage'] = self.usage_snapshot()
+        self.put('metering', tool_stats)
 
     def record_live_tool_start(self, tool_call_id, name, args):
         if not tool_call_id or tool_call_id in self.seen_tool_call_ids:
@@ -66,12 +78,20 @@ class StreamingToolEventBridge:
         }])
 
     def on_tool_start(self, tool_call_id, name, args):
-        self.record_live_tool_start(tool_call_id, name, args)
-        self.emit_metering_snapshot()
+        try:
+            self.record_live_tool_start(tool_call_id, name, args)
+            self.emit_metering_snapshot()
+        except Exception:
+            if self.logger is not None:
+                self.logger.debug('Failed to update live prompt estimate on tool start', exc_info=True)
 
     def on_tool_complete(self, tool_call_id, name, args, function_result):
-        self.record_live_tool_complete(tool_call_id, name, function_result)
-        self.emit_metering_snapshot()
+        try:
+            self.record_live_tool_complete(tool_call_id, name, function_result)
+            self.emit_metering_snapshot()
+        except Exception:
+            if self.logger is not None:
+                self.logger.debug('Failed to update live prompt estimate on tool completion', exc_info=True)
 
     def on_tool(self, *cb_args, **cb_kwargs):
         event_type, name, preview, args = self._parse_callback_args(cb_args)
@@ -180,4 +200,3 @@ class StreamingToolEventBridge:
                     self.put('approval', p)
         except ImportError:
             pass
-
