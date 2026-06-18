@@ -121,20 +121,20 @@ class TestPrewarmHelperExists:
 
     def test_prewarm_called_before_env_lock(self):
         """_prewarm_skill_tool_modules() must be called before the first
-        process-env helper call in _run_agent_streaming."""
-        source = _read_streaming()
+        process-env helper call in profile activation."""
+        source = _read_runtime_helpers()
         lines = source.splitlines()
         prewarm_line = None
         env_apply_line = None
         for i, line in enumerate(lines, 1):
-            if "_prewarm_skill_tool_modules()" in line and prewarm_line is None:
+            if "prewarm_skill_tool_modules_fn()" in line and prewarm_line is None:
                 prewarm_line = i
-            if "_apply_streaming_profile_process_env(" in line and env_apply_line is None:
+            if "apply_profile_process_env_fn(" in line and env_apply_line is None:
                 env_apply_line = i
-        assert prewarm_line is not None, "_prewarm_skill_tool_modules() call not found"
-        assert env_apply_line is not None, "_apply_streaming_profile_process_env() call not found"
+        assert prewarm_line is not None, "prewarm_skill_tool_modules_fn() call not found"
+        assert env_apply_line is not None, "apply_profile_process_env_fn() call not found"
         assert prewarm_line < env_apply_line, (
-            f"_prewarm_skill_tool_modules() (line {prewarm_line}) must appear "
+            f"prewarm_skill_tool_modules_fn() (line {prewarm_line}) must appear "
             f"before process env application (line {env_apply_line})"
         )
 

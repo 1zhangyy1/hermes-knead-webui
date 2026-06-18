@@ -213,15 +213,11 @@ from api.streaming_recovery import (
 )
 from api.streaming_runtime_helpers import (
     WEBUI_VISIBLE_PROGRESS_PROMPT as _WEBUI_VISIBLE_PROGRESS_PROMPT_IMPL,
+    activate_streaming_profile_runtime as _activate_streaming_profile_runtime,
     aiagent_import_error_detail as _aiagent_import_error_detail_impl,
-    apply_streaming_profile_process_env as _apply_streaming_profile_process_env,
-    build_agent_thread_env as _build_agent_thread_env,
     clarify_timeout_seconds as _clarify_timeout_seconds_impl,
-    discover_mcp_tools_for_profile as _discover_mcp_tools_for_profile,
     has_new_assistant_reply as _has_new_assistant_reply_impl,
-    prewarm_skill_tool_modules as _prewarm_skill_tool_modules,
     restore_agent_process_env as _restore_agent_process_env,
-    resolve_streaming_profile_runtime as _resolve_streaming_profile_runtime,
     webui_clarify_callback as _webui_clarify_callback_impl,
     webui_ephemeral_system_prompt as _webui_ephemeral_system_prompt_impl,
 )
@@ -770,41 +766,17 @@ def _run_agent_streaming(
         if _handle_preflight_cancel(cancel_event, s, _agent_lock, _finalize_cancelled_turn, _put_cancel, ephemeral=ephemeral):
             return
 
-        # Resolve profile home for this agent run — use the session's own profile
-        # (stamped at new_session() time from the client's S.activeProfile) so that
-        # two concurrent tabs on different profiles don't clobber each other via the
-        # process-level active-profile global.  Falls back gracefully.
-        _profile_runtime = _resolve_streaming_profile_runtime(s)
-        _profile_home = _profile_runtime.profile_home
-        _profile_runtime_env = _profile_runtime.profile_runtime_env
-        _resolved_profile_name = _profile_runtime.resolved_profile_name
-        patch_skill_home_modules = _profile_runtime.patch_skill_home_modules
-        
-        _thread_env = _build_agent_thread_env(
-            _profile_runtime_env,
-            str(s.workspace),
-            session_id,
-            _profile_home,
-        )
-        _set_thread_env(**_thread_env)
-        # Prewarm skill-tool imports *before* acquiring the lock so that
-        # first-time module initialisation (which can be slow) does not
-        # block other concurrent sessions waiting on _ENV_LOCK (#2024).
-        _prewarm_skill_tool_modules()
-        _process_env_snapshot = _apply_streaming_profile_process_env(
-            profile_runtime_env=_profile_runtime_env,
+        _profile_activation = _activate_streaming_profile_runtime(
+            s,
             workspace=str(s.workspace),
             session_id=session_id,
-            profile_home=_profile_home,
-            patch_skill_home_modules=patch_skill_home_modules,
+            set_thread_env=_set_thread_env,
             env_lock=_ENV_LOCK,
         )
-        old_profile_env = _process_env_snapshot.profile_env_snapshot
-        old_runtime_env = _process_env_snapshot.runtime_env_snapshot
-        # Process env lock released — agent runs without holding it.
-        # MCP discovery must run after the per-session HERMES_HOME mutation so
-        # non-default profile MCP servers are loaded from the right config.
-        _discover_mcp_tools_for_profile()
+        _profile_home = _profile_activation.profile_home
+        _resolved_profile_name = _profile_activation.resolved_profile_name
+        old_profile_env = _profile_activation.profile_env_snapshot
+        old_runtime_env = _profile_activation.runtime_env_snapshot
 
         _gateway_notifications = _register_streaming_gateway_notifications(
             session_id,

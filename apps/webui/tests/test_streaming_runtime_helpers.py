@@ -5,6 +5,7 @@ import types
 
 from api.streaming_runtime_helpers import (
     apply_streaming_profile_process_env,
+    activate_streaming_profile_runtime,
     discover_mcp_tools_for_profile,
     prewarm_skill_tool_modules,
     restore_agent_process_env,
@@ -155,3 +156,49 @@ def test_resolve_streaming_profile_runtime_falls_back_to_active_profile(monkeypa
 
     assert runtime.profile_home == str(profile_home)
     assert runtime.resolved_profile_name == "active"
+
+
+def test_activate_streaming_profile_runtime_orders_thread_env_process_env_and_discovery():
+    calls = []
+    runtime = types.SimpleNamespace(
+        profile_home="/profiles/work",
+        profile_runtime_env={"PROFILE_KEY": "value"},
+        resolved_profile_name="work",
+        patch_skill_home_modules="patcher",
+    )
+    snapshot = types.SimpleNamespace(
+        profile_env_snapshot={"PROFILE_KEY": "old"},
+        runtime_env_snapshot={"HERMES_HOME": "old-home"},
+    )
+
+    activation = activate_streaming_profile_runtime(
+        types.SimpleNamespace(profile="work"),
+        workspace="/workspace",
+        session_id="sid-1",
+        set_thread_env=lambda **env: calls.append(("thread-env", env)),
+        env_lock="env-lock",
+        resolve_profile_runtime_fn=lambda session: calls.append(("resolve", session.profile)) or runtime,
+        build_thread_env_fn=lambda runtime_env, workspace, session_id, profile_home: (
+            calls.append(("build-thread-env", runtime_env, workspace, session_id, profile_home))
+            or {"HERMES_HOME": profile_home, "TERMINAL_CWD": workspace}
+        ),
+        prewarm_skill_tool_modules_fn=lambda: calls.append(("prewarm",)),
+        apply_profile_process_env_fn=lambda **kwargs: calls.append(("process-env", kwargs)) or snapshot,
+        discover_mcp_tools_fn=lambda: calls.append(("discover",)),
+    )
+
+    assert activation.profile_home == "/profiles/work"
+    assert activation.resolved_profile_name == "work"
+    assert activation.profile_env_snapshot == {"PROFILE_KEY": "old"}
+    assert activation.runtime_env_snapshot == {"HERMES_HOME": "old-home"}
+    assert [call[0] for call in calls] == [
+        "resolve",
+        "build-thread-env",
+        "thread-env",
+        "prewarm",
+        "process-env",
+        "discover",
+    ]
+    assert calls[4][1]["profile_runtime_env"] == {"PROFILE_KEY": "value"}
+    assert calls[4][1]["patch_skill_home_modules"] == "patcher"
+    assert calls[4][1]["env_lock"] == "env-lock"

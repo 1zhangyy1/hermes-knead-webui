@@ -53,20 +53,20 @@ def test_streaming_applies_profile_runtime_env_to_agent_run():
     helper_src = (WEBUI_ROOT / "api" / "streaming_runtime_helpers.py").read_text(encoding="utf-8")
 
     assert "get_profile_runtime_env" in helper_src
-    assert "_profile_runtime = _resolve_streaming_profile_runtime(s)" in streaming_src
-    assert "_profile_runtime_env" in streaming_src
-    assert "old_profile_env" in streaming_src
+    assert "_profile_runtime = resolve_profile_runtime_fn(session)" in helper_src
+    assert "_profile_runtime_env" in helper_src
+    assert "old_profile_env = _profile_activation.profile_env_snapshot" in streaming_src
     assert "os.environ.update(profile_runtime_env)" in helper_src
 
 
 def test_streaming_thread_env_allows_profile_terminal_cwd_override():
     from api.streaming_runtime_helpers import build_agent_thread_env
 
-    src = (WEBUI_ROOT / "api" / "streaming.py").read_text(encoding="utf-8")
+    helper_src = (WEBUI_ROOT / "api" / "streaming_runtime_helpers.py").read_text(encoding="utf-8")
 
-    assert "_thread_env = _build_agent_thread_env(" in src
-    assert "_set_thread_env(**_thread_env)" in src
-    assert "_set_thread_env(\n            **_profile_runtime_env,\n            TERMINAL_CWD" not in src
+    assert "_thread_env = build_thread_env_fn(" in helper_src
+    assert "set_thread_env(**_thread_env)" in helper_src
+    assert "set_thread_env(\n            **_profile_runtime_env,\n            TERMINAL_CWD" not in helper_src
 
     env = build_agent_thread_env(
         {

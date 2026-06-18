@@ -35,7 +35,8 @@ def test_webui_sets_gateway_session_platform_for_background_watchers():
     helper_src = (REPO / "api" / "streaming_runtime_helpers.py").read_text(encoding="utf-8")
 
     assert "'HERMES_SESSION_PLATFORM': 'webui'" in helper_src
-    assert "_thread_env = _build_agent_thread_env(" in src
+    assert "_profile_activation = _activate_streaming_profile_runtime(" in src
+    assert "_thread_env = build_thread_env_fn(" in helper_src
     assert "os.environ['HERMES_SESSION_PLATFORM'] = 'webui'" in helper_src
     assert "'HERMES_SESSION_PLATFORM'" in helper_src
     assert "runtime_env_snapshot" in src
