@@ -678,13 +678,14 @@ def test_streaming_bridge_accepts_current_tool_progress_callback_signature(clean
     The agent now calls tool_progress_callback(event_type, name, preview, args, **kwargs).
     If the WebUI bridge only accepts (name, preview, args), live tool updates silently vanish.
     """
-    src = (REPO_ROOT / "api/streaming.py").read_text()
-    assert "def on_tool(*cb_args, **cb_kwargs):" in src, \
+    streaming_src = (REPO_ROOT / "api/streaming.py").read_text()
+    bridge_src = (REPO_ROOT / "api/streaming_tool_bridge.py").read_text()
+    assert "def on_tool(*cb_args, **cb_kwargs):" in streaming_src, \
         "streaming.py must accept variable callback args for tool progress events"
-    assert "reasoning_callback=on_reasoning" in src, \
+    assert "reasoning_callback=on_reasoning" in streaming_src, \
         "streaming.py must wire the agent's reasoning callback into the SSE bridge"
-    assert "put('tool_complete'" in src or 'put("tool_complete"' in src, \
-        "streaming.py must emit live tool completion SSE events"
+    assert "put('tool_complete'" in bridge_src or 'put("tool_complete"' in bridge_src, \
+        "streaming tool bridge must emit live tool completion SSE events"
 
 
 def test_streaming_reads_reasoning_effort_from_config_dict(cleanup_test_sessions):
