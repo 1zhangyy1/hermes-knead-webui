@@ -94,7 +94,8 @@ def test_success_path_checks_stream_ownership_before_persisting_result():
 
 def test_self_heal_retry_success_checks_stream_ownership_before_writeback():
     src = STREAMING_SRC.read_text(encoding="utf-8")
-    start = src.index("logger.info('[webui] self-heal (except path): retrying stream")
+    retry_call = src.index("retry_failed_log_message='[webui] self-heal (except path): retry failed: %s'")
+    start = src.index("if _heal_retry.result is not None:", retry_call)
     end = src.index("logger.info('[webui] self-heal (except path): retry succeeded')", start)
     block = src[start:end]
     guard = "if not ephemeral and not _stream_writeback_is_current(s, stream_id):"
