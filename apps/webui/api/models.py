@@ -105,6 +105,14 @@ from api.session_repair import (
     run_journal_has_visible_output as _run_journal_has_visible_output_impl,
     truncate_journal_tool_args as _truncate_journal_tool_args_impl,
 )
+from api.session_projection import (
+    is_streaming_session as _is_streaming_session_impl,
+    last_message_timestamp as _last_message_timestamp_impl,
+    message_role as _message_role_impl,
+    message_timestamp as _message_timestamp_impl,
+    session_sort_timestamp as _session_sort_timestamp_impl,
+    title_from as _title_from_impl,
+)
 
 logger = logging.getLogger(__name__)
 CLI_VISIBLE_SESSION_LIMIT = 20
@@ -157,40 +165,22 @@ def _append_recovered_pending_turn(session, *, timestamp: int | None = None) -> 
 
 
 def _is_streaming_session(active_stream_id, active_stream_ids):
-    return bool(active_stream_id and active_stream_id in active_stream_ids)
+    return _is_streaming_session_impl(active_stream_id, active_stream_ids)
 
 def _session_sort_timestamp(session):
-    if isinstance(session, dict):
-        return session.get('last_message_at') or session.get('updated_at') or 0
-    return _last_message_timestamp(getattr(session, 'messages', None)) or getattr(session, 'updated_at', 0) or 0
+    return _session_sort_timestamp_impl(session)
 
 
 def _message_timestamp(message):
-    if not isinstance(message, dict):
-        return None
-    raw = message.get('_ts') or message.get('timestamp')
-    try:
-        return float(raw) if raw is not None else None
-    except (TypeError, ValueError):
-        return None
+    return _message_timestamp_impl(message)
 
 
 def _last_message_timestamp(messages):
-    if not isinstance(messages, list):
-        return None
-    for message in reversed(messages):
-        if isinstance(message, dict) and message.get('role') == 'tool':
-            continue
-        ts = _message_timestamp(message)
-        if ts:
-            return ts
-    return None
+    return _last_message_timestamp_impl(messages)
 
 
 def _message_role(message):
-    if not isinstance(message, dict):
-        return ''
-    return str(message.get('role', '')).strip().lower()
+    return _message_role_impl(message)
 
 
 def _find_top_level_json_key(text, key):
@@ -886,15 +876,7 @@ def all_sessions(diag=None):
 
 def title_from(messages, fallback: str='Untitled'):
     """Derive a session title from the first user message."""
-    for m in messages:
-        if m.get('role') == 'user':
-            c = m.get('content', '')
-            if isinstance(c, list):
-                c = ' '.join(p.get('text', '') for p in c if isinstance(p, dict) and p.get('type') == 'text')
-            text = str(c).strip()
-            if text:
-                return text[:64]
-    return fallback
+    return _title_from_impl(messages, fallback=fallback)
 
 
 # ── Project helpers ──────────────────────────────────────────────────────────
