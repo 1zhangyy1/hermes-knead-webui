@@ -1108,13 +1108,11 @@ def _run_agent_streaming(
                         _last_err,
                         silent_failure=not bool(_err_str),
                     )
-                    _is_quota = _classification['type'] == 'quota_exhausted'
                     _is_auth = _classification['type'] == 'auth_mismatch'
-                    if _is_quota:
-                        _err_label = _classification['label']
-                        _err_type = _classification['type']
-                        _err_hint = _classification['hint']
-                    elif _is_auth and not _self_healed:
+                    _err_label = _classification['label']
+                    _err_type = _classification['type']
+                    _err_hint = _classification['hint']
+                    if _is_auth and not _self_healed:
                         # ── Credential self-heal on 401 (#1401) ──
                         # Before emitting the error, try re-reading credentials
                         # and retrying once with a fresh agent.
@@ -1183,27 +1181,6 @@ def _run_agent_streaming(
                                 # normal post-result persistence path by
                                 # leaving _assistant_added truthy (set below).
                                 _assistant_added = True  # prevent re-entering guard
-                        if not _assistant_added:
-                            # Self-heal didn't apply or retry failed — emit error
-                            _err_label = 'Authentication failed'
-                            _err_type = 'auth_mismatch'
-                            _err_hint = (
-                                'The selected model may not be supported by your configured provider or '
-                                'your API key is invalid. Run `hermes model` in your terminal to '
-                                'update credentials, then restart the WebUI.'
-                            )
-                    elif _is_auth:
-                        _err_label = 'Authentication failed'
-                        _err_type = 'auth_mismatch'
-                        _err_hint = (
-                            'The selected model may not be supported by your configured provider or '
-                            'your API key is invalid. Run `hermes model` in your terminal to '
-                            'update credentials, then restart the WebUI.'
-                        )
-                    else:
-                        _err_label = _classification['label']
-                        _err_type = _classification['type']
-                        _err_hint = _classification['hint']
                     # Skip error emission if credential self-heal succeeded
                     # (#1401) — _assistant_added is set True on successful retry.
                     if _assistant_added:
