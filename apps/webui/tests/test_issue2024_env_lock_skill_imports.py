@@ -96,27 +96,27 @@ class TestPrewarmHelperExists:
     both target modules."""
 
     def test_prewarm_function_defined(self):
-        source = _read_streaming()
+        source = _read_runtime_helpers()
         tree = ast.parse(source)
         func_names = {
             node.name
             for node in ast.walk(tree)
             if isinstance(node, ast.FunctionDef)
         }
-        assert "_prewarm_skill_tool_modules" in func_names, (
-            "_prewarm_skill_tool_modules() helper must be defined in streaming.py"
+        assert "prewarm_skill_tool_modules" in func_names, (
+            "prewarm_skill_tool_modules() helper must be defined in streaming_runtime_helpers.py"
         )
 
     def test_prewarm_references_both_modules(self):
-        source = _read_streaming()
+        source = _read_runtime_helpers()
         # Find the function source and check it references both module names.
         # Simple string check is sufficient and more robust than AST for
         # dynamic __import__ calls.
         assert "tools.skills_tool" in source, (
-            "streaming.py must reference 'tools.skills_tool'"
+            "streaming_runtime_helpers.py must reference 'tools.skills_tool'"
         )
         assert "tools.skill_manager_tool" in source, (
-            "streaming.py must reference 'tools.skill_manager_tool'"
+            "streaming_runtime_helpers.py must reference 'tools.skill_manager_tool'"
         )
 
     def test_prewarm_called_before_env_lock(self):
