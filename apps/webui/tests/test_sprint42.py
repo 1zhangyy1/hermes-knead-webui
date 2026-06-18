@@ -753,10 +753,12 @@ def test_streaming_restores_prior_reasoning_metadata_after_followup():
     context_src = (REPO / 'api' / 'streaming_context.py').read_text()
     assert "def _restore_reasoning_metadata(" in src, \
         "streaming.py must define a helper to restore prior reasoning metadata"
-    assert "s.context_messages = _next_context_messages" in src, \
-        "streaming.py must restore prior reasoning metadata into model context"
-    assert "s.messages = _merge_display_messages_after_agent_result(" in src, \
-        "streaming.py must merge restored result messages into the visible transcript"
+    assert "_apply_agent_result_to_session(" in src, \
+        "streaming.py must apply restored agent result messages before saving"
+    assert "session.context_messages = next_context_messages" in context_src, \
+        "streaming_context.py must restore prior reasoning metadata into model context"
+    assert "session.messages = merge_display_messages_after_agent_result(" in context_src, \
+        "streaming_context.py must merge restored result messages into the visible transcript"
     assert "updated_messages.insert(safe_pos, copy.deepcopy(prev_msg))" in context_src, \
         "streaming_context.py must reinsert dropped reasoning-only assistant messages"
 

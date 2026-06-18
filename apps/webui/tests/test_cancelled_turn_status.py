@@ -163,7 +163,7 @@ class TestCancelledTurnPersistenceGuards:
         src = _read("api/streaming.py")
         cancellation_src = _read("api/streaming_cancellation.py")
         run_idx = src.find("result = agent.run_conversation(")
-        merge_idx = src.find("_result_messages = result.get", run_idx)
+        merge_idx = src.find("_apply_agent_result_to_session(", run_idx)
         assert run_idx != -1 and merge_idx != -1, "run/merge path not found"
         block = src[run_idx:merge_idx]
 

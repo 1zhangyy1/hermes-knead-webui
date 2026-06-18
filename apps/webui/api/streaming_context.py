@@ -432,6 +432,33 @@ def capture_turn_start_snapshot(session, agent, msg_text, *, now_fn=time.time) -
     )
 
 
+def apply_agent_result_to_session(
+    session,
+    previous_messages,
+    previous_context_messages,
+    result_messages,
+    msg_text,
+    *,
+    strip_xml_tool_calls_fn=None,
+) -> list:
+    """Merge agent result messages into model context and visible transcript."""
+    result_messages = result_messages or previous_context_messages
+    next_context_messages = restore_reasoning_metadata(
+        previous_context_messages,
+        result_messages,
+    )
+    session.context_messages = next_context_messages
+    session.messages = merge_display_messages_after_agent_result(
+        previous_messages,
+        previous_context_messages,
+        restore_reasoning_metadata(previous_messages, result_messages),
+        msg_text,
+    )
+    if strip_xml_tool_calls_fn is not None:
+        strip_xml_tool_calls_fn(session.messages)
+    return result_messages
+
+
 def merge_display_messages_after_agent_result(previous_display, previous_context, result_messages, msg_text):
     """Keep UI transcript durable while allowing model context to compact."""
     previous_display = list(previous_display or [])

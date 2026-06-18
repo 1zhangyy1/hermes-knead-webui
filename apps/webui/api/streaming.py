@@ -82,6 +82,7 @@ from api.streaming_attachments import (
 )
 from api.streaming_context import (
     API_SAFE_MSG_KEYS as _API_SAFE_MSG_KEYS_IMPL,
+    apply_agent_result_to_session as _apply_agent_result_to_session,
     api_safe_message_positions as _api_safe_message_positions_impl,
     assistant_reply_added_after_current_turn as _assistant_reply_added_after_current_turn_impl,
     capture_turn_start_snapshot as _capture_turn_start_snapshot,
@@ -1199,24 +1200,19 @@ def _run_agent_streaming(
                         getattr(s, 'active_stream_id', None),
                     )
                     return
-                _result_messages = result.get('messages') or _previous_context_messages
                 if cancel_event.is_set():
                     _finalize_cancelled_turn(s, ephemeral=False)
                     _append_interrupted_turn_event(s.session_id, stream_id, logger=logger)
                     _put_cancel()
                     return
-                _next_context_messages = _restore_reasoning_metadata(
-                    _previous_context_messages,
-                    _result_messages,
-                )
-                s.context_messages = _next_context_messages
-                s.messages = _merge_display_messages_after_agent_result(
+                _result_messages = _apply_agent_result_to_session(
+                    s,
                     _previous_messages,
                     _previous_context_messages,
-                    _restore_reasoning_metadata(_previous_messages, _result_messages),
+                    result.get('messages'),
                     msg_text,
+                    strip_xml_tool_calls_fn=_strip_xml_tool_calls_from_assistant_messages,
                 )
-                _strip_xml_tool_calls_from_assistant_messages(s.messages)
 
                 # ── Detect silent agent failure (no assistant reply produced) ──
                 # When the agent catches an auth/network error internally it may return
@@ -1325,16 +1321,11 @@ def _run_agent_streaming(
                                 # evaluates False on next conceptual pass.
                                 # Since we're in a flat block, directly run the
                                 # post-result merge logic here.
-                                _result_messages = result.get('messages') or _previous_context_messages
-                                _next_context_messages = _restore_reasoning_metadata(
-                                    _previous_context_messages,
-                                    _result_messages,
-                                )
-                                s.context_messages = _next_context_messages
-                                s.messages = _merge_display_messages_after_agent_result(
+                                _result_messages = _apply_agent_result_to_session(
+                                    s,
                                     _previous_messages,
                                     _previous_context_messages,
-                                    _restore_reasoning_metadata(_previous_messages, _result_messages),
+                                    result.get('messages'),
                                     msg_text,
                                 )
                                 # Skip the error block — jump directly to the

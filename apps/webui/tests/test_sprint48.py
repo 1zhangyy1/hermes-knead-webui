@@ -113,7 +113,7 @@ class TestXmlToolCallStrip:
         src = read('api/streaming.py')
         helper_src = read('api/streaming_tool_calls.py')
         assert 'strip_xml_tool_calls_from_assistant_messages as _strip_xml_tool_calls_from_assistant_messages' in src
-        assert '_strip_xml_tool_calls_from_assistant_messages(s.messages)' in src
+        assert 'strip_xml_tool_calls_fn=_strip_xml_tool_calls_from_assistant_messages' in src
         assert 'def strip_xml_tool_calls_from_assistant_messages(' in helper_src
         assert 'strip_xml_tool_calls(raw_content)' in helper_src
         assert 'function_calls' in helper_src.lower(), (
