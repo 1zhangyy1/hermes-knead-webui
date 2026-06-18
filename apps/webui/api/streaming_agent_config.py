@@ -13,6 +13,16 @@ class AgentConstructorSettings:
     reasoning_config: object
 
 
+@dataclass
+class WebUIAgentKwargsState:
+    agent_kwargs: dict
+    agent_params: set
+    fallback_resolved: object
+    max_iterations: int | None
+    max_tokens: int | None
+    reasoning_config: object
+
+
 def initialize_session_db(*, session_db_factory=None, warning_fn=print):
     """Create SessionDB for WebUI agents, falling back to None on failure."""
     try:
@@ -309,3 +319,77 @@ def build_agent_kwargs(
     if 'gateway_session_key' in agent_params:
         kwargs['gateway_session_key'] = session_id
     return kwargs
+
+
+def prepare_webui_agent_kwargs(
+    *,
+    agent_cls,
+    config,
+    model,
+    provider,
+    base_url,
+    api_key,
+    enabled_toolsets,
+    session_id,
+    session_db,
+    output_bridge,
+    tool_bridge,
+    run_state,
+    cancel_event,
+    clarify_timeout_seconds,
+    webui_clarify_callback,
+    runtime,
+    resolve_agent_constructor_settings_fn=resolve_agent_constructor_settings,
+    build_agent_kwargs_fn=build_agent_kwargs,
+) -> WebUIAgentKwargsState:
+    """Resolve guarded constructor settings and build AIAgent kwargs."""
+    # Build kwargs defensively — guard newer params so the WebUI
+    # degrades gracefully when run against an older hermes-agent build.
+    # (fixes: TypeError: AIAgent.__init__() got an unexpected keyword
+    # argument 'credential_pool' — issue #772)
+    _agent_constructor = resolve_agent_constructor_settings_fn(agent_cls, config)
+    _agent_params = _agent_constructor.agent_params
+    _fallback_resolved = _agent_constructor.fallback_resolved
+    _max_iterations_cfg = _agent_constructor.max_iterations
+    _max_tokens_cfg = _agent_constructor.max_tokens
+    _reasoning_config = _agent_constructor.reasoning_config
+
+    _agent_kwargs = build_agent_kwargs_fn(
+        agent_params=_agent_params,
+        model=model,
+        provider=provider,
+        base_url=base_url,
+        api_key=api_key,
+        enabled_toolsets=enabled_toolsets,
+        fallback_model=_fallback_resolved,
+        session_id=session_id,
+        session_db=session_db,
+        stream_delta_callback=output_bridge.on_token,
+        reasoning_callback=output_bridge.on_reasoning,
+        tool_progress_callback=tool_bridge.on_tool,
+        clarify_callback=(
+            lambda question, choices: webui_clarify_callback(
+                question,
+                choices,
+                session_id,
+                cancel_event,
+                clarify_timeout_seconds,
+            )
+        ),
+        interim_assistant_callback=output_bridge.on_interim_assistant,
+        tool_start_callback=tool_bridge.on_tool_start,
+        tool_complete_callback=tool_bridge.on_tool_complete,
+        status_callback=run_state.agent_status_callback,
+        max_iterations=_max_iterations_cfg,
+        max_tokens=_max_tokens_cfg,
+        reasoning_config=_reasoning_config,
+        runtime=runtime,
+    )
+    return WebUIAgentKwargsState(
+        agent_kwargs=_agent_kwargs,
+        agent_params=_agent_params,
+        fallback_resolved=_fallback_resolved,
+        max_iterations=_max_iterations_cfg,
+        max_tokens=_max_tokens_cfg,
+        reasoning_config=_reasoning_config,
+    )
