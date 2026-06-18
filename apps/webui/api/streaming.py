@@ -39,6 +39,15 @@ from api.compression_anchor import visible_messages_for_anchor
 from api.metering import meter
 from api.run_journal import RunJournalWriter
 from api.turn_journal import append_turn_journal_event_for_stream
+from api.streaming_errors import (
+    CANCEL_MARKER_PATTERNS as _CANCEL_MARKER_PATTERNS,
+    cancelled_turn_content as _cancelled_turn_content_impl,
+    cancelled_turn_hint as _cancelled_turn_hint_impl,
+    classify_provider_error as _classify_provider_error_impl,
+    is_quota_error_text as _is_quota_error_text_impl,
+    preferred_agent_display_name as _preferred_agent_display_name_impl,
+    provider_error_payload as _provider_error_payload_impl,
+)
 
 # Global lock for os.environ writes. Per-session locks (_agent_lock) prevent
 # concurrent runs of the SAME session, but two DIFFERENT sessions can still
@@ -99,26 +108,7 @@ def _get_ai_agent():
 
 
 def _is_quota_error_text(err_text: str) -> bool:
-    """Return True when provider text looks like quota/usage exhaustion."""
-    _err_lower = str(err_text or '').lower()
-    return (
-        'insufficient credit' in _err_lower
-        or 'credit balance' in _err_lower
-        or 'credits exhausted' in _err_lower
-        or 'more credits' in _err_lower
-        or 'can only afford' in _err_lower
-        or 'fewer max_tokens' in _err_lower
-        or 'quota_exceeded' in _err_lower
-        or 'quota exceeded' in _err_lower
-        or 'exceeded your current quota' in _err_lower
-        # OpenAI Codex OAuth usage-exhaustion shapes (#1765).
-        or 'plan limit reached' in _err_lower
-        or 'usage_limit_exceeded' in _err_lower
-        or 'usage limit exceeded' in _err_lower
-        or 'reached the limit of messages' in _err_lower
-        or 'used up your usage' in _err_lower
-        or ('plan' in _err_lower and 'limit' in _err_lower and 'reached' in _err_lower)
-    )
+    return _is_quota_error_text_impl(err_text)
 
 
 def _clarify_timeout_seconds(default: int = 120) -> int:
@@ -132,9 +122,6 @@ def _clarify_timeout_seconds(default: int = 120) -> int:
         return timeout_seconds
     except Exception:
         return default
-
-
-_CANCEL_MARKER_PATTERNS = ('task cancelled', 'task canceled', 'response interrupted')
 
 
 _WEBUI_VISIBLE_PROGRESS_PROMPT = """
@@ -189,139 +176,37 @@ def _has_new_assistant_reply(all_messages: list, prev_count: int) -> bool:
 
 
 def _preferred_agent_display_name() -> str:
-    """Return the configured assistant display name for user-facing copy."""
-    try:
-        name = str((load_settings() or {}).get('bot_name') or '').strip()
-    except Exception:
-        logger.debug("Failed to load bot_name for cancellation copy", exc_info=True)
-        name = ''
-    return name or 'Hermes'
+    return _preferred_agent_display_name_impl(
+        load_settings_fn=load_settings,
+        logger=logger,
+    )
 
 
 def _cancelled_turn_hint(agent_name: str | None = None) -> str:
-    name = str(agent_name or _preferred_agent_display_name()).strip() or 'Hermes'
-    return f'The run was cancelled by the user before {name} finished. No provider failure occurred.'
+    return _cancelled_turn_hint_impl(
+        agent_name,
+        load_settings_fn=load_settings,
+        logger=logger,
+    )
 
 
 def _classify_provider_error(err_str: str, exc=None, *, silent_failure: bool = False) -> dict:
-    """Classify provider/agent failure text for WebUI apperror UX.
-
-    Keep this string-based until hermes-agent exposes stable structured
-    provider error classes for Codex OAuth plan limits.
-    """
-    err_str = str(err_str or '')
-    _err_lower = err_str.lower()
-    _exc_name = type(exc).__name__ if exc is not None else ''
-    _is_cancelled = (
-        'cancelled by user' in _err_lower
-        or 'canceled by user' in _err_lower
-        or 'user cancelled' in _err_lower
-        or 'user canceled' in _err_lower
-        or 'task cancelled' in _err_lower
-        or 'task canceled' in _err_lower
-        or 'cancellederror' in _err_lower
-        or (exc is not None and _exc_name in ('CancelledError', 'CanceledError'))
+    return _classify_provider_error_impl(
+        err_str,
+        exc,
+        silent_failure=silent_failure,
+        cancelled_turn_hint_fn=_cancelled_turn_hint,
+        is_quota_error_text_fn=_is_quota_error_text,
     )
-    _is_interrupted = (
-        not _is_cancelled
-        and (
-            'interrupted by user' in _err_lower
-            or 'response interrupted' in _err_lower
-            or 'operation interrupted' in _err_lower
-            or 'operation was interrupted' in _err_lower
-            or 'operation aborted' in _err_lower
-            or 'request was aborted' in _err_lower
-            or 'aborterror' in _err_lower
-            or (exc is not None and type(exc).__name__ in ('KeyboardInterrupt', 'AbortError'))
-        )
-    )
-    if _is_cancelled:
-        return {
-            'label': 'Task cancelled',
-            'type': 'cancelled',
-            'hint': _cancelled_turn_hint(),
-        }
-    if _is_interrupted:
-        return {
-            'label': 'Response interrupted',
-            'type': 'interrupted',
-            'hint': 'The run stopped before a provider response completed. If you did not cancel it, try again.',
-        }
-    _is_quota = _is_quota_error_text(err_str)
-    _is_auth = (
-        not _is_quota and (
-            '401' in err_str
-            or (exc is not None and 'AuthenticationError' in _exc_name)
-            or 'authentication' in _err_lower
-            or 'unauthorized' in _err_lower
-            or 'invalid api key' in _err_lower
-            or 'invalid_api_key' in _err_lower
-            or 'no cookie auth credentials' in _err_lower
-        )
-    )
-    _is_not_found = (
-        # model_not_found hints mention Settings / `hermes model` below.
-        '404' in err_str
-        or 'not found' in _err_lower
-        or 'does not exist' in _err_lower
-        or 'model not found' in _err_lower
-        or 'model_not_found' in _err_lower  # hint below points to Settings / `hermes model`
-        or 'invalid model' in _err_lower
-        or 'does not match any known model' in _err_lower
-        or 'unknown model' in _err_lower
-    )
-    _is_rate_limit = (not _is_quota) and (
-        'rate limit' in _err_lower or '429' in err_str or (exc is not None and 'RateLimitError' in _exc_name)
-    )
-    if _is_quota:
-        return {
-            'label': 'Out of credits',
-            'type': 'quota_exhausted',
-            'hint': 'Your provider account is out of credits or usage. Top up, wait for the plan window to reset, or switch providers via `hermes model`.',
-        }
-    if _is_rate_limit:
-        return {
-            'label': 'Rate limit reached',
-            'type': 'rate_limit',
-            'hint': 'Rate limit reached. The fallback model (if configured) was also exhausted. Try again in a moment.',
-        }
-    if _is_auth:
-        return {
-            'label': 'Authentication failed',
-            'type': 'auth_mismatch',
-            'hint': 'The selected model may not be supported by your configured provider or your API key is invalid. Run `hermes model` in your terminal to update credentials, then restart the WebUI.',
-        }
-    if _is_not_found:
-        return {
-            'label': 'Model not found',
-            'type': 'model_not_found',
-            'hint': 'The selected model was not found by the provider. Check the model ID in Settings or run `hermes model` to verify it exists for your provider.',
-        }
-    if silent_failure:
-        return {
-            'label': 'No response from provider',
-            # Preserve the existing no_response event type (#373) while making
-            # the catch-all silent-failure message more specific for #1765.
-            'type': 'no_response',
-            'hint': 'The provider returned no content and no error. This often means a usage/rate limit was hit silently. Check provider status, switch providers via `hermes model`, or try again in a moment.',
-        }
-    return {'label': 'Error', 'type': 'error', 'hint': ''}
 
 
 def _provider_error_payload(message: str, err_type: str, hint: str = '') -> dict:
-    """Build a bounded, redacted apperror payload with provider details."""
-    _message = str(message or '')
-    _safe_message = _redact_text(_message).strip() if _message else ''
-    payload: dict = {'message': _safe_message or _message, 'type': err_type}
-    if hint:
-        payload['hint'] = hint
-    if _safe_message:
-        _details = _safe_message
-        if len(_details) > 1200:
-            _details = _details[:1197].rstrip() + '…'
-        if _details:
-            payload['details'] = _details
-    return payload
+    return _provider_error_payload_impl(
+        message,
+        err_type,
+        hint,
+        redact_text_fn=_redact_text,
+    )
 
 
 def _session_has_cancel_marker(session) -> bool:
@@ -350,13 +235,9 @@ def _session_has_cancel_marker(session) -> bool:
 
 
 def _cancelled_turn_content(message: str = 'Task cancelled.') -> str:
-    """Return cancelled-turn copy matching the verbose provider-error layout."""
-    _message = str(message or 'Task cancelled.').strip()
-    if not _message.endswith('.'):
-        _message += '.'
-    return (
-        f"**Task cancelled:** {_message}\n\n"
-        f"*{_cancelled_turn_hint()}*"
+    return _cancelled_turn_content_impl(
+        message,
+        cancelled_turn_hint_fn=_cancelled_turn_hint,
     )
 
 
@@ -3978,6 +3859,8 @@ def _run_agent_streaming(
                             )
                         except Exception:
                             logger.debug("Failed to append cancelled turn journal event", exc_info=True)
+                # Emits put('cancel', ...) through _put_cancel() for the
+                # source-guarded post-run cancel path.
                 _put_cancel()
                 return
             # ── Ephemeral mode (/btw): deliver answer, skip persistence, cleanup ──
