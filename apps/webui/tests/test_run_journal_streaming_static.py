@@ -1,8 +1,11 @@
 from pathlib import Path
 
 
+REPO = Path(__file__).resolve().parents[1]
+
+
 def test_streaming_initializes_one_run_journal_writer_per_stream():
-    src = Path("api/streaming.py").read_text(encoding="utf-8")
+    src = (REPO / "api" / "streaming.py").read_text(encoding="utf-8")
     register_idx = src.index("register_active_run(")
     writer_idx = src.index("RunJournalWriter(session_id, stream_id)", register_idx)
     cancel_idx = src.index("cancel_event = threading.Event()", writer_idx)
@@ -12,8 +15,8 @@ def test_streaming_initializes_one_run_journal_writer_per_stream():
 
 
 def test_streaming_journals_sse_events_before_queue_delivery():
-    src = Path("api/streaming.py").read_text(encoding="utf-8")
-    put_idx = src.index("def put(event, data):")
+    src = (REPO / "api" / "streaming_event_sink.py").read_text(encoding="utf-8")
+    put_idx = src.index("def put(self, event, data):")
     journal_idx = src.index("run_journal.append_sse_event(event, data)", put_idx)
     # Stage-364 maintainer fix: put() now pushes 3-tuples (event, data, event_id)
     # so the SSE consumer can emit `id:` on live frames. Accept either shape

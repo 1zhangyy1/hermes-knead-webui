@@ -11,9 +11,9 @@ Implementation (stage-364 — side-channel approach to avoid breaking the
 queue tuple contract used by 4 existing tests):
 
   - api/config.py adds `STREAM_LAST_EVENT_ID: dict = {}` module-level dict.
-  - api/streaming.py `put()` captures `journaled["event_id"]` from
+  - api/streaming_event_sink.py `put()` captures `journaled["event_id"]` from
     `RunJournalWriter.append_sse_event()` return and writes it to
-    `STREAM_LAST_EVENT_ID[stream_id]`.
+    `STREAM_LAST_EVENT_ID[stream_id]` through the injected side-channel dict.
   - api/routes.py `_handle_sse_stream` reads `STREAM_LAST_EVENT_ID[stream_id]`
     at SSE emit time and uses `_sse_with_id` when set.
   - api/streaming.py finally-block cleanup pops STREAM_LAST_EVENT_ID.
@@ -26,6 +26,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 STREAMING_PY = (REPO_ROOT / "api" / "streaming.py").read_text(encoding="utf-8")
+EVENT_SINK_PY = (REPO_ROOT / "api" / "streaming_event_sink.py").read_text(encoding="utf-8")
 ROUTES_PY = (REPO_ROOT / "api" / "routes.py").read_text(encoding="utf-8")
 CONFIG_PY = (REPO_ROOT / "api" / "config.py").read_text(encoding="utf-8")
 
@@ -42,13 +43,13 @@ def test_stream_last_event_id_dict_exists_in_config():
 def test_put_writes_event_id_to_side_channel_dict():
     """The `put()` helper must capture the event_id from the journal and
     write it to STREAM_LAST_EVENT_ID[stream_id]."""
-    put_def_idx = STREAMING_PY.find("def put(event, data):")
-    assert put_def_idx != -1, "put(event, data) not found in api/streaming.py"
-    put_body = STREAMING_PY[put_def_idx:put_def_idx + 2500]
+    put_def_idx = EVENT_SINK_PY.find("def put(self, event, data):")
+    assert put_def_idx != -1, "put(event, data) not found in api/streaming_event_sink.py"
+    put_body = EVENT_SINK_PY[put_def_idx:put_def_idx + 2500]
     assert "journaled = run_journal.append_sse_event(event, data)" in put_body, (
         "put() must capture append_sse_event return value"
     )
-    assert "STREAM_LAST_EVENT_ID[stream_id]" in put_body, (
+    assert "self.last_event_ids[self.stream_id]" in put_body, (
         "put() must write event_id to STREAM_LAST_EVENT_ID[stream_id] — "
         "this is the side-channel the SSE consumer reads at emit time"
     )
@@ -57,8 +58,8 @@ def test_put_writes_event_id_to_side_channel_dict():
 def test_queue_tuple_shape_preserved_as_two_tuple():
     """The queue still uses 2-tuples (event, data) so existing consumers
     that unpack `event, data = q.get()` are not broken."""
-    put_def_idx = STREAMING_PY.find("def put(event, data):")
-    put_body = STREAMING_PY[put_def_idx:put_def_idx + 2500]
+    put_def_idx = EVENT_SINK_PY.find("def put(self, event, data):")
+    put_body = EVENT_SINK_PY[put_def_idx:put_def_idx + 2500]
     assert "q.put_nowait((event, data))" in put_body, (
         "Queue tuple shape must remain (event, data) — changing to 3-tuple "
         "breaks 4 existing tests in test_cancel_interrupt, test_sprint42, "
