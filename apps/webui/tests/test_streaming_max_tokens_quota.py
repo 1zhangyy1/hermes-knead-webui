@@ -10,6 +10,7 @@ from pathlib import Path
 
 
 STREAMING = Path(__file__).resolve().parents[1] / "api" / "streaming.py"
+STREAMING_AGENT_CACHE = Path(__file__).resolve().parents[1] / "api" / "streaming_agent_cache.py"
 STREAMING_AGENT_CONFIG = Path(__file__).resolve().parents[1] / "api" / "streaming_agent_config.py"
 STREAMING_ERRORS = Path(__file__).resolve().parents[1] / "api" / "streaming_errors.py"
 
@@ -20,6 +21,10 @@ def _src() -> str:
 
 def _agent_config_src() -> str:
     return STREAMING_AGENT_CONFIG.read_text(encoding="utf-8")
+
+
+def _agent_cache_src() -> str:
+    return STREAMING_AGENT_CACHE.read_text(encoding="utf-8")
 
 
 def _errors_src() -> str:
@@ -36,9 +41,9 @@ def test_streaming_passes_configured_max_tokens_to_agent():
 
 
 def test_streaming_agent_cache_signature_includes_max_tokens_and_fallback():
-    src = _src()
-    assert "_max_tokens_cfg or ''" in src
-    assert "_fallback_resolved or {}" in src
+    src = _agent_cache_src()
+    assert "max_tokens or ''" in src
+    assert "fallback_resolved or {}" in src
 
 
 def test_openrouter_more_credits_error_is_classified_as_quota():

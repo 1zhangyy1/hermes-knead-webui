@@ -118,6 +118,7 @@ from api.streaming_agent_runtime import (
     refresh_cached_agent_runtime as _refresh_cached_agent_runtime,
 )
 from api.streaming_agent_cache import (
+    build_agent_cache_signature as _build_agent_cache_signature,
     handle_evicted_agent_cache_items as _handle_evicted_agent_cache_items,
     refresh_cached_agent_for_turn as _refresh_cached_agent_for_turn,
 )
@@ -1125,33 +1126,20 @@ def _run_agent_streaming(
                 agent = _AIAgent(**_agent_kwargs)
                 logger.debug('[webui] Created ephemeral agent for session %s', session_id)
             else:
-                import hashlib as _hashlib
-                import json as _json
                 from api.config import SESSION_AGENT_CACHE, SESSION_AGENT_CACHE_LOCK
-                _credential_pool = _rt.get('credential_pool')
-                _sig_blob = _json.dumps([
-                    resolved_model or '',
-                    _agent_cache_api_key_sig(resolved_api_key, _credential_pool),
-                    resolved_base_url or '',
-                    resolved_provider or '',
-                    _rt.get('api_mode') or '',
-                    _rt.get('command') or '',
-                    _rt.get('args') or [],
-                    bool(_credential_pool),
-                    _max_iterations_cfg or '',
-                    _max_tokens_cfg or '',
-                    _fallback_resolved or {},
-                    sorted(_toolsets) if _toolsets else [],
-                    _reasoning_config or {},
-                    # #1897: profile_home is part of the agent's identity because
-                    # AIAgent caches `_cached_system_prompt` from `load_soul_md()`
-                    # at construction time, sourced from HERMES_HOME. Same-session
-                    # profile switches keep `session_id` stable, so without this
-                    # field the cached agent silently retains the previous
-                    # profile's SOUL.md (and any other profile-scoped context).
-                    _profile_home or '',
-                ], sort_keys=True)
-                _agent_sig = _hashlib.sha256(_sig_blob.encode()).hexdigest()[:16]
+                _agent_sig = _build_agent_cache_signature(
+                    resolved_model=resolved_model,
+                    resolved_api_key=resolved_api_key,
+                    resolved_base_url=resolved_base_url,
+                    resolved_provider=resolved_provider,
+                    runtime=_rt,
+                    max_iterations=_max_iterations_cfg,
+                    max_tokens=_max_tokens_cfg,
+                    fallback_resolved=_fallback_resolved,
+                    toolsets=_toolsets,
+                    reasoning_config=_reasoning_config,
+                    profile_home=_profile_home,
+                )
 
                 agent = None
                 with SESSION_AGENT_CACHE_LOCK:

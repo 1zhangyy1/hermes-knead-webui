@@ -11,12 +11,13 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 STREAMING_PY = (REPO / "api" / "streaming.py").read_text(encoding="utf-8")
+STREAMING_AGENT_CACHE_PY = (REPO / "api" / "streaming_agent_cache.py").read_text(encoding="utf-8")
 
 
 def _signature_block() -> str:
-    sig_start = STREAMING_PY.index("_sig_blob = _json.dumps")
-    sig_end = STREAMING_PY.index("], sort_keys=True)", sig_start)
-    return STREAMING_PY[sig_start:sig_end]
+    sig_start = STREAMING_AGENT_CACHE_PY.index("def build_agent_cache_signature")
+    sig_end = STREAMING_AGENT_CACHE_PY.index("return hashlib.sha256", sig_start)
+    return STREAMING_AGENT_CACHE_PY[sig_start:sig_end]
 
 
 def test_same_session_profile_switch_rebuilds_agent_under_new_soul_home(tmp_path, monkeypatch):
@@ -225,8 +226,8 @@ def test_same_session_profile_switch_rebuilds_agent_under_new_soul_home(tmp_path
 
 def test_cache_signature_includes_profile_home():
     block = _signature_block()
-    assert "_profile_home" in block, (
-        "SESSION_AGENT_CACHE signature is missing `_profile_home`. Without this, "
+    assert "profile_home" in block, (
+        "SESSION_AGENT_CACHE signature is missing `profile_home`. Without this, "
         "same-session profile switches reuse the cached agent built under the "
         "previous profile's HERMES_HOME, leaking the old SOUL.md into new turns."
     )
@@ -234,13 +235,13 @@ def test_cache_signature_includes_profile_home():
 
 def test_profile_home_resolved_before_cache_signature():
     profile_home_assignment = STREAMING_PY.index("_profile_home = str(_profile_home_path)")
-    sig_start = STREAMING_PY.index("_sig_blob = _json.dumps")
+    sig_start = STREAMING_PY.index("_build_agent_cache_signature(")
     assert profile_home_assignment < sig_start
 
 
 def test_signature_uses_profile_home_with_fallback():
     block = _signature_block()
-    assert "_profile_home or ''" in block, (
-        "Signature should use `_profile_home or ''` so empty-home deployments get "
+    assert "profile_home or ''" in block, (
+        "Signature should use `profile_home or ''` so empty-home deployments get "
         "a stable cache key rather than unnecessary cache churn."
     )

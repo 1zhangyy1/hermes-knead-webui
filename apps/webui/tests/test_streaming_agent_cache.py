@@ -1,4 +1,8 @@
-from api.streaming_agent_cache import handle_evicted_agent_cache_items, refresh_cached_agent_for_turn
+from api.streaming_agent_cache import (
+    build_agent_cache_signature,
+    handle_evicted_agent_cache_items,
+    refresh_cached_agent_for_turn,
+)
 
 
 class _SessionDB:
@@ -23,6 +27,47 @@ class _Agent:
         self._api_call_count = 7
         self._interrupted = True
         self._interrupt_message = "cancelled"
+
+
+def _signature(**overrides):
+    params = {
+        'resolved_model': 'model-a',
+        'resolved_api_key': 'key-a',
+        'resolved_base_url': 'https://example.invalid',
+        'resolved_provider': 'provider-a',
+        'runtime': {'api_mode': 'responses', 'command': 'cmd', 'args': ['--x']},
+        'max_iterations': 12,
+        'max_tokens': 4096,
+        'fallback_resolved': {'enabled': True},
+        'toolsets': {'shell', 'browser'},
+        'reasoning_config': {'effort': 'medium'},
+        'profile_home': '/profiles/alpha',
+    }
+    params.update(overrides)
+    return build_agent_cache_signature(**params)
+
+
+def test_build_agent_cache_signature_includes_profile_home():
+    assert _signature(profile_home='/profiles/alpha') != _signature(profile_home='/profiles/beta')
+
+
+def test_build_agent_cache_signature_includes_reasoning_and_iteration_budget():
+    assert _signature(reasoning_config={'effort': 'medium'}) != _signature(reasoning_config={'effort': 'xhigh'})
+    assert _signature(max_iterations=12) != _signature(max_iterations=48)
+
+
+def test_build_agent_cache_signature_ignores_volatile_pool_token():
+    pool = object()
+    runtime = {'credential_pool': pool}
+
+    assert _signature(resolved_api_key='token-a', runtime=runtime) == _signature(
+        resolved_api_key='token-b',
+        runtime=runtime,
+    )
+    assert _signature(resolved_api_key='token-a', runtime={}) != _signature(
+        resolved_api_key='token-b',
+        runtime={},
+    )
 
 
 def test_refresh_cached_agent_for_turn_updates_request_scoped_callbacks():

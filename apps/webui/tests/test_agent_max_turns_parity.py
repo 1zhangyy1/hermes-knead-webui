@@ -12,6 +12,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 STREAMING_PY = (REPO / "api" / "streaming.py").read_text(encoding="utf-8")
 STREAMING_AGENT_CONFIG_PY = (REPO / "api" / "streaming_agent_config.py").read_text(encoding="utf-8")
+STREAMING_AGENT_CACHE_PY = (REPO / "api" / "streaming_agent_cache.py").read_text(encoding="utf-8")
 
 
 def test_streaming_agent_reads_agent_max_turns_from_config():
@@ -27,6 +28,6 @@ def test_streaming_agent_passes_max_iterations_to_aiagent():
 
 
 def test_streaming_agent_cache_signature_includes_max_iterations():
-    sig_start = STREAMING_PY.index("_sig_blob = _json.dumps")
-    sig_block = STREAMING_PY[sig_start:STREAMING_PY.index("], sort_keys=True)", sig_start)]
-    assert "_max_iterations_cfg or ''" in sig_block
+    sig_start = STREAMING_AGENT_CACHE_PY.index("def build_agent_cache_signature")
+    sig_block = STREAMING_AGENT_CACHE_PY[sig_start:STREAMING_AGENT_CACHE_PY.index("return hashlib.sha256", sig_start)]
+    assert "max_iterations or ''" in sig_block
