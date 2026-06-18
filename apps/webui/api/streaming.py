@@ -101,6 +101,7 @@ from api.streaming_agent_config import (
     resolve_max_tokens_config as _resolve_max_tokens_config_impl,
     resolve_reasoning_config as _resolve_reasoning_config_impl,
 )
+from api.streaming_live_usage import LiveUsageTracker as _LiveUsageTracker
 from api.streaming_titles import (
     LEGACY_WORKSPACE_PREFIX_ANY_RE as _LEGACY_WORKSPACE_PREFIX_ANY_RE,
     LEGACY_WORKSPACE_PREFIX_RE as _LEGACY_WORKSPACE_PREFIX_RE,
@@ -1139,105 +1140,17 @@ def _run_agent_streaming(
         STREAM_LIVE_TOOL_CALLS[stream_id] = []  # start accumulating tool calls (#1361 §B)
 
     agent = None
-    _live_prompt_estimate_tokens = [0]
-    _live_prompt_exact_tokens = [0]
-    _live_prompt_estimate_seen_ids = set()
-
-    def _seed_live_prompt_estimate() -> int:
-        """Capture the latest exact prompt size before adding live tool deltas."""
-        if _live_prompt_estimate_tokens[0] > 0:
-            return _live_prompt_estimate_tokens[0]
-        _base = 0
-        _agent = agent
-        if _agent is not None:
-            try:
-                _cc = getattr(_agent, 'context_compressor', None)
-                if _cc:
-                    _base = getattr(_cc, 'last_prompt_tokens', 0) or 0
-            except Exception:
-                _base = 0
-        if not _base:
-            try:
-                _session_obj = get_session(session_id)
-                _base = getattr(_session_obj, 'last_prompt_tokens', 0) or 0
-            except Exception:
-                _base = 0
-        _live_prompt_estimate_tokens[0] = int(_base or 0)
-        _live_prompt_exact_tokens[0] = _live_prompt_estimate_tokens[0]
-        return _live_prompt_estimate_tokens[0]
+    _live_usage_tracker = _LiveUsageTracker(
+        get_session=lambda: get_session(session_id),
+        get_agent=lambda: agent,
+    )
+    _live_prompt_estimate_seen_ids = _live_usage_tracker.seen_tool_call_ids
 
     def _bump_live_prompt_estimate(messages) -> int:
-        """Increment a rough next-prompt estimate from live tool activity."""
-        if not messages:
-            return _live_prompt_estimate_tokens[0]
-        try:
-            from agent.model_metadata import estimate_messages_tokens_rough
-            _delta = int(estimate_messages_tokens_rough(messages) or 0)
-        except Exception:
-            _delta = 0
-        if _delta > 0:
-            _seed_live_prompt_estimate()
-            _live_prompt_estimate_tokens[0] += _delta
-        return _live_prompt_estimate_tokens[0]
+        return _live_usage_tracker.bump_prompt_estimate(messages)
 
     def _live_usage_snapshot():
-        """Best-effort live usage payload for mid-stream UI updates.
-
-        During tool execution the final `done` event has not fired yet, but the
-        frontend still benefits from seeing the latest known token / context
-        values. These are exact for the most recent model call and a truthful
-        lower bound for the pending next call after a tool result is appended.
-        """
-        _usage = {
-            'input_tokens': 0,
-            'output_tokens': 0,
-            'estimated_cost': 0,
-            'cache_read_tokens': 0,
-            'cache_write_tokens': 0,
-            'context_length': 0,
-            'threshold_tokens': 0,
-            'last_prompt_tokens': 0,
-        }
-        try:
-            _session_obj = get_session(session_id)
-        except Exception:
-            _session_obj = None
-
-        _agent = agent
-        if _agent is not None:
-            try:
-                _usage['input_tokens'] = getattr(_agent, 'session_prompt_tokens', 0) or 0
-                _usage['output_tokens'] = getattr(_agent, 'session_completion_tokens', 0) or 0
-                _usage['estimated_cost'] = getattr(_agent, 'session_estimated_cost_usd', 0) or 0
-                _usage['cache_read_tokens'] = getattr(_agent, 'session_cache_read_tokens', 0) or 0
-                _usage['cache_write_tokens'] = getattr(_agent, 'session_cache_write_tokens', 0) or 0
-            except Exception:
-                pass
-            try:
-                _cc = getattr(_agent, 'context_compressor', None)
-                if _cc:
-                    _usage['context_length'] = getattr(_cc, 'context_length', 0) or 0
-                    _usage['threshold_tokens'] = getattr(_cc, 'threshold_tokens', 0) or 0
-                    _usage['last_prompt_tokens'] = getattr(_cc, 'last_prompt_tokens', 0) or 0
-            except Exception:
-                pass
-
-        if _session_obj is not None:
-            for _field in ('input_tokens', 'output_tokens', 'estimated_cost', 'cache_read_tokens', 'cache_write_tokens', 'context_length', 'threshold_tokens', 'last_prompt_tokens'):
-                if not _usage.get(_field):
-                    try:
-                        _usage[_field] = getattr(_session_obj, _field, 0) or 0
-                    except Exception:
-                        pass
-
-        _real_prompt_tokens = int(_usage.get('last_prompt_tokens') or 0)
-        if _real_prompt_tokens and _real_prompt_tokens != _live_prompt_exact_tokens[0]:
-            _live_prompt_exact_tokens[0] = _real_prompt_tokens
-            _live_prompt_estimate_tokens[0] = _real_prompt_tokens
-        elif _live_prompt_estimate_tokens[0] > _real_prompt_tokens:
-            _usage['last_prompt_tokens'] = _live_prompt_estimate_tokens[0]
-
-        return _usage
+        return _live_usage_tracker.snapshot()
 
     # Register this stream with the global streaming meter
     meter().begin_session(stream_id)
