@@ -1,6 +1,9 @@
+import queue
 import threading
+from types import SimpleNamespace
 
 from api.streaming_cancellation import (
+    cancel_stream_request,
     handle_exception_cancel,
     handle_post_run_cancel,
     handle_preflight_cancel,
@@ -9,7 +12,8 @@ from api.streaming_cancellation import (
 
 
 class _Agent:
-    def __init__(self):
+    def __init__(self, session_id="sid-1"):
+        self.session_id = session_id
         self.interrupts = []
 
     def interrupt(self, message):
@@ -18,6 +22,73 @@ class _Agent:
 
 class _Session:
     session_id = "sid-1"
+
+
+def test_cancel_stream_request_persists_cancel_and_emits_sentinel():
+    stream_id = "stream-1"
+    q = queue.Queue()
+    flag = threading.Event()
+    agent = _Agent()
+    session = SimpleNamespace(active_stream_id=stream_id)
+    streams = {stream_id: q}
+    cancel_flags = {stream_id: flag}
+    agent_instances = {stream_id: agent}
+    partial_texts = {stream_id: "partial"}
+    reasoning_texts = {stream_id: "thinking"}
+    live_tool_calls = {stream_id: [{"name": "tool"}]}
+    calls = []
+
+    result = cancel_stream_request(
+        stream_id,
+        live_config=SimpleNamespace(
+            STREAMS=streams,
+            CANCEL_FLAGS=cancel_flags,
+            AGENT_INSTANCES=agent_instances,
+            STREAM_PARTIAL_TEXT=partial_texts,
+            STREAM_REASONING_TEXT=reasoning_texts,
+            STREAM_LIVE_TOOL_CALLS=live_tool_calls,
+            STREAMS_LOCK=threading.Lock(),
+        ),
+        streams=streams,
+        cancel_flags=cancel_flags,
+        agent_instances=agent_instances,
+        partial_texts=partial_texts,
+        reasoning_texts=reasoning_texts,
+        live_tool_calls=live_tool_calls,
+        streams_lock=threading.Lock(),
+        get_session=lambda session_id: calls.append(("get_session", session_id)) or session,
+        get_session_agent_lock=lambda session_id: calls.append(("lock", session_id)) or threading.Lock(),
+        stream_writeback_is_current=lambda session_arg, stream_id_arg: calls.append(
+            ("current", session_arg, stream_id_arg)
+        ) or True,
+        cancelled_turn_content_fn=lambda message: f"cancelled: {message}",
+        persist_cancel_stream_writeback_fn=lambda session_arg, **kwargs: calls.append(
+            ("persist", session_arg, kwargs)
+        ),
+    )
+
+    assert result is True
+    assert flag.is_set()
+    assert agent.interrupts == ["Cancelled by user"]
+    assert stream_id not in streams
+    assert stream_id not in cancel_flags
+    assert stream_id not in agent_instances
+    assert calls[:3] == [
+        ("lock", "sid-1"),
+        ("get_session", "sid-1"),
+        ("current", session, "stream-1"),
+    ]
+    assert calls[3][0] == "persist"
+    assert calls[3][1] is session
+    assert calls[3][2]["partial_text"] == "partial"
+    assert calls[3][2]["reasoning_text"] == "thinking"
+    assert calls[3][2]["tool_calls"] == [{"name": "tool"}]
+    assert calls[3][2]["cancelled_turn_content_fn"]("x") == "cancelled: x"
+    assert calls[3][2]["logger"] is None
+    assert calls[3][2]["session_id"] == "sid-1"
+    event, data = q.get_nowait()
+    assert event == "cancel"
+    assert data == {"message": "Cancelled by user"}
 
 
 def test_register_agent_instance_or_cancel_registers_when_not_cancelled():

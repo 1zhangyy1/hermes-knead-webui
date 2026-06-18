@@ -478,14 +478,17 @@ class TestIssue765FollowupHardening:
         src = (Path(__file__).parent.parent / "api" / "streaming.py").read_text(
             encoding="utf-8"
         )
+        cancellation_src = (Path(__file__).parent.parent / "api" / "streaming_cancellation.py").read_text(
+            encoding="utf-8"
+        )
         cancel_idx = src.find("def cancel_stream(")
         assert cancel_idx != -1, "cancel_stream function not found"
-        cancel_block = src[cancel_idx:]
+        cancel_block = cancellation_src[cancellation_src.find("def cancel_stream_request("):]
         # Find the session cleanup section
         cleanup_idx = cancel_block.find("Session cleanup outside STREAMS_LOCK")
         assert cleanup_idx != -1, "Session cleanup comment not found in cancel_stream"
         cleanup_section = cancel_block[cleanup_idx:cleanup_idx + 800]
-        assert "_get_session_agent_lock" in cleanup_section, (
+        assert "get_session_agent_lock" in cleanup_section, (
             "cancel_stream must acquire _get_session_agent_lock during "
             "session cleanup to serialise with the checkpoint thread and "
             "other session-mutating endpoints"

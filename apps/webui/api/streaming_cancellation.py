@@ -111,6 +111,89 @@ def capture_cancel_stream_snapshot(
     )
 
 
+def cancel_stream_request(
+    stream_id: str,
+    *,
+    live_config,
+    streams,
+    cancel_flags,
+    agent_instances,
+    partial_texts,
+    reasoning_texts,
+    live_tool_calls,
+    streams_lock,
+    get_session,
+    get_session_agent_lock,
+    stream_writeback_is_current,
+    cancelled_turn_content_fn: Callable[[str], str],
+    persist_cancel_stream_writeback_fn=None,
+    logger=None,
+) -> bool:
+    """Signal an in-flight stream to cancel and persist the cancelled turn."""
+    if persist_cancel_stream_writeback_fn is None:
+        persist_cancel_stream_writeback_fn = persist_cancel_stream_writeback
+
+    cancel_snapshot = capture_cancel_stream_snapshot(
+        stream_id,
+        live_config=live_config,
+        streams=streams,
+        cancel_flags=cancel_flags,
+        agent_instances=agent_instances,
+        partial_texts=partial_texts,
+        reasoning_texts=reasoning_texts,
+        live_tool_calls=live_tool_calls,
+        streams_lock=streams_lock,
+        logger=logger,
+    )
+    if cancel_snapshot is None:
+        return False
+    queue = cancel_snapshot.queue
+    emit_cancel_event = True
+    cancel_session_id = cancel_snapshot.session_id
+
+    # Session cleanup outside STREAMS_LOCK to preserve lock ordering.
+    # Acquire the per-session agent lock too, mirroring every other session
+    # writer so cancel races neither checkpoint saves nor other session writers.
+    if cancel_session_id:
+        with get_session_agent_lock(cancel_session_id):
+            try:
+                session = get_session(cancel_session_id)
+                if not stream_writeback_is_current(session, stream_id):
+                    # The stream has rotated to a different stream id. Skip the
+                    # cancel marker and terminal event so we do not contradict a
+                    # possibly already delivered done payload.
+                    if logger is not None:
+                        logger.info(
+                            "Skipping stale cancel writeback for session %s stream %s; active_stream_id=%s",
+                            cancel_session_id,
+                            stream_id,
+                            getattr(session, 'active_stream_id', None),
+                        )
+                    emit_cancel_event = False
+                    return True
+                persist_cancel_stream_writeback_fn(
+                    session,
+                    partial_text=cancel_snapshot.partial_text,
+                    reasoning_text=cancel_snapshot.reasoning_text,
+                    tool_calls=cancel_snapshot.tool_calls,
+                    cancelled_turn_content_fn=cancelled_turn_content_fn,
+                    logger=logger,
+                    session_id=cancel_session_id,
+                )
+            except Exception:
+                if logger is not None:
+                    logger.debug("Failed to clear session state on cancel for %s", cancel_session_id)
+
+    if emit_cancel_event and queue:
+        try:
+            queue.put_nowait(('cancel', {'message': 'Cancelled by user'}))
+        except Exception:
+            if logger is not None:
+                logger.debug("Failed to put cancel event to queue")
+
+    return True
+
+
 def session_has_cancel_marker(session, *, marker_patterns=CANCEL_MARKER_PATTERNS) -> bool:
     """Return True if a visible cancel/interrupted marker is already persisted."""
     for msg in reversed(getattr(session, 'messages', None) or []):
