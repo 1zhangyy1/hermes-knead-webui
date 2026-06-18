@@ -10,6 +10,7 @@ from pathlib import Path
 
 
 STREAMING = Path(__file__).resolve().parents[1] / "api" / "streaming.py"
+STREAMING_AGENT_TURN_SETUP = Path(__file__).resolve().parents[1] / "api" / "streaming_agent_turn_setup.py"
 STREAMING_AGENT_CACHE = Path(__file__).resolve().parents[1] / "api" / "streaming_agent_cache.py"
 STREAMING_AGENT_CONFIG = Path(__file__).resolve().parents[1] / "api" / "streaming_agent_config.py"
 STREAMING_ERRORS = Path(__file__).resolve().parents[1] / "api" / "streaming_errors.py"
@@ -18,6 +19,10 @@ STREAMING_EXCEPTION_HANDLING = Path(__file__).resolve().parents[1] / "api" / "st
 
 def _src() -> str:
     return STREAMING.read_text(encoding="utf-8")
+
+
+def _agent_turn_setup_src() -> str:
+    return STREAMING_AGENT_TURN_SETUP.read_text(encoding="utf-8")
 
 
 def _agent_config_src() -> str:
@@ -42,7 +47,8 @@ def test_streaming_passes_configured_max_tokens_to_agent():
     assert "_agent_cfg_for_tokens.get('max_tokens')" in src
     assert "if 'max_tokens' in agent_params and max_tokens is not None:" in src
     assert "kwargs['max_tokens'] = max_tokens" in src
-    assert "max_tokens=_max_tokens_cfg" in _src()
+    assert "_prepare_streaming_agent_turn_setup(" in _src()
+    assert "max_tokens=agent_kwargs_state.max_tokens" in _agent_turn_setup_src()
 
 
 def test_streaming_agent_cache_signature_includes_max_tokens_and_fallback():

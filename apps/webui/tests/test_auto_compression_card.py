@@ -42,6 +42,7 @@ def test_auto_compression_running_sse_is_emitted_from_agent_lifecycle_status():
     src = _read("api/streaming.py")
     block = _read("api/streaming_agent_status.py")
     run_state = _read("api/streaming_run_state.py")
+    agent_setup = _read("api/streaming_agent_turn_setup.py")
     agent_config = _read("api/streaming_agent_config.py")
     agent_cache = _read("api/streaming_agent_cache.py")
 
@@ -56,9 +57,10 @@ def test_auto_compression_running_sse_is_emitted_from_agent_lifecycle_status():
     assert "state.agent_status_callback = status_callback_factory(" in run_state
     assert "'status_callback' in agent_params" in agent_config
     assert "kwargs['status_callback'] = status_callback" in agent_config
-    assert "_prepare_webui_agent_kwargs(" in src
+    assert "_prepare_streaming_agent_turn_setup(" in src
+    assert "prepare_webui_agent_kwargs_fn(" in agent_setup
     assert "status_callback=run_state.agent_status_callback" in agent_config
-    assert "_get_and_register_agent_for_turn(" in src
+    assert "get_and_register_agent_for_turn_fn(" in agent_setup
     assert "get_and_register_agent_for_turn(" in agent_cache
     assert "get_agent_for_turn_fn(" in agent_cache
     assert "get_cached_or_new_agent_for_turn(" in agent_cache
