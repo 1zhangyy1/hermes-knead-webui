@@ -1,5 +1,4 @@
 import os
-import re
 from pathlib import Path
 
 import yaml
@@ -57,23 +56,15 @@ def test_streaming_applies_profile_runtime_env_to_agent_run():
 
 
 def test_streaming_thread_env_allows_profile_terminal_cwd_override():
+    from api.streaming_runtime_helpers import build_agent_thread_env
+
     src = Path("api/streaming.py").read_text(encoding="utf-8")
 
-    assert "def _build_agent_thread_env" in src
     assert "_thread_env = _build_agent_thread_env(" in src
     assert "_set_thread_env(**_thread_env)" in src
     assert "_set_thread_env(\n            **_profile_runtime_env,\n            TERMINAL_CWD" not in src
 
-    match = re.search(
-        r"(def _build_agent_thread_env\(.*?\n)(?=\ndef |\nclass )",
-        src,
-        re.DOTALL,
-    )
-    assert match, "_build_agent_thread_env not found in api/streaming.py"
-    ns: dict = {}
-    exec(compile(match.group(1), "<streaming_extract>", "exec"), ns)
-
-    env = ns["_build_agent_thread_env"](
+    env = build_agent_thread_env(
         {
             "TERMINAL_CWD": "/profile/config/cwd",
             "HERMES_EXEC_ASK": "0",

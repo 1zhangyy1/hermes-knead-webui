@@ -28,8 +28,10 @@ def test_webui_injects_process_notifications_without_persisting_them_as_user_tex
 
 def test_webui_sets_gateway_session_platform_for_background_watchers():
     src = (REPO / "api" / "streaming.py").read_text(encoding="utf-8")
+    helper_src = (REPO / "api" / "streaming_runtime_helpers.py").read_text(encoding="utf-8")
 
-    assert "'HERMES_SESSION_PLATFORM': 'webui'" in src
+    assert "'HERMES_SESSION_PLATFORM': 'webui'" in helper_src
+    assert "_thread_env = _build_agent_thread_env(" in src
     assert "os.environ['HERMES_SESSION_PLATFORM'] = 'webui'" in src
     assert "old_session_platform = os.environ.get('HERMES_SESSION_PLATFORM')" in src
     assert "os.environ.pop('HERMES_SESSION_PLATFORM', None)" in src
