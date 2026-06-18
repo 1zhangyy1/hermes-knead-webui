@@ -9,13 +9,17 @@ def _read(rel_path: str) -> str:
 
 def test_streaming_appends_worker_started_before_running_phase():
     src = _read("api/streaming.py")
+    context_src = _read("api/streaming_worker_context.py")
     startup_src = _read("api/streaming_worker_startup.py")
     journal_src = _read("api/streaming_turn_journal.py")
     run_idx = src.index("def _run_agent_streaming(")
-    worker_idx = src.index("_append_worker_started_turn_event(", run_idx)
+    context_idx = src.index("_initialize_streaming_worker_context(", run_idx)
     startup_idx = src.index("_startup = _prepare_streaming_worker_startup(", run_idx)
+    worker_idx = context_src.index("append_worker_started_turn_event_fn(")
+    run_state_idx = context_src.index("initialize_run_state_fn(")
 
-    assert worker_idx < startup_idx
+    assert context_idx < startup_idx
+    assert worker_idx < run_state_idx
     assert 'update_active_run(stream_id, phase="running", session_id=session_id)' in startup_src
     assert '"event": "worker_started"' in journal_src
 
