@@ -10,6 +10,7 @@ import re
 
 REPO = pathlib.Path(__file__).parent.parent
 STREAMING_PY = (REPO / "api" / "streaming.py").read_text(encoding="utf-8")
+STREAMING_ERRORS_PY = (REPO / "api" / "streaming_errors.py").read_text(encoding="utf-8")
 CONFIG_PY    = (REPO / "api" / "config.py").read_text(encoding="utf-8")
 ROUTES_PY    = (REPO / "api" / "routes.py").read_text(encoding="utf-8")
 MESSAGES_JS  = (REPO / "static" / "messages.js").read_text(encoding="utf-8")
@@ -29,17 +30,17 @@ class TestSilentErrorDetection:
 
     def test_streaming_emits_apperror_on_no_response(self):
         """streaming.py must emit apperror event when agent produced no reply."""
-        assert "no_response" in STREAMING_PY, (
-            "streaming.py must emit apperror with type='no_response' for silent failures (#373)"
+        assert "'type': 'no_response'" in STREAMING_ERRORS_PY, (
+            "streaming errors must emit apperror with type='no_response' for silent failures (#373)"
         )
 
     def test_streaming_returns_early_after_apperror(self):
         """streaming.py must return after emitting apperror (not also emit done)."""
         # The return statement must come after the put('apperror') for no_response
-        no_resp_pos = STREAMING_PY.find("'no_response'")
+        no_resp_pos = STREAMING_PY.find("no_response type")
         # Comment updated: "apperror already closes the stream on the client side"
         return_pos = STREAMING_PY.find("return  # apperror already closes the stream", no_resp_pos)
-        assert no_resp_pos != -1, "no_response type not found in streaming.py"
+        assert no_resp_pos != -1, "no_response path marker not found in streaming.py"
         assert return_pos != -1, (
             "streaming.py must return after emitting apperror to prevent also emitting done (#373)"
         )

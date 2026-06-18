@@ -1,8 +1,14 @@
 from pathlib import Path
 
+ROOT = Path(__file__).resolve().parent.parent
+
+
+def _read(rel_path: str) -> str:
+    return (ROOT / rel_path).read_text(encoding="utf-8")
+
 
 def test_chat_start_appends_submitted_turn_journal_before_worker_thread_start():
-    src = Path("api/routes.py").read_text(encoding="utf-8")
+    src = _read("api/routes.py")
     save_idx = src.index("_prepare_chat_start_session_for_stream(")
     append_idx = src.index("append_turn_journal_event(", save_idx)
     thread_idx = src.index("threading.Thread(", append_idx)
@@ -13,7 +19,7 @@ def test_chat_start_appends_submitted_turn_journal_before_worker_thread_start():
 
 
 def test_chat_start_writes_turn_journal_after_session_lock_and_handles_failure():
-    src = Path("api/routes.py").read_text(encoding="utf-8")
+    src = _read("api/routes.py")
     lock_idx = src.index("with session_lock:")
     append_idx = src.index("append_turn_journal_event(", lock_idx)
     stream_registration_idx = src.index("STREAMS[stream_id] = stream", append_idx)

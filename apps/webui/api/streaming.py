@@ -136,7 +136,6 @@ from api.streaming_agent_config import (
     resolve_agent_constructor_settings as _resolve_agent_constructor_settings,
     resolve_agent_runtime_connection as _resolve_agent_runtime_connection,
 )
-from api.streaming_memory_lifecycle import mark_completed_turn_memory_lifecycle as _mark_completed_turn_memory_lifecycle
 from api.streaming_output_bridge import StreamingOutputBridge as _StreamingOutputBridge
 from api.streaming_process_notifications import (
     drain_webui_process_notifications as _drain_webui_process_notifications_impl,
@@ -147,8 +146,6 @@ from api.streaming_process_notifications import (
 from api.streaming_product_turn import ProductTurnFinalizer as _ProductTurnFinalizer
 from api.streaming_run_state import initialize_streaming_run_state as _initialize_streaming_run_state
 from api.streaming_turn_journal import (
-    append_assistant_started_turn_event as _append_assistant_started_turn_event,
-    append_completed_turn_event as _append_completed_turn_event,
     append_interrupted_turn_event as _append_interrupted_turn_event,
     append_worker_started_turn_event as _append_worker_started_turn_event,
 )
@@ -156,7 +153,10 @@ from api.streaming_terminal import (
     emit_completed_turn_done as _emit_completed_turn_done,
 )
 from api.streaming_turn_start import prepare_streaming_turn_input as _prepare_streaming_turn_input
-from api.streaming_turn_writeback import apply_completed_turn_writeback_state as _apply_completed_turn_writeback_state
+from api.streaming_turn_writeback import (
+    apply_completed_turn_writeback_state as _apply_completed_turn_writeback_state,
+    save_completed_turn_and_journal as _save_completed_turn_and_journal,
+)
 from api.streaming_usage import build_done_usage_payload as _build_done_usage_payload
 from api.streaming_titles import (
     LEGACY_WORKSPACE_PREFIX_ANY_RE as _LEGACY_WORKSPACE_PREFIX_ANY_RE,
@@ -1214,31 +1214,17 @@ def _run_agent_streaming(
                     first_exchange_snippets=_first_exchange_snippets,
                     extract_gateway_routing_metadata=_extract_gateway_routing_metadata,
                 )
-                if not ephemeral and s.messages:
-                    _append_assistant_started_turn_event(
-                        s.session_id,
-                        stream_id,
-                        s.messages,
-                        logger=logger,
-                    )
-                if cancel_event.is_set():
-                    _finalize_cancelled_turn(s, ephemeral=False)
-                    _append_interrupted_turn_event(s.session_id, stream_id, logger=logger)
-                    _put_cancel()
+                if not _save_completed_turn_and_journal(
+                    s,
+                    agent,
+                    stream_id=stream_id,
+                    cancel_event=cancel_event,
+                    finalize_cancelled_turn=_finalize_cancelled_turn,
+                    put_cancel=_put_cancel,
+                    logger=logger,
+                ):
                     return
-                s.save()
-                if cancel_event.is_set():
-                    _finalize_cancelled_turn(s, ephemeral=False)
-                    _append_interrupted_turn_event(s.session_id, stream_id, logger=logger)
-                    _put_cancel()
-                    return
-                if not ephemeral:
-                    _append_completed_turn_event(s.session_id, stream_id, s.messages, logger=logger)
-                if not ephemeral:
-                    # Keep this marker inside the per-session writeback lock so
-                    # completed-turn ordering stays aligned with session save/journal.
-                    _mark_completed_turn_memory_lifecycle(s.session_id, agent, logger=logger)
-            # (reasoning trace already attached + saved above, before s.save())
+            # (reasoning trace already attached before completed-turn save)
             _emit_completed_turn_done(
                 s,
                 original_session_id=session_id,

@@ -363,13 +363,15 @@ def test_post_turn_lifecycle_marks_completion_without_commit():
     actual extraction/commit happens only at session boundaries
     (new session, LRU eviction, shutdown drain)."""
     import api.streaming as streaming_mod
-    src = Path(streaming_mod.__file__).read_text(encoding="utf-8")
+    streaming_src = Path(streaming_mod.__file__).read_text(encoding="utf-8")
+    src = Path(streaming_mod.__file__).with_name("streaming_turn_writeback.py").read_text(encoding="utf-8")
 
-    save_pos = src.index("s.save()")
-    lifecycle_marker = src.index("_mark_completed_turn_memory_lifecycle(s.session_id, agent, logger=logger)", save_pos)
+    save_pos = src.index("session.save()")
+    lifecycle_marker = src.index("mark_completed_turn_memory_lifecycle(session.session_id, agent, logger=logger)", save_pos)
     cancel_check = src.index("cancel_event.is_set()", save_pos)
-    completed_journal = src.index("_append_completed_turn_event", save_pos)
-    terminal_usage = src.index("usage = _build_done_usage_payload", save_pos)
+    completed_journal = src.index("append_completed_turn_event", save_pos)
+    save_helper_call = streaming_src.index("_save_completed_turn_and_journal(")
+    done_helper_call = streaming_src.index("_emit_completed_turn_done(")
 
     assert lifecycle_marker > cancel_check, (
         "mark_turn_completed must appear after the cancellation check"
@@ -377,14 +379,14 @@ def test_post_turn_lifecycle_marks_completion_without_commit():
     assert lifecycle_marker > completed_journal, (
         "mark_turn_completed must appear after the completed-turn journal event"
     )
-    assert lifecycle_marker < terminal_usage
+    assert save_helper_call < done_helper_call
 
     # The post-turn block must contain mark_turn_completed but NOT
     # commit_session_memory — extraction is a boundary concern.
-    block_start = src.rindex("if not ephemeral:", save_pos, lifecycle_marker)
-    block_end_pos = terminal_usage
+    block_start = completed_journal
+    block_end_pos = src.index("return True", lifecycle_marker)
     post_turn_block = src[block_start:block_end_pos]
-    assert "_mark_completed_turn_memory_lifecycle" in post_turn_block
+    assert "mark_completed_turn_memory_lifecycle" in post_turn_block
     assert "commit_session_memory" not in post_turn_block
     assert "per-session writeback lock" in post_turn_block
 

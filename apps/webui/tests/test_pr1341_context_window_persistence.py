@@ -38,9 +38,9 @@ def test_streaming_persists_context_fields_on_session_before_save():
     block_start = src.find("_apply_completed_turn_writeback_state(")
     assert block_start != -1, "completed-turn writeback helper call not found in streaming.py"
 
-    # Save call follows shortly after
-    save_call = src.find("\n                s.save()", block_start)
-    assert save_call != -1, "s.save() not found after the post-merge marker"
+    # Durable save helper call follows shortly after
+    save_call = src.find("_save_completed_turn_and_journal(", block_start)
+    assert save_call != -1, "completed-turn save helper not found after the post-merge marker"
     # Limit bumped to 9000 by cancellation finalization guards: the block now also
     # checks for a late user cancel immediately before the durable final save,
     # preventing a race that would otherwise save/emit a completed turn after Stop.
@@ -55,6 +55,9 @@ def test_streaming_persists_context_fields_on_session_before_save():
 
     assert "persist_context_window_on_session(" in writeback_src, (
         "streaming_turn_writeback.py must persist context fields before streaming.py saves"
+    )
+    assert writeback_src.find("persist_context_window_on_session(") < writeback_src.find("\n    session.save()"), (
+        "context fields must be applied in the writeback module before the completed-turn save"
     )
 
     # The three fields must all be assigned in the helper invoked by this block.

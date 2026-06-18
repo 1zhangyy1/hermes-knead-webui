@@ -7,8 +7,14 @@ from typing import Any, Callable
 
 from api.streaming_attachments import tag_matching_user_message_attachments
 from api.streaming_context_window import persist_context_window_on_session
+from api.streaming_memory_lifecycle import mark_completed_turn_memory_lifecycle
 from api.streaming_title_writeback import prepare_completed_turn_title
 from api.streaming_tool_calls import extract_tool_calls_from_messages
+from api.streaming_turn_journal import (
+    append_assistant_started_turn_event,
+    append_completed_turn_event,
+    append_interrupted_turn_event,
+)
 from api.streaming_turn_metadata import (
     apply_completed_turn_metadata,
     attach_reasoning_trace_to_last_assistant,
@@ -91,3 +97,40 @@ def apply_completed_turn_writeback_state(
         tool_calls=tool_calls,
         turn_metadata=turn_metadata,
     )
+
+
+def save_completed_turn_and_journal(
+    session,
+    agent,
+    *,
+    stream_id: str,
+    cancel_event,
+    finalize_cancelled_turn: Callable,
+    put_cancel: Callable[[], None],
+    logger=None,
+) -> bool:
+    """Persist a completed non-ephemeral turn and append lifecycle journal events."""
+    if session.messages:
+        append_assistant_started_turn_event(
+            session.session_id,
+            stream_id,
+            session.messages,
+            logger=logger,
+        )
+    if cancel_event.is_set():
+        finalize_cancelled_turn(session, ephemeral=False)
+        append_interrupted_turn_event(session.session_id, stream_id, logger=logger)
+        put_cancel()
+        return False
+    session.save()
+    if cancel_event.is_set():
+        finalize_cancelled_turn(session, ephemeral=False)
+        append_interrupted_turn_event(session.session_id, stream_id, logger=logger)
+        put_cancel()
+        return False
+
+    append_completed_turn_event(session.session_id, stream_id, session.messages, logger=logger)
+    # Keep this marker inside the caller's per-session writeback lock so
+    # completed-turn ordering stays aligned with session save/journal.
+    mark_completed_turn_memory_lifecycle(session.session_id, agent, logger=logger)
+    return True
