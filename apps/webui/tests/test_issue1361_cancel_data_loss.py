@@ -448,47 +448,36 @@ def test_stale_stream_cleanup_recovers_journaled_visible_output():
     assert "partial output above was recovered" in s.messages[-1]["content"]
 
 
-# ── Structural guard: pin call sites of the materialize helper at error branches ──
+# ── Structural guard: pin error writeback helper wiring at error branches ─────
 
 def test_materialize_helper_called_immediately_before_error_path_clears():
-    """Pin call sites of _materialize_pending_user_turn_before_error.
+    """Pin error writeback call sites to the pending-user materialize helper.
 
     Catches a future refactor that drops the call from the apperror-no-response
     or outer-Exception paths in api/streaming.py while leaving the
-    `pending_user_message = None` clearing in place — which is exactly the
-    user-turn-data-loss regression #1361 was filed for.
-
-    Strategy: count how many `pending_user_message = None` clearings have the
-    helper call within the preceding 4 lines. Currently 2 (apperror at 2610,
-    outer-Exception at 3072). The success path (2716) and cancel path (3375)
-    legitimately don't need the helper. If a future refactor drops the helper
-    call from one of the error sites, this assertion fires.
+    materialize callback unwired — which is exactly the user-turn-data-loss
+    regression #1361 was filed for.
     """
     from pathlib import Path
     src = Path(__file__).parent.parent.joinpath('api', 'streaming.py').read_text(encoding='utf-8')
-    lines = src.splitlines()
+    writeback_src = Path(__file__).parent.parent.joinpath(
+        'api',
+        'streaming_error_writeback.py',
+    ).read_text(encoding='utf-8')
 
-    helper_name = '_materialize_pending_user_turn_before_error('
-    clear_sites = [(i + 1, line) for i, line in enumerate(lines)
-                   if 'pending_user_message = None' in line]
-    assert len(clear_sites) >= 4, (
-        f"Expected ≥4 sites that clear pending_user_message; found {len(clear_sites)}. "
-        f"If api/streaming.py was refactored, re-audit this test."
-    )
+    assert 'session.pending_user_message = None' in writeback_src
 
-    sites_with_helper = []
-    for lineno, _ in clear_sites:
-        prev_block = '\n'.join(lines[max(0, lineno - 5):lineno - 1])
-        if helper_name in prev_block:
-            sites_with_helper.append(lineno)
+    silent_idx = src.find("# ── Detect silent agent failure")
+    silent_return_idx = src.find("return  # apperror already closes the stream", silent_idx)
+    silent_block = src[silent_idx:silent_return_idx]
+    assert "_persist_streaming_error_message(" in silent_block
+    assert "materialize_pending_user_turn=_materialize_pending_user_turn_before_error" in silent_block
 
-    # Concretely, PR #1760 wired up the helper at the apperror-no-response
-    # path and the outer-Exception path. Both must remain wired.
-    assert len(sites_with_helper) >= 2, (
-        f"Expected ≥2 clear sites preceded by {helper_name} within 4 lines; "
-        f"found {sites_with_helper}. PR #1760 / #1361 regression — re-wire the "
-        f"helper at the error-branch clear sites in api/streaming.py."
-    )
+    outer_idx = src.find("_error_payload = _provider_error_payload(err_str, _exc_type, _exc_hint)")
+    outer_put_idx = src.find("put('apperror', _error_payload)", outer_idx)
+    outer_block = src[outer_idx:outer_put_idx]
+    assert "_persist_streaming_error_message(" in outer_block
+    assert "materialize_pending_user_turn=_materialize_pending_user_turn_before_error" in outer_block
 
 
 
