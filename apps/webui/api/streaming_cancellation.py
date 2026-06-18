@@ -194,6 +194,41 @@ def register_agent_instance_or_cancel(
         return False
 
 
+def handle_post_run_cancel(
+    cancel_event,
+    session,
+    stream_id: str,
+    agent_lock,
+    finalize_cancelled_turn_fn,
+    put_cancel_fn,
+    *,
+    ephemeral: bool,
+    cleanup_ephemeral_cancelled_turn_fn=cleanup_ephemeral_cancelled_turn,
+    checkpoint_stop=None,
+    checkpoint_thread=None,
+    stop_checkpoint_thread_fn=None,
+    append_interrupted_turn_event_fn=None,
+    logger=None,
+) -> bool:
+    """Finalize cancellation that arrives after agent execution started."""
+    if not cancel_event.is_set():
+        return False
+    if stop_checkpoint_thread_fn is None and (checkpoint_stop is not None or checkpoint_thread is not None):
+        from api.streaming_checkpoint import stop_checkpoint_thread as stop_checkpoint_thread_fn
+    if stop_checkpoint_thread_fn is not None:
+        stop_checkpoint_thread_fn(checkpoint_stop, checkpoint_thread)
+    if ephemeral:
+        cleanup_ephemeral_cancelled_turn_fn(session)
+    else:
+        if append_interrupted_turn_event_fn is None:
+            from api.streaming_turn_journal import append_interrupted_turn_event as append_interrupted_turn_event_fn
+        with agent_lock:
+            finalize_cancelled_turn_fn(session, ephemeral=False)
+            append_interrupted_turn_event_fn(session.session_id, stream_id, logger=logger)
+    put_cancel_fn()
+    return True
+
+
 def recover_pending_user_turn_on_cancel(session, *, clock: Callable[[], float] = time.time, logger=None, session_id=None) -> bool:
     """Persist pending_user_message into messages when cancel wins the merge race."""
     try:
