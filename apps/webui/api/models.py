@@ -56,6 +56,12 @@ from api.session_cache import (
     evict_cached_session_if_same as _evict_cached_session_if_same,
     get_cached_session as _get_cached_session,
 )
+from api.project_store import (
+    backfill_project_profiles_if_needed as _backfill_project_profiles_impl,
+    ensure_cron_project as _ensure_cron_project_impl,
+    load_projects as _load_projects_impl,
+    save_projects as _save_projects_impl,
+)
 
 logger = logging.getLogger(__name__)
 CLI_VISIBLE_SESSION_LIMIT = 20
@@ -1246,30 +1252,20 @@ def _backfill_project_profiles_if_needed(projects: list) -> bool:
     (cached via the module-level _projects_migrated flag) but the result is
     persisted so it's a one-time write.
     """
-    untagged = [p for p in projects if not p.get('profile')]
-    if not untagged:
-        return False
+    return _backfill_project_profiles_impl(
+        projects,
+        session_index_file=SESSION_INDEX_FILE,
+        logger=logger,
+    )
 
-    # Build session_id -> profile map for the untagged project_ids.
-    session_profile_by_project: dict[str, str] = {}
-    if SESSION_INDEX_FILE.exists():
-        try:
-            entries = json.loads(SESSION_INDEX_FILE.read_text(encoding='utf-8'))
-            untagged_ids = {p['project_id'] for p in untagged if p.get('project_id')}
-            for e in entries:
-                pid = e.get('project_id')
-                if pid in untagged_ids and e.get('profile'):
-                    # First session profile wins for the project.
-                    session_profile_by_project.setdefault(pid, e['profile'])
-        except Exception:
-            logger.debug("Failed to read session index for project profile backfill")
 
-    mutated = False
-    for p in untagged:
-        inferred = session_profile_by_project.get(p.get('project_id'), 'default')
-        p['profile'] = inferred
-        mutated = True
-    return mutated
+def _get_projects_migrated() -> bool:
+    return _projects_migrated
+
+
+def _set_projects_migrated(value: bool) -> None:
+    global _projects_migrated
+    _projects_migrated = bool(value)
 
 
 def load_projects(*, _migrate: bool = True) -> list:
@@ -1279,42 +1275,21 @@ def load_projects(*, _migrate: bool = True) -> list:
     on legacy untagged projects (#1614). Disable via `_migrate=False` for
     callsites that want the raw on-disk shape (test fixtures, e.g.).
     """
-    global _projects_migrated
-    if not PROJECTS_FILE.exists():
-        return []
-    try:
-        projects = json.loads(PROJECTS_FILE.read_text(encoding='utf-8'))
-    except Exception:
-        return []
-    if _migrate and not _projects_migrated:
-        with _PROJECTS_MIGRATION_LOCK:
-            # Re-check inside the lock — another thread may have raced.
-            if _projects_migrated:
-                # Per Opus advisor on stage-293: another thread completed
-                # migration and wrote new state to disk while we waited for
-                # the lock. Our `projects` snapshot is the pre-migration
-                # version; re-read so the caller doesn't see stale untagged
-                # rows (which a mutation route could then write back,
-                # silently overwriting the migration).
-                try:
-                    return json.loads(PROJECTS_FILE.read_text(encoding='utf-8'))
-                except Exception:
-                    return projects
-            if _backfill_project_profiles_if_needed(projects):
-                try:
-                    save_projects(projects)
-                    _projects_migrated = True
-                except Exception:
-                    logger.debug("Failed to persist project profile backfill")
-                    # Leave _projects_migrated False so a future call retries.
-            else:
-                # Nothing to migrate — already tagged.
-                _projects_migrated = True
-    return projects
+    return _load_projects_impl(
+        projects_file=PROJECTS_FILE,
+        session_index_file=SESSION_INDEX_FILE,
+        migration_lock=_PROJECTS_MIGRATION_LOCK,
+        get_migrated=_get_projects_migrated,
+        set_migrated=_set_projects_migrated,
+        save_projects_fn=save_projects,
+        logger=logger,
+        _migrate=_migrate,
+    )
+
 
 def save_projects(projects) -> None:
     """Write project list to disk."""
-    PROJECTS_FILE.write_text(json.dumps(projects, ensure_ascii=False, indent=2), encoding='utf-8')
+    _save_projects_impl(PROJECTS_FILE, projects)
 
 
 CRON_PROJECT_NAME = 'Cron Jobs'
@@ -1334,38 +1309,16 @@ def ensure_cron_project() -> str:
     """
     from api.profiles import get_active_profile_name, _is_root_profile
 
-    active = get_active_profile_name() or 'default'
-    with _CRON_PROJECT_LOCK:
-        projects = load_projects()
-        # Look for an existing per-profile cron project. Match either an exact
-        # profile tag or the renamed-root alias (a 'default'-tagged project
-        # under a renamed root, or a renamed-root-tagged project under
-        # 'default'). _is_root_profile is the canonical alias check.
-        for p in projects:
-            if p.get('name') != CRON_PROJECT_NAME:
-                continue
-            row_profile = p.get('profile')
-            if row_profile == active:
-                return p['project_id']
-            if _is_root_profile(row_profile or 'default') and _is_root_profile(active):
-                return p['project_id']
-        # Reuse a legacy untagged cron project — back-tag it to the active profile.
-        for p in projects:
-            if p.get('name') == CRON_PROJECT_NAME and not p.get('profile'):
-                p['profile'] = active
-                save_projects(projects)
-                return p['project_id']
-        # Otherwise create a new one tagged with the active profile.
-        project_id = uuid.uuid4().hex[:12]
-        projects.append({
-            'project_id': project_id,
-            'name': CRON_PROJECT_NAME,
-            'color': '#6366f1',
-            'profile': active,
-            'created_at': time.time(),
-        })
-        save_projects(projects)
-        return project_id
+    return _ensure_cron_project_impl(
+        load_projects_fn=load_projects,
+        save_projects_fn=save_projects,
+        cron_lock=_CRON_PROJECT_LOCK,
+        get_active_profile_name=get_active_profile_name,
+        is_root_profile=_is_root_profile,
+        make_project_id=lambda: uuid.uuid4().hex[:12],
+        now=time.time,
+        cron_project_name=CRON_PROJECT_NAME,
+    )
 
 
 def is_cron_session(session_id: str, source_tag: str = None) -> bool:
