@@ -259,7 +259,6 @@ def _run_agent_streaming(
     _finalize_product_turn = _worker_context.finalize_product_turn
     _put_cancel = _worker_context.put_cancel
     s = None
-    _rt = {}
     _output_bridge = None
     old_profile_env = {}
     old_runtime_env = {}
@@ -363,13 +362,6 @@ def _run_agent_streaming(
             )
             _checkpoint_stop = _turn_pipeline_result.checkpoint_stop
             _ckpt_thread = _turn_pipeline_result.checkpoint_thread
-            result = _turn_pipeline_result.result
-            _rt = _turn_pipeline_result.runtime
-            resolved_api_key = _turn_pipeline_result.resolved_api_key
-            resolved_provider = _turn_pipeline_result.resolved_provider
-            resolved_base_url = _turn_pipeline_result.resolved_base_url
-            _agent_kwargs = _turn_pipeline_result.agent_kwargs
-            agent = _turn_pipeline_result.agent
             _self_healed = _turn_pipeline_result.self_healed
             if _turn_pipeline_result.should_return:
                 return
@@ -406,11 +398,6 @@ def _run_agent_streaming(
         )
         if _exception_result.self_healed:
             _self_healed = True
-            _rt = _exception_result.runtime
-            resolved_api_key = _exception_result.resolved_api_key
-            resolved_provider = _exception_result.resolved_provider
-            resolved_base_url = _exception_result.resolved_base_url
-            _agent_kwargs = _exception_result.agent_kwargs
         if _exception_result.should_return:
             return  # skip error emission or stale exception writeback
     finally:
