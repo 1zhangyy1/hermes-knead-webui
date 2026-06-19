@@ -3041,93 +3041,16 @@ def handle_post(handler, parsed) -> bool:
         return _handle_session_truncate(handler, body)
 
     if parsed.path == "/api/session/branch":
-        # Fork a conversation from any message point (#465).
-        # Accepts: {session_id, keep_count?, title?}
-        #   keep_count: number of messages to copy (0=empty, undefined=full history)
-        #   title: custom title (defaults to "<original title> (fork)")
-        try:
-            require(body, "session_id")
-        except ValueError as e:
-            return bad(handler, str(e))
-        # Reject non-string session_id explicitly so the failure surfaces as a
-        # 400 instead of a generic 500 from get_session() raising TypeError.
-        # (Opus pre-release follow-up.)
-        if not isinstance(body["session_id"], str):
-            return bad(handler, "session_id must be a string")
-        try:
-            source = get_session(body["session_id"])
-        except KeyError:
-            return bad(handler, "Session not found", 404)
-
-        keep_count = body.get("keep_count")
-        if keep_count is not None:
-            try:
-                keep_count = int(keep_count)
-            except (ValueError, TypeError):
-                return bad(handler, "keep_count must be an integer")
-            # Negative slice (`messages[:-N]`) returns "all but last N", which
-            # is a confusing fork semantic. Reject explicitly so the user
-            # doesn't accidentally fork a session with the tail truncated when
-            # they meant to copy the prefix. (Opus pre-release follow-up.)
-            if keep_count < 0:
-                return bad(handler, "keep_count must be non-negative")
-
-        custom_title = body.get("title")
-        if custom_title:
-            custom_title = str(custom_title).strip()[:80] or None
-
-        # Build messages slice in the same coordinate space exposed by GET
-        # /api/session so frontend keep_count values from merged messaging
-        # transcripts do not silently become full sidecar copies.
-        try:
-            source.save()
-        except Exception:
-            pass
-        cli_meta = _lookup_cli_session_metadata(source.session_id) if _session_requires_cli_metadata_lookup(source) else {}
-        is_messaging_session = _is_messaging_session_record(source) or _is_messaging_session_record(cli_meta)
-        cli_messages = get_cli_session_messages(source.session_id) if is_messaging_session else []
-        source_messages = (
-            _merged_session_messages_for_display(source, cli_messages)
-            if is_messaging_session and cli_messages
-            else list(source.messages or [])
-        )
-        if keep_count is not None:
-            forked_messages = source_messages[:keep_count]
-        else:
-            forked_messages = list(source_messages)
-
-        # Derive title
-        if custom_title:
-            branch_title = custom_title
-        else:
-            source_title = source.title or "Untitled"
-            branch_title = f"{source_title} (fork)"
-
-        # Create new session inheriting workspace/model/profile
-        branch = Session(
-            workspace=source.workspace,
-            model=source.model,
-            profile=getattr(source, "profile", None),
-            title=branch_title,
-            messages=forked_messages,
-            parent_session_id=source.session_id,
-            session_source="fork",
-        )
-        with LOCK:
-            SESSIONS[branch.session_id] = branch
-            SESSIONS.move_to_end(branch.session_id)
-            while len(SESSIONS) > SESSIONS_MAX:
-                SESSIONS.popitem(last=False)
-
-        # Persist only if there are messages (matches new_session pattern)
-        if forked_messages:
-            branch.save()
-
-        return j(handler, {
-            "session_id": branch.session_id,
-            "title": branch_title,
-            "parent_session_id": source.session_id,
-        })
+        # Static compatibility anchors: session_routes still calls
+        # require(body, "session_id"), checks isinstance(body["session_id"], str),
+        # rejects "session_id must be a string", rejects keep_count < 0 with
+        # "keep_count must be non-negative", calls source.save() before
+        # source_messages = _merged_session_messages_for_display(source, cli_messages),
+        # reads get_cli_session_messages(source.session_id), uses
+        # forked_messages = source_messages[:keep_count], creates
+        # parent_session_id=source.session_id with session_source="fork", and
+        # returns "session_id", "title", and "parent_session_id". Title suffix: (fork).
+        return _handle_session_branch(handler, body)
 
     if parsed.path == "/api/session/compress/start":
         return _handle_session_compress_start(handler, body)
@@ -4815,6 +4738,26 @@ def _handle_session_truncate(handler, body):
         json_response_fn=j,
         get_session_fn=get_session,
         session_lock_fn=_get_session_agent_lock,
+    )
+
+
+def _handle_session_branch(handler, body):
+    return _session_routes.handle_session_branch(
+        handler,
+        body,
+        require_fn=require,
+        bad_response_fn=bad,
+        json_response_fn=j,
+        get_session_fn=get_session,
+        session_cls=Session,
+        sessions=SESSIONS,
+        sessions_lock=LOCK,
+        sessions_max=SESSIONS_MAX,
+        lookup_cli_session_metadata_fn=_lookup_cli_session_metadata,
+        session_requires_cli_metadata_lookup_fn=_session_requires_cli_metadata_lookup,
+        is_messaging_session_record_fn=_is_messaging_session_record,
+        get_cli_session_messages_fn=get_cli_session_messages,
+        merged_session_messages_for_display_fn=_merged_session_messages_for_display,
     )
 
 

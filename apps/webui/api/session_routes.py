@@ -418,6 +418,103 @@ def handle_session_duplicate(
         return bad_response_fn(handler, str(exc))
 
 
+def handle_session_branch(
+    handler,
+    body,
+    *,
+    require_fn,
+    bad_response_fn,
+    json_response_fn,
+    get_session_fn,
+    session_cls,
+    sessions: dict,
+    sessions_lock,
+    sessions_max: int,
+    lookup_cli_session_metadata_fn,
+    session_requires_cli_metadata_lookup_fn,
+    is_messaging_session_record_fn,
+    get_cli_session_messages_fn,
+    merged_session_messages_for_display_fn,
+) -> bool:
+    try:
+        require_fn(body, "session_id")
+    except ValueError as exc:
+        return bad_response_fn(handler, str(exc))
+    if not isinstance(body["session_id"], str):
+        return bad_response_fn(handler, "session_id must be a string")
+    try:
+        source = get_session_fn(body["session_id"])
+    except KeyError:
+        return bad_response_fn(handler, "Session not found", 404)
+
+    keep_count = body.get("keep_count")
+    if keep_count is not None:
+        try:
+            keep_count = int(keep_count)
+        except (ValueError, TypeError):
+            return bad_response_fn(handler, "keep_count must be an integer")
+        if keep_count < 0:
+            return bad_response_fn(handler, "keep_count must be non-negative")
+
+    custom_title = body.get("title")
+    if custom_title:
+        custom_title = str(custom_title).strip()[:80] or None
+
+    try:
+        source.save()
+    except Exception:
+        pass
+    cli_meta = (
+        lookup_cli_session_metadata_fn(source.session_id)
+        if session_requires_cli_metadata_lookup_fn(source)
+        else {}
+    )
+    is_messaging_session = is_messaging_session_record_fn(source) or is_messaging_session_record_fn(cli_meta)
+    cli_messages = get_cli_session_messages_fn(source.session_id) if is_messaging_session else []
+    source_messages = (
+        merged_session_messages_for_display_fn(source, cli_messages)
+        if is_messaging_session and cli_messages
+        else list(source.messages or [])
+    )
+    if keep_count is not None:
+        forked_messages = source_messages[:keep_count]
+    else:
+        forked_messages = list(source_messages)
+
+    if custom_title:
+        branch_title = custom_title
+    else:
+        source_title = source.title or "Untitled"
+        branch_title = f"{source_title} (fork)"
+
+    branch = session_cls(
+        workspace=source.workspace,
+        model=source.model,
+        profile=getattr(source, "profile", None),
+        title=branch_title,
+        messages=forked_messages,
+        parent_session_id=source.session_id,
+        session_source="fork",
+    )
+    with sessions_lock:
+        sessions[branch.session_id] = branch
+        sessions.move_to_end(branch.session_id)
+        while len(sessions) > sessions_max:
+            sessions.popitem(last=False)
+
+    if forked_messages:
+        branch.save()
+
+    return json_response_fn(
+        handler,
+        {
+            "session_id": branch.session_id,
+            "title": branch_title,
+            "parent_session_id": source.session_id,
+        },
+    )
+
+
 def handle_list_dir(
     handler,
     parsed,
