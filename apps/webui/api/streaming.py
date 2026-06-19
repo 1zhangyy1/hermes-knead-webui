@@ -71,28 +71,28 @@ from api.streaming_attachments import (
     is_valid_image as _is_valid_image,
 )
 from api.streaming_context import (
-    API_SAFE_MSG_KEYS as _API_SAFE_MSG_KEYS_IMPL,
+    API_SAFE_MSG_KEYS as _API_SAFE_MSG_KEYS,
     apply_agent_result_to_session as _apply_agent_result_to_session,
-    api_safe_message_positions as _api_safe_message_positions_impl,
-    assistant_reply_added_after_current_turn as _assistant_reply_added_after_current_turn_impl,
+    api_safe_message_positions as _api_safe_message_positions,
+    assistant_reply_added_after_current_turn as _assistant_reply_added_after_current_turn,
     capture_turn_start_snapshot as _capture_turn_start_snapshot,
-    compact_summary_text as _compact_summary_text_impl,
-    compression_anchor_message_key as _compression_anchor_message_key_impl,
-    compression_summary_from_messages as _compression_summary_from_messages_impl,
-    context_messages_for_new_turn as _context_messages_for_new_turn_impl,
-    drop_checkpointed_current_user_from_context as _drop_checkpointed_current_user_from_context_impl,
-    find_current_user_turn as _find_current_user_turn_impl,
-    has_task_resume_compaction_marker as _has_task_resume_compaction_marker_impl,
-    is_casual_fresh_chat_message as _is_casual_fresh_chat_message_impl,
-    is_context_compression_marker as _is_context_compression_marker_impl,
-    merge_display_messages_after_agent_result as _merge_display_messages_after_agent_result_impl,
-    message_identity as _message_identity_impl,
-    messages_have_prefix as _messages_have_prefix_impl,
-    normalize_fresh_chat_text as _normalize_fresh_chat_text_impl,
-    restore_reasoning_metadata as _restore_reasoning_metadata_impl,
-    sanitize_messages_for_api as _sanitize_messages_for_api_impl,
-    session_context_messages as _session_context_messages_impl,
-    strip_native_image_parts_from_content as _strip_native_image_parts_from_content_impl,
+    compact_summary_text as _compact_summary_text,
+    compression_anchor_message_key as _compression_anchor_message_key,
+    compression_summary_from_messages as _compression_summary_from_messages,
+    context_messages_for_new_turn as _context_messages_for_new_turn,
+    drop_checkpointed_current_user_from_context as _drop_checkpointed_current_user_from_context,
+    find_current_user_turn as _find_current_user_turn,
+    has_task_resume_compaction_marker as _has_task_resume_compaction_marker,
+    is_casual_fresh_chat_message as _is_casual_fresh_chat_message,
+    is_context_compression_marker as _is_context_compression_marker,
+    merge_display_messages_after_agent_result as _merge_display_messages_after_agent_result,
+    message_identity as _message_identity,
+    messages_have_prefix as _messages_have_prefix,
+    normalize_fresh_chat_text as _normalize_fresh_chat_text,
+    restore_reasoning_metadata as _restore_reasoning_metadata,
+    sanitize_messages_for_api as _sanitize_messages_for_api,
+    session_context_messages as _session_context_messages,
+    strip_native_image_parts_from_content as _strip_native_image_parts_from_content,
 )
 from api.streaming_context_window import (
     apply_context_window_to_usage as _apply_context_window_to_usage,
@@ -233,12 +233,6 @@ _aiagent_import_error_detail = _aiagent_import_error_detail_impl
 from api.models import get_session, title_from
 from api.workspace import set_last_workspace
 
-# Fields that are safe to send to LLM provider APIs.
-# Everything else (attachments, timestamp, _ts, etc.) is display-only
-# metadata added by the webui and must be stripped before the API call.
-_API_SAFE_MSG_KEYS = _API_SAFE_MSG_KEYS_IMPL
-
-
 _get_title_refresh_interval = _get_title_refresh_interval_impl
 
 
@@ -282,63 +276,6 @@ _generate_llm_session_title_for_agent = _generate_llm_session_title_for_agent_im
 
 
 _generate_llm_session_title_via_aux = _generate_llm_session_title_via_aux_impl
-
-
-_strip_native_image_parts_from_content = _strip_native_image_parts_from_content_impl
-
-
-_sanitize_messages_for_api = _sanitize_messages_for_api_impl
-
-
-_api_safe_message_positions = _api_safe_message_positions_impl
-
-
-_restore_reasoning_metadata = _restore_reasoning_metadata_impl
-
-
-_session_context_messages = _session_context_messages_impl
-
-
-_message_identity = _message_identity_impl
-
-
-_messages_have_prefix = _messages_have_prefix_impl
-
-
-_is_context_compression_marker = _is_context_compression_marker_impl
-
-
-_compact_summary_text = _compact_summary_text_impl
-
-
-_compression_anchor_message_key = _compression_anchor_message_key_impl
-
-
-_compression_summary_from_messages = _compression_summary_from_messages_impl
-
-
-_find_current_user_turn = _find_current_user_turn_impl
-
-
-_drop_checkpointed_current_user_from_context = _drop_checkpointed_current_user_from_context_impl
-
-
-_normalize_fresh_chat_text = _normalize_fresh_chat_text_impl
-
-
-_is_casual_fresh_chat_message = _is_casual_fresh_chat_message_impl
-
-
-_has_task_resume_compaction_marker = _has_task_resume_compaction_marker_impl
-
-
-_context_messages_for_new_turn = _context_messages_for_new_turn_impl
-
-
-_merge_display_messages_after_agent_result = _merge_display_messages_after_agent_result_impl
-
-
-_assistant_reply_added_after_current_turn = _assistant_reply_added_after_current_turn_impl
 
 
 def _run_agent_streaming(
