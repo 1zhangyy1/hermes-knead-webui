@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 
 LOGIN_LOCALE = {
     "en": {
@@ -133,3 +135,63 @@ def resolve_login_locale_key(raw_lang: str | None, locale: dict = LOGIN_LOCALE) 
         if key.lower() == base:
             return key
     return "en"
+
+
+def handle_auth_login(
+    handler,
+    body,
+    *,
+    verify_password_fn,
+    create_session_fn,
+    set_auth_cookie_fn,
+    is_auth_enabled_fn,
+    check_login_rate_fn,
+    record_login_attempt_fn,
+    security_headers_fn,
+    json_response_fn,
+    bad_response_fn,
+):
+    if not is_auth_enabled_fn():
+        return json_response_fn(handler, {"ok": True, "message": "Auth not enabled"})
+    client_ip = handler.client_address[0]
+    if not check_login_rate_fn(client_ip):
+        return json_response_fn(
+            handler,
+            {"error": "Too many attempts. Try again in a minute."},
+            status=429,
+        )
+    password = body.get("password", "")
+    if not verify_password_fn(password):
+        record_login_attempt_fn(client_ip)
+        return bad_response_fn(handler, "Invalid password", 401)
+
+    cookie_val = create_session_fn()
+    handler.send_response(200)
+    handler.send_header("Content-Type", "application/json")
+    handler.send_header("Cache-Control", "no-store")
+    security_headers_fn(handler)
+    set_auth_cookie_fn(handler, cookie_val)
+    handler.end_headers()
+    handler.wfile.write(json.dumps({"ok": True}).encode())
+    return True
+
+
+def handle_auth_logout(
+    handler,
+    *,
+    clear_auth_cookie_fn,
+    invalidate_session_fn,
+    parse_cookie_fn,
+    security_headers_fn,
+):
+    cookie_val = parse_cookie_fn(handler)
+    if cookie_val:
+        invalidate_session_fn(cookie_val)
+    handler.send_response(200)
+    handler.send_header("Content-Type", "application/json")
+    handler.send_header("Cache-Control", "no-store")
+    security_headers_fn(handler)
+    clear_auth_cookie_fn(handler)
+    handler.end_headers()
+    handler.wfile.write(json.dumps({"ok": True}).encode())
+    return True
