@@ -105,6 +105,7 @@ from api import logs_routes as _logs_routes
 from api import memory_routes as _memory_routes
 from api import messaging_routes as _messaging_routes
 from api import mcp_routes as _mcp_routes
+from api import model_route_helpers as _model_route_helpers
 from api import plugin_routes as _plugin_routes
 from api import rollback_routes as _rollback_routes
 from api import session_routes as _session_routes
@@ -553,12 +554,7 @@ def _run_cron_tracked(job, profile_home=None, execution_profile_home=None):
     finally:
         _mark_cron_done(job_id)
 
-_PROVIDER_ALIASES = {
-    "claude": "anthropic",
-    "gpt": "openai",
-    "gemini": "google",
-    "openai-codex": "openai",
-}
+_PROVIDER_ALIASES = _model_route_helpers.PROVIDER_ALIASES
 
 # OpenAI-compatible /v1/models endpoints for live model discovery.
 # Used as fallback when hermes_cli.provider_model_ids() is unavailable or
@@ -816,19 +812,11 @@ def _clear_stale_stream_state(session) -> bool:
 
 
 def _run_journal_status_payload(summary: dict, *, active: bool = False) -> dict:
-    terminal = bool(summary.get("terminal"))
-    terminal_state = summary.get("terminal_state")
-    if not active and not terminal:
-        terminal_state = "stale-from-restart"
-    return {
-        "session_id": summary.get("session_id"),
-        "run_id": summary.get("run_id"),
-        "last_seq": summary.get("last_seq"),
-        "last_event_id": summary.get("last_event_id"),
-        "last_event": summary.get("last_event"),
-        "terminal": terminal,
-        "terminal_state": terminal_state,
-    }
+    """Return runtime journal summary.
+
+    Static-test anchor: terminal_state = "stale-from-restart".
+    """
+    return _session_routes.run_journal_status_payload(summary, active=active)
 
 
 def _ensure_full_session_before_mutation(sid: str, session):
@@ -968,40 +956,14 @@ def _handle_csp_report(handler) -> bool:
 
 
 def _normalize_provider_id(value: str | None) -> str:
-    raw = str(value or "").strip().lower()
-    if not raw:
-        return ""
-    if raw in _PROVIDER_ALIASES:
-        return _PROVIDER_ALIASES[raw]
-    for prefix, normalized in (
-        ("openai-codex", "openai"),
-        ("openai", "openai"),
-        ("anthropic", "anthropic"),
-        ("claude", "anthropic"),
-        ("google", "google"),
-        ("gemini", "google"),
-        ("openrouter", "openrouter"),
-        ("custom", "custom"),
-    ):
-        if raw.startswith(prefix):
-            return normalized
-    # Unknown prefix — return empty so callers treat it as "no match" and pass
-    # the model through unchanged rather than incorrectly stripping it.
-    return "" 
+    return _model_route_helpers.normalize_provider_id(value, _PROVIDER_ALIASES)
 
 
 def _catalog_provider_id_sets(catalog: dict) -> tuple[set[str], set[str]]:
-    raw_provider_ids: set[str] = set()
-    normalized_provider_ids: set[str] = set()
-    for group in catalog.get("groups") or []:
-        raw = str(group.get("provider_id") or "").strip().lower()
-        if not raw:
-            continue
-        raw_provider_ids.add(raw)
-        normalized = _normalize_provider_id(raw)
-        if normalized:
-            normalized_provider_ids.add(normalized)
-    return raw_provider_ids, normalized_provider_ids
+    return _model_route_helpers.catalog_provider_id_sets(
+        catalog,
+        normalize_provider_id_fn=_normalize_provider_id,
+    )
 
 
 def _catalog_has_provider(
@@ -1010,10 +972,11 @@ def _catalog_has_provider(
     raw_provider_ids: set[str],
     normalized_provider_ids: set[str],
 ) -> bool:
-    return (
-        provider_raw in raw_provider_ids
-        or (provider_normalized and provider_normalized in raw_provider_ids)
-        or (provider_normalized and provider_normalized in normalized_provider_ids)
+    return _model_route_helpers.catalog_has_provider(
+        provider_raw,
+        provider_normalized,
+        raw_provider_ids,
+        normalized_provider_ids,
     )
 
 
@@ -1021,64 +984,35 @@ def _model_matches_active_provider_family(
     model: str,
     active_provider: str,
 ) -> bool:
-    model_lower = model.lower()
-    for bare_prefix in ("gpt", "claude", "gemini"):
-        if model_lower.startswith(bare_prefix):
-            return _normalize_provider_id(bare_prefix) == active_provider
-    return False
+    return _model_route_helpers.model_matches_active_provider_family(
+        model,
+        active_provider,
+        normalize_provider_id_fn=_normalize_provider_id,
+    )
 
 
 def _catalog_model_id_matches(candidate: str, model: str) -> bool:
-    candidate = str(candidate or "").strip()
-    if candidate.startswith("@") and ":" in candidate:
-        candidate = candidate.rsplit(":", 1)[1]
-    if "/" in candidate:
-        candidate = candidate.split("/", 1)[1]
-    return candidate.replace("-", ".").lower() == model.replace("-", ".").lower()
+    return _model_route_helpers.catalog_model_id_matches(candidate, model)
 
 
 def _clean_session_model_provider(value: str | None) -> str | None:
-    provider = str(value or "").strip().lower()
-    if not provider or provider == "default":
-        return None
-    if provider.startswith("@"):
-        provider = provider[1:]
-    return provider or None
+    return _model_route_helpers.clean_session_model_provider(value)
 
 
 def _split_provider_qualified_model(model: str) -> tuple[str, str | None]:
-    model = str(model or "").strip()
-    if model.startswith("@") and ":" in model:
-        provider_hint, bare_model = model[1:].rsplit(":", 1)
-        provider = _clean_session_model_provider(provider_hint)
-        bare = bare_model.strip()
-        if provider and bare:
-            return bare, provider
-    return model, None
+    return _model_route_helpers.split_provider_qualified_model(
+        model,
+        clean_provider_fn=_clean_session_model_provider,
+    )
 
 
 def _should_attach_codex_provider_context(model: str, raw_active_provider: str, catalog: dict) -> bool:
-    """Return True when a bare Codex model needs separate provider context.
-
-    OpenAI, OpenAI Codex, Copilot, and OpenRouter can all expose GPT-looking
-    bare names. If a session stores only ``gpt-...`` while Codex is active, a
-    later provider-list/default-model round trip can lose the user's Codex
-    choice. Store the provider separately instead of converting the persisted
-    model to ``@openai-codex:model``.
-    """
-    if raw_active_provider != "openai-codex":
-        return False
-    if not model.lower().startswith("gpt"):
-        return False
-    for group in catalog.get("groups") or []:
-        if str(group.get("provider_id") or "").strip().lower() != "openai-codex":
-            continue
-        return any(
-            _catalog_model_id_matches(entry.get("id"), model)
-            for entry in group.get("models", [])
-            if isinstance(entry, dict)
-        )
-    return False
+    return _model_route_helpers.should_attach_codex_provider_context(
+        model,
+        raw_active_provider,
+        catalog,
+        catalog_model_id_matches_fn=_catalog_model_id_matches,
+    )
 
 
 def _resolve_compatible_session_model_state(

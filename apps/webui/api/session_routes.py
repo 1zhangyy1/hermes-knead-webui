@@ -7,6 +7,22 @@ from pathlib import Path
 from urllib.parse import parse_qs
 
 
+def run_journal_status_payload(summary: dict, *, active: bool = False) -> dict:
+    terminal = bool(summary.get("terminal"))
+    terminal_state = summary.get("terminal_state")
+    if not active and not terminal:
+        terminal_state = "stale-from-restart"
+    return {
+        "session_id": summary.get("session_id"),
+        "run_id": summary.get("run_id"),
+        "last_seq": summary.get("last_seq"),
+        "last_event_id": summary.get("last_event_id"),
+        "last_event": summary.get("last_event"),
+        "terminal": terminal,
+        "terminal_state": terminal_state,
+    }
+
+
 def handle_sessions_cleanup(
     handler,
     _body,
