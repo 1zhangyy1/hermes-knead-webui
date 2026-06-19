@@ -98,6 +98,7 @@ from api import file_response_routes as _file_response_routes
 from api import gateway_routes as _gateway_routes
 from api import gateway_sse_routes as _gateway_sse_routes
 from api import health_routes as _health_routes
+from api import interaction_routes as _interaction_routes
 from api import llm_wiki_routes as _llm_wiki_routes
 from api import login_routes as _login_routes
 from api import logs_routes as _logs_routes
@@ -5056,22 +5057,14 @@ def _handle_file_read(handler, parsed):
 
 
 def _handle_approval_pending(handler, parsed):
-    sid = parse_qs(parsed.query).get("session_id", [""])[0]
-    with _lock:
-        queue = _pending.get(sid)
-        # Support both the new list format and a legacy single-dict value.
-        if isinstance(queue, list):
-            p = queue[0] if queue else None
-            total = len(queue)
-        elif queue:
-            p = queue
-            total = 1
-        else:
-            p = None
-            total = 0
-    if p:
-        return j(handler, {"pending": dict(p), "pending_count": total})
-    return j(handler, {"pending": None, "pending_count": 0})
+    """Return the first queued approval plus pending_count."""
+    return _interaction_routes.handle_approval_pending(
+        handler,
+        parsed,
+        pending=_pending,
+        lock=_lock,
+        json_response_fn=j,
+    )
 
 
 def _handle_approval_sse_stream(handler, parsed):
@@ -5136,30 +5129,21 @@ def _handle_approval_sse_stream(handler, parsed):
 
 def _handle_approval_inject(handler, parsed):
     """Inject a fake pending approval -- loopback-only, used by automated tests."""
-    qs = parse_qs(parsed.query)
-    sid = qs.get("session_id", [""])[0]
-    key = qs.get("pattern_key", ["test_pattern"])[0]
-    cmd = qs.get("command", ["rm -rf /tmp/test"])[0]
-    if sid:
-        submit_pending(
-            sid,
-            {
-                "command": cmd,
-                "pattern_key": key,
-                "pattern_keys": [key],
-                "description": "test pattern",
-            },
-        )
-        return j(handler, {"ok": True, "session_id": sid})
-    return j(handler, {"error": "session_id required"}, status=400)
+    return _interaction_routes.handle_approval_inject(
+        handler,
+        parsed,
+        submit_pending_fn=submit_pending,
+        json_response_fn=j,
+    )
 
 
 def _handle_clarify_pending(handler, parsed):
-    sid = parse_qs(parsed.query).get("session_id", [""])[0]
-    pending = get_clarify_pending(sid)
-    if pending:
-        return j(handler, {"pending": pending})
-    return j(handler, {"pending": None})
+    return _interaction_routes.handle_clarify_pending(
+        handler,
+        parsed,
+        get_pending_fn=get_clarify_pending,
+        json_response_fn=j,
+    )
 
 
 def _handle_clarify_sse_stream(handler, parsed):
@@ -5236,22 +5220,12 @@ def _handle_clarify_sse_stream(handler, parsed):
 
 def _handle_clarify_inject(handler, parsed):
     """Inject a fake pending clarify prompt -- loopback-only, used by automated tests."""
-    qs = parse_qs(parsed.query)
-    sid = qs.get("session_id", [""])[0]
-    question = qs.get("question", ["Which option?"])[0]
-    choices = qs.get("choices", [])
-    if sid:
-        submit_clarify_pending(
-            sid,
-            {
-                "question": question,
-                "choices_offered": choices,
-                "session_id": sid,
-                "kind": "clarify",
-            },
-        )
-        return j(handler, {"ok": True, "session_id": sid})
-    return j(handler, {"error": "session_id required"}, status=400)
+    return _interaction_routes.handle_clarify_inject(
+        handler,
+        parsed,
+        submit_pending_fn=submit_clarify_pending,
+        json_response_fn=j,
+    )
 
 
 def _handle_live_models(handler, parsed):
