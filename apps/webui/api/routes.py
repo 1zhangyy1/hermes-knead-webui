@@ -98,6 +98,7 @@ from api import file_response_routes as _file_response_routes
 from api import gateway_routes as _gateway_routes
 from api import gateway_sse_routes as _gateway_sse_routes
 from api import health_routes as _health_routes
+from api import llm_wiki_routes as _llm_wiki_routes
 from api import login_routes as _login_routes
 from api import logs_routes as _logs_routes
 from api import memory_routes as _memory_routes
@@ -1888,55 +1889,19 @@ _LLM_WIKI_PAGE_DIRS = ("entities", "concepts", "comparisons", "queries")
 
 
 def _llm_wiki_active_hermes_home() -> Path:
-    try:
-        from api.profiles import get_active_hermes_home
-        return Path(get_active_hermes_home()).expanduser()
-    except Exception:
-        return Path(os.getenv("HERMES_HOME", str(Path.home() / ".hermes"))).expanduser()
+    return _llm_wiki_routes.active_hermes_home()
 
 
 def _llm_wiki_env_file_path(hermes_home: Path) -> str | None:
-    env_path = hermes_home / ".env"
-    if not env_path.exists() or not env_path.is_file():
-        return None
-    try:
-        for line in env_path.read_text(encoding="utf-8", errors="replace").splitlines():
-            stripped = line.strip()
-            if not stripped or stripped.startswith("#") or "=" not in stripped:
-                continue
-            key, value = stripped.split("=", 1)
-            if key.strip() != "WIKI_PATH":
-                continue
-            value = value.strip().strip('"').strip("'")
-            return value or None
-    except Exception:
-        return None
-    return None
+    return _llm_wiki_routes.env_file_path(hermes_home)
 
 
 def _llm_wiki_get_config_path_value(config: dict, dotted_key: str) -> str | None:
-    if not isinstance(config, dict):
-        return None
-    if dotted_key in config and config.get(dotted_key):
-        return str(config.get(dotted_key))
-    cur = config
-    for part in dotted_key.split("."):
-        if not isinstance(cur, dict) or part not in cur:
-            return None
-        cur = cur[part]
-    return str(cur) if cur else None
+    return _llm_wiki_routes.get_config_path_value(config, dotted_key)
 
 
 def _llm_wiki_config_path() -> str | None:
-    try:
-        from api.config import get_config as _get_cfg
-        cfg = _get_cfg()
-    except Exception:
-        return None
-    return (
-        _llm_wiki_get_config_path_value(cfg, "skills.config.wiki.path")
-        or _llm_wiki_get_config_path_value(cfg, "wiki.path")
-    )
+    return _llm_wiki_routes.config_path()
 
 
 # Cap WIKI walks to prevent self-DoS if WIKI_PATH points at /, /etc, /home, etc.
@@ -1949,28 +1914,15 @@ _LLM_WIKI_FORBIDDEN_ROOTS = frozenset(
 
 
 def _llm_wiki_resolve_path() -> tuple[Path, str, bool]:
-    hermes_home = _llm_wiki_active_hermes_home()
-    raw = os.getenv("WIKI_PATH") or _llm_wiki_env_file_path(hermes_home)
-    source = "WIKI_PATH" if raw else "default"
-    configured = bool(raw)
-    if not raw:
-        raw = _llm_wiki_config_path()
-        if raw:
-            source = "skills.config.wiki.path"
-            configured = True
-    if not raw:
-        raw = "~/wiki"
-    return Path(os.path.expandvars(raw)).expanduser(), source, configured
+    return _llm_wiki_routes.resolve_path(
+        active_home_fn=_llm_wiki_active_hermes_home,
+        env_file_path_fn=_llm_wiki_env_file_path,
+        config_path_fn=_llm_wiki_config_path,
+    )
 
 
 def _llm_wiki_safe_iso(ts: float | None) -> str | None:
-    if not ts:
-        return None
-    try:
-        from datetime import datetime, timezone
-        return datetime.fromtimestamp(ts, tz=timezone.utc).isoformat().replace("+00:00", "Z")
-    except Exception:
-        return None
+    return _llm_wiki_routes.safe_iso(ts)
 
 
 def _llm_wiki_count_files(root: Path) -> int:
@@ -2025,68 +1977,13 @@ def _llm_wiki_page_files(wiki_path: Path) -> list[Path]:
 
 
 def _build_llm_wiki_status() -> dict:
-    """Return private-safe LLM Wiki status metadata without reading page bodies."""
-    try:
-        wiki_path, path_source, path_configured = _llm_wiki_resolve_path()
-        base = {
-            "available": False,
-            "enabled": False,
-            "status": "missing",
-            "entry_count": 0,
-            "page_count": 0,
-            "raw_source_count": 0,
-            "last_updated": None,
-            "last_writer": None,
-            "path_configured": path_configured,
-            "path_source": path_source,
-            "toggle_available": False,
-            "toggle_reason": "Hermes Agent exposes WIKI_PATH/wiki.path for location, but no stable on/off config flag is currently available.",
-            "docs_url": _LLM_WIKI_DOCS_URL,
-        }
-        if not wiki_path.exists():
-            return base
-        if not wiki_path.is_dir():
-            base["status"] = "not_directory"
-            return base
-
-        page_files = _llm_wiki_page_files(wiki_path)
-        status_files = [p for p in (wiki_path / "SCHEMA.md", wiki_path / "index.md", wiki_path / "log.md") if p.exists() and p.is_file()]
-        status_files.extend(page_files)
-        latest = None
-        for item in status_files:
-            try:
-                mtime = item.stat().st_mtime
-            except Exception:
-                continue
-            latest = mtime if latest is None else max(latest, mtime)
-
-        base.update({
-            "available": True,
-            "enabled": True,
-            "status": "ready" if page_files else "empty",
-            "entry_count": len(page_files),
-            "page_count": len(page_files),
-            "raw_source_count": _llm_wiki_count_files(wiki_path / "raw"),
-            "last_updated": _llm_wiki_safe_iso(latest),
-        })
-        return base
-    except Exception as exc:
-        return {
-            "available": False,
-            "enabled": False,
-            "status": "error",
-            "entry_count": 0,
-            "page_count": 0,
-            "raw_source_count": 0,
-            "last_updated": None,
-            "last_writer": None,
-            "path_configured": False,
-            "path_source": "unknown",
-            "toggle_available": False,
-            "toggle_reason": "Unable to inspect LLM Wiki status safely.",
-            "docs_url": _LLM_WIKI_DOCS_URL,
-            "error": type(exc).__name__,
-        }
+    return _llm_wiki_routes.build_status(
+        docs_url=_LLM_WIKI_DOCS_URL,
+        resolve_path_fn=_llm_wiki_resolve_path,
+        page_files_fn=_llm_wiki_page_files,
+        count_files_fn=_llm_wiki_count_files,
+        safe_iso_fn=_llm_wiki_safe_iso,
+    )
 
 
 def _handle_llm_wiki_status(handler, parsed) -> bool:
