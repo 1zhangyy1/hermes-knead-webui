@@ -31,6 +31,7 @@ from api.agent_sessions import (
 )
 from api.compression_anchor import visible_messages_for_anchor
 from api import security_routes as _security_routes
+from api import cron_routes as _cron_routes
 
 logger = logging.getLogger(__name__)
 
@@ -6098,59 +6099,7 @@ def _handle_cron_run_detail(handler, parsed):
 
 def _cron_output_usage_metadata(text: str) -> dict:
     """Extract optional token/cost metadata from a cron output markdown file."""
-    import re as _re
-
-    head = text.split("## Response", 1)[0].split("# Response", 1)[0]
-    usage: dict = {}
-
-    def _intish(value: str):
-        cleaned = _re.sub(r"[^0-9]", "", value or "")
-        return int(cleaned) if cleaned else None
-
-    def _floatish(value: str):
-        match = _re.search(r"[-+]?\d+(?:\.\d+)?", (value or "").replace(",", ""))
-        return float(match.group(0)) if match else None
-
-    for raw_line in head.splitlines():
-        line = raw_line.strip()
-        model_match = _re.match(r"\*\*(?:Model|Model Used):\*\*\s*(.+)$", line, _re.I)
-        if model_match:
-            usage["model"] = model_match.group(1).strip()
-            continue
-        provider_match = _re.match(r"\*\*Provider:\*\*\s*(.+)$", line, _re.I)
-        if provider_match:
-            usage["provider"] = provider_match.group(1).strip()
-            continue
-        cost_match = _re.match(r"\*\*(?:Estimated cost|Cost):\*\*\s*(.+)$", line, _re.I)
-        if cost_match:
-            cost = _floatish(cost_match.group(1))
-            if cost is not None:
-                usage["estimated_cost_usd"] = cost
-            continue
-        duration_match = _re.match(r"\*\*(?:Duration|Elapsed):\*\*\s*(.+)$", line, _re.I)
-        if duration_match:
-            seconds = _floatish(duration_match.group(1))
-            if seconds is not None:
-                usage["duration_seconds"] = seconds
-            continue
-        tokens_match = _re.match(r"\*\*Tokens:\*\*\s*(.+)$", line, _re.I)
-        if tokens_match:
-            value = tokens_match.group(1)
-            input_match = _re.search(r"([0-9][0-9,]*)\s*(?:input|in)\b", value, _re.I)
-            output_match = _re.search(r"([0-9][0-9,]*)\s*(?:output|out)\b", value, _re.I)
-            total_match = _re.search(r"([0-9][0-9,]*)\s*(?:total\s*)?tokens?\b", value, _re.I)
-            if input_match:
-                usage["input_tokens"] = _intish(input_match.group(1))
-            if output_match:
-                usage["output_tokens"] = _intish(output_match.group(1))
-            if total_match and "total_tokens" not in usage:
-                usage["total_tokens"] = _intish(total_match.group(1))
-
-    if "total_tokens" not in usage:
-        total = sum(int(usage.get(k) or 0) for k in ("input_tokens", "output_tokens"))
-        if total:
-            usage["total_tokens"] = total
-    return usage
+    return _cron_routes.cron_output_usage_metadata(text)
 
 
 def _cron_output_snippet(text: str, limit: int = 600) -> str:
@@ -6163,87 +6112,32 @@ def _cron_output_snippet(text: str, limit: int = 600) -> str:
     is returned — callers should be aware that front-matter fields (model,
     timestamp, …) may appear in the snippet.
     """
-    lines = text.split("\n")
-    response_idx = -1
-    for i, line in enumerate(lines):
-        if line.startswith("## Response") or line.startswith("# Response"):
-            response_idx = i
-            break
-    body = ("\n".join(lines[response_idx + 1:]) if response_idx >= 0 else "\n".join(lines)).strip()
-    return body[:limit] or "(empty)"
+    return _cron_routes.cron_output_snippet(text, limit)
 
 
 def _handle_cron_output(handler, parsed):
-    from cron.jobs import OUTPUT_DIR as CRON_OUT
-
-    qs = parse_qs(parsed.query)
-    job_id = qs.get("job_id", [""])[0]
-    limit = int(qs.get("limit", ["5"])[0])
-    if not job_id:
-        return j(handler, {"error": "job_id required"}, status=400)
-    out_dir = CRON_OUT / job_id
-    outputs = []
-    if out_dir.exists():
-        files = sorted(out_dir.glob("*.md"), key=lambda f: f.stat().st_mtime, reverse=True)[:limit]
-        for f in files:
-            try:
-                txt = f.read_text(encoding="utf-8", errors="replace")
-                outputs.append({"filename": f.name, "content": _cron_output_content_window(txt)})
-            except Exception:
-                logger.debug("Failed to read cron output file %s", f)
-    return j(handler, {"job_id": job_id, "outputs": outputs})
+    return _cron_routes.handle_cron_output(
+        handler,
+        parsed,
+        json_response_fn=j,
+        content_window_fn=_cron_output_content_window,
+        logger=logger,
+    )
 
 
 def _handle_cron_status(handler, parsed):
-    """Return running status for one or all cron jobs."""
-    qs = parse_qs(parsed.query)
-    job_id = qs.get("job_id", [""])[0]
-    if job_id:
-        running, elapsed = _is_cron_running(job_id)
-        return j(handler, {"job_id": job_id, "running": running, "elapsed": round(elapsed, 1)})
-    # Return status for all running jobs
-    with _RUNNING_CRON_LOCK:
-        all_running = {jid: round(time.time() - t, 1) for jid, t in _RUNNING_CRON_JOBS.items()}
-    return j(handler, {"running": all_running})
+    return _cron_routes.handle_cron_status(
+        handler,
+        parsed,
+        json_response_fn=j,
+        is_cron_running_fn=_is_cron_running,
+        running_jobs=_RUNNING_CRON_JOBS,
+        running_jobs_lock=_RUNNING_CRON_LOCK,
+    )
 
 
 def _handle_cron_recent(handler, parsed):
-    """Return cron jobs that have completed since a given timestamp."""
-    import datetime
-
-    qs = parse_qs(parsed.query)
-    since = float(qs.get("since", ["0"])[0])
-    try:
-        from cron.jobs import list_jobs
-
-        jobs = list_jobs(include_disabled=True)
-        completions = []
-        for job in jobs:
-            last_run = job.get("last_run_at")
-            if not last_run:
-                continue
-            if isinstance(last_run, str):
-                try:
-                    ts = datetime.datetime.fromisoformat(
-                        last_run.replace("Z", "+00:00")
-                    ).timestamp()
-                except (ValueError, TypeError):
-                    continue
-            else:
-                ts = float(last_run)
-            if ts > since:
-                completions.append(
-                    {
-                        "job_id": job.get("id", ""),
-                        "name": job.get("name", "Unknown"),
-                        "status": job.get("last_status", "unknown"),
-                        "completed_at": ts,
-                        "toast_notifications": job.get("toast_notifications") is not False,
-                    }
-                )
-        return j(handler, {"completions": completions, "since": since})
-    except ImportError:
-        return j(handler, {"completions": [], "since": since})
+    return _cron_routes.handle_cron_recent(handler, parsed, json_response_fn=j)
 
 
 def _handle_memory_read(handler):
