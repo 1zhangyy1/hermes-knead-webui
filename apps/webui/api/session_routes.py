@@ -140,6 +140,142 @@ def handle_sessions_search(
     return json_response_fn(handler, {"sessions": results, "query": query, "count": len(results)})
 
 
+def handle_session_new(
+    handler,
+    body,
+    *,
+    bad_response_fn,
+    json_response_fn,
+    resolve_trusted_workspace_fn,
+    get_last_workspace_fn,
+    session_model_state_from_request_fn,
+    session_toolsets_from_request_fn,
+    product_task_title_from_request_fn,
+    new_session_fn,
+    record_product_session_fn,
+    logger,
+) -> bool:
+    try:
+        workspace = (
+            str(resolve_trusted_workspace_fn(body.get("workspace")))
+            if body.get("workspace")
+            else None
+        )
+    except (TypeError, ValueError) as exc:
+        return bad_response_fn(handler, str(exc))
+
+    worktree_info = None
+    worktree_requested = (
+        body.get("worktree") is True
+        or str(body.get("worktree")).strip().lower() in {"1", "true", "yes", "on"}
+    )
+    if worktree_requested:
+        try:
+            from api.worktrees import create_worktree_for_workspace
+
+            base_workspace = workspace
+            if not base_workspace:
+                base_workspace = str(resolve_trusted_workspace_fn(get_last_workspace_fn()))
+            worktree_info = create_worktree_for_workspace(base_workspace)
+            workspace = worktree_info["path"]
+        except (TypeError, ValueError) as exc:
+            return bad_response_fn(handler, str(exc), status=400)
+        except Exception as exc:
+            logger.exception("failed to create worktree-backed session")
+            return bad_response_fn(handler, f"Failed to create worktree: {exc}", status=500)
+
+    model, model_provider = session_model_state_from_request_fn(
+        body.get("model"),
+        body.get("model_provider"),
+    )
+
+    prev_session_id = body.get("prev_session_id")
+    if prev_session_id:
+        try:
+            from api.config import SESSION_AGENT_CACHE, SESSION_AGENT_CACHE_LOCK
+            from api.session_lifecycle import commit_session_memory
+
+            prev_agent = None
+            with SESSION_AGENT_CACHE_LOCK:
+                cached = SESSION_AGENT_CACHE.get(prev_session_id)
+                if cached:
+                    prev_agent = cached[0]
+            commit_session_memory(prev_session_id, agent=prev_agent)
+        except Exception:
+            logger.debug("Lifecycle commit for prev_session %s failed", prev_session_id, exc_info=True)
+
+    session = new_session_fn(
+        workspace=workspace,
+        model=model,
+        model_provider=model_provider,
+        profile=body.get("profile") or None,
+        project_id=body.get("project_id") or None,
+        worktree_info=worktree_info,
+    )
+
+    session_needs_save = False
+    enabled_toolsets = session_toolsets_from_request_fn(body)
+    if enabled_toolsets:
+        session.enabled_toolsets = enabled_toolsets
+        session_needs_save = True
+
+    product_ctx = None
+    if body.get("product_id") or body.get("productId"):
+        try:
+            from api.product_context import product_context_from_request
+
+            product_ctx = product_context_from_request(body, workspace=workspace)
+        except ValueError as exc:
+            return bad_response_fn(handler, str(exc), status=400)
+        if product_ctx:
+            product_task_title = product_task_title_from_request_fn(body)
+            if product_task_title and product_ctx["scope"] == "product_init":
+                session.title = product_task_title
+            session.product_id = product_ctx["id"]
+            session.product_scope = product_ctx["scope"]
+            session.product_intent = product_ctx.get("intent") or ""
+            session.product_line = product_ctx.get("line") or "use"
+            session_needs_save = True
+            if not enabled_toolsets:
+                product_toolsets = session_toolsets_from_request_fn(
+                    {"toolsets": product_ctx.get("tools") or []}
+                )
+                if product_toolsets:
+                    session.enabled_toolsets = product_toolsets
+                    session_needs_save = True
+            try:
+                next_ui_status = (
+                    "generating"
+                    if product_ctx["scope"] in {"product_init", "product_builder"}
+                    and str(product_ctx.get("ui_mode") or "") != "chat_only"
+                    else None
+                )
+                record_product_session_fn(
+                    product_ctx["id"],
+                    session.session_id,
+                    ui_status=next_ui_status,
+                )
+            except Exception:
+                logger.debug("Failed to bind session %s to product", session.session_id, exc_info=True)
+
+    if session_needs_save:
+        try:
+            session.save(skip_index=True)
+        except Exception:
+            logger.debug("Failed to persist new session %s metadata", session.session_id, exc_info=True)
+
+    session_payload = session.compact() | {"messages": session.messages}
+    if product_ctx:
+        session_payload.update(
+            {
+                "product_id": product_ctx["id"],
+                "product_scope": product_ctx["scope"],
+                "product_intent": product_ctx.get("intent") or "",
+            }
+        )
+    return json_response_fn(handler, {"session": session_payload})
+
+
 def handle_list_dir(
     handler,
     parsed,
