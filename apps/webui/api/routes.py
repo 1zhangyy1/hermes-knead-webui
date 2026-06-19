@@ -6841,70 +6841,37 @@ def _handle_chat_sync(handler, body):
 
 
 def _handle_cron_create(handler, body):
-    try:
-        require(body, "prompt", "schedule")
-    except ValueError as e:
-        return bad(handler, str(e))
-    try:
-        from cron.jobs import create_job, update_job
-
-        profile = _normalize_cron_profile_value(body.get("profile"))
-        toast_notifications = body.get("toast_notifications") is not False
-        job = create_job(
-            prompt=body["prompt"],
-            schedule=body["schedule"],
-            name=body.get("name") or None,
-            deliver=body.get("deliver") or "local",
-            skills=body.get("skills") or [],
-            model=body.get("model") or None,
-        )
-        post_create_updates = {}
-        if profile is not None:
-            post_create_updates["profile"] = profile
-        if not toast_notifications:
-            post_create_updates["toast_notifications"] = False
-        if post_create_updates:
-            job = update_job(job["id"], post_create_updates) or job
-        return j(handler, {"ok": True, "job": _cron_job_for_api(job)})
-    except Exception as e:
-        return j(handler, {"error": str(e)}, status=400)
+    return _cron_routes.handle_cron_create(
+        handler,
+        body,
+        require_fn=require,
+        normalize_profile_fn=_normalize_cron_profile_value,
+        cron_job_for_api_fn=_cron_job_for_api,
+        json_response_fn=j,
+        bad_response_fn=bad,
+    )
 
 
 def _handle_cron_update(handler, body):
-    try:
-        require(body, "job_id")
-    except ValueError as e:
-        return bad(handler, str(e))
-    from cron.jobs import update_job
-
-    try:
-        updates = {}
-        for k, v in body.items():
-            if k == "job_id":
-                continue
-            if k == "profile":
-                updates[k] = _normalize_cron_profile_value(v)
-            elif v is not None:
-                updates[k] = v
-    except ValueError as e:
-        return bad(handler, str(e))
-    job = update_job(body["job_id"], updates)
-    if not job:
-        return bad(handler, "Job not found", 404)
-    return j(handler, {"ok": True, "job": _cron_job_for_api(job)})
+    return _cron_routes.handle_cron_update(
+        handler,
+        body,
+        require_fn=require,
+        normalize_profile_fn=_normalize_cron_profile_value,
+        cron_job_for_api_fn=_cron_job_for_api,
+        json_response_fn=j,
+        bad_response_fn=bad,
+    )
 
 
 def _handle_cron_delete(handler, body):
-    try:
-        require(body, "job_id")
-    except ValueError as e:
-        return bad(handler, str(e))
-    from cron.jobs import remove_job
-
-    ok = remove_job(body["job_id"])
-    if not ok:
-        return bad(handler, "Job not found", 404)
-    return j(handler, {"ok": True, "job_id": body["job_id"]})
+    return _cron_routes.handle_cron_delete(
+        handler,
+        body,
+        require_fn=require,
+        json_response_fn=j,
+        bad_response_fn=bad,
+    )
 
 
 def _handle_cron_run(handler, body):
@@ -6943,27 +6910,21 @@ def _handle_cron_run(handler, body):
 
 
 def _handle_cron_pause(handler, body):
-    job_id = body.get("job_id", "")
-    if not job_id:
-        return bad(handler, "job_id required")
-    from cron.jobs import pause_job
-
-    result = pause_job(job_id, reason=body.get("reason"))
-    if result:
-        return j(handler, {"ok": True, "job": result})
-    return bad(handler, "Job not found", 404)
+    return _cron_routes.handle_cron_pause(
+        handler,
+        body,
+        json_response_fn=j,
+        bad_response_fn=bad,
+    )
 
 
 def _handle_cron_resume(handler, body):
-    job_id = body.get("job_id", "")
-    if not job_id:
-        return bad(handler, "job_id required")
-    from cron.jobs import resume_job
-
-    result = resume_job(job_id)
-    if result:
-        return j(handler, {"ok": True, "job": result})
-    return bad(handler, "Job not found", 404)
+    return _cron_routes.handle_cron_resume(
+        handler,
+        body,
+        json_response_fn=j,
+        bad_response_fn=bad,
+    )
 
 
 def _handle_file_delete(handler, body):

@@ -156,3 +156,112 @@ def handle_cron_recent(handler, parsed, *, json_response_fn) -> bool:
         return json_response_fn(handler, {"completions": completions, "since": since})
     except ImportError:
         return json_response_fn(handler, {"completions": [], "since": since})
+
+
+def handle_cron_create(
+    handler,
+    body,
+    *,
+    require_fn,
+    normalize_profile_fn,
+    cron_job_for_api_fn,
+    json_response_fn,
+    bad_response_fn,
+):
+    try:
+        require_fn(body, "prompt", "schedule")
+    except ValueError as exc:
+        return bad_response_fn(handler, str(exc))
+    try:
+        from cron.jobs import create_job, update_job
+
+        profile = normalize_profile_fn(body.get("profile"))
+        toast_notifications = body.get("toast_notifications") is not False
+        job = create_job(
+            prompt=body["prompt"],
+            schedule=body["schedule"],
+            name=body.get("name") or None,
+            deliver=body.get("deliver") or "local",
+            skills=body.get("skills") or [],
+            model=body.get("model") or None,
+        )
+        post_create_updates = {}
+        if profile is not None:
+            post_create_updates["profile"] = profile
+        if not toast_notifications:
+            post_create_updates["toast_notifications"] = False
+        if post_create_updates:
+            job = update_job(job["id"], post_create_updates) or job
+        return json_response_fn(handler, {"ok": True, "job": cron_job_for_api_fn(job)})
+    except Exception as exc:
+        return json_response_fn(handler, {"error": str(exc)}, status=400)
+
+
+def handle_cron_update(
+    handler,
+    body,
+    *,
+    require_fn,
+    normalize_profile_fn,
+    cron_job_for_api_fn,
+    json_response_fn,
+    bad_response_fn,
+):
+    try:
+        require_fn(body, "job_id")
+    except ValueError as exc:
+        return bad_response_fn(handler, str(exc))
+    from cron.jobs import update_job
+
+    try:
+        updates = {}
+        for key, value in body.items():
+            if key == "job_id":
+                continue
+            if key == "profile":
+                updates[key] = normalize_profile_fn(value)
+            elif value is not None:
+                updates[key] = value
+    except ValueError as exc:
+        return bad_response_fn(handler, str(exc))
+    job = update_job(body["job_id"], updates)
+    if not job:
+        return bad_response_fn(handler, "Job not found", 404)
+    return json_response_fn(handler, {"ok": True, "job": cron_job_for_api_fn(job)})
+
+
+def handle_cron_delete(handler, body, *, require_fn, json_response_fn, bad_response_fn):
+    try:
+        require_fn(body, "job_id")
+    except ValueError as exc:
+        return bad_response_fn(handler, str(exc))
+    from cron.jobs import remove_job
+
+    ok = remove_job(body["job_id"])
+    if not ok:
+        return bad_response_fn(handler, "Job not found", 404)
+    return json_response_fn(handler, {"ok": True, "job_id": body["job_id"]})
+
+
+def handle_cron_pause(handler, body, *, json_response_fn, bad_response_fn):
+    job_id = body.get("job_id", "")
+    if not job_id:
+        return bad_response_fn(handler, "job_id required")
+    from cron.jobs import pause_job
+
+    result = pause_job(job_id, reason=body.get("reason"))
+    if result:
+        return json_response_fn(handler, {"ok": True, "job": result})
+    return bad_response_fn(handler, "Job not found", 404)
+
+
+def handle_cron_resume(handler, body, *, json_response_fn, bad_response_fn):
+    job_id = body.get("job_id", "")
+    if not job_id:
+        return bad_response_fn(handler, "job_id required")
+    from cron.jobs import resume_job
+
+    result = resume_job(job_id)
+    if result:
+        return json_response_fn(handler, {"ok": True, "job": result})
+    return bad_response_fn(handler, "Job not found", 404)
