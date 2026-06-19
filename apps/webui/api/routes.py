@@ -2477,31 +2477,13 @@ def handle_get(handler, parsed) -> bool:
         return j(handler, audit_session_recovery(SESSION_DIR, state_db_path=_active_state_db_path()))
 
     if parsed.path == "/api/session/status":
-        sid = parse_qs(parsed.query).get("session_id", [""])[0]
-        if not sid:
-            return bad(handler, "Missing session_id")
-        try:
-            from api.session_ops import session_status
-            _clear_stale_stream_state(get_session(sid, metadata_only=True))
-            return j(handler, session_status(sid))
-        except KeyError:
-            return bad(handler, "Session not found", 404)
+        return _handle_session_status(handler, parsed)
 
     if parsed.path == "/api/session/yolo":
-        sid = parse_qs(parsed.query).get("session_id", [""])[0]
-        if not sid:
-            return bad(handler, "Missing session_id")
-        return j(handler, {"yolo_enabled": is_session_yolo_enabled(sid)})
+        return _handle_session_yolo_get(handler, parsed)
 
     if parsed.path == "/api/session/usage":
-        sid = parse_qs(parsed.query).get("session_id", [""])[0]
-        if not sid:
-            return bad(handler, "Missing session_id")
-        try:
-            from api.session_ops import session_usage
-            return j(handler, session_usage(sid))
-        except KeyError:
-            return bad(handler, "Session not found", 404)
+        return _handle_session_usage(handler, parsed)
 
     if parsed.path == "/api/background/status":
         sid = parse_qs(parsed.query).get("session_id", [""])[0]
@@ -3532,26 +3514,7 @@ def handle_post(handler, parsed) -> bool:
     #   • Cross-session: isolated (each session has its own flag)
     # Fixes #467
     if parsed.path == "/api/session/yolo":
-        try:
-            require(body, "session_id")
-        except ValueError as e:
-            return bad(handler, str(e))
-        sid = body["session_id"]
-        enabled = bool(body.get("enabled", True))
-        if enabled:
-            enable_session_yolo(sid)
-            # Also resolve any pending approvals for this session so the
-            # agent doesn't stay stuck waiting on an already-dismissed card.
-            try:
-                from tools.approval import _pending as _p, _lock as _l
-                with _l:
-                    _p.pop(sid, None)
-            except Exception:
-                pass
-            resolve_gateway_approval(sid, "once", resolve_all=True)
-        else:
-            disable_session_yolo(sid)
-        return j(handler, {"ok": True, "yolo_enabled": enabled})
+        return _handle_session_yolo_post(handler, body)
 
     if parsed.path == "/api/btw":
         return _handle_btw(handler, body)
@@ -5426,6 +5389,49 @@ def _handle_session_worktree_remove(handler, body):
         get_session_fn=get_session,
         sanitize_error_fn=_sanitize_error,
         logger=logger,
+    )
+
+
+def _handle_session_status(handler, parsed):
+    return _session_routes.handle_session_status(
+        handler,
+        parsed,
+        get_session_fn=get_session,
+        clear_stale_stream_state_fn=_clear_stale_stream_state,
+        bad_response_fn=bad,
+        json_response_fn=j,
+    )
+
+
+def _handle_session_yolo_get(handler, parsed):
+    return _session_routes.handle_session_yolo_get(
+        handler,
+        parsed,
+        is_session_yolo_enabled_fn=is_session_yolo_enabled,
+        bad_response_fn=bad,
+        json_response_fn=j,
+    )
+
+
+def _handle_session_usage(handler, parsed):
+    return _session_routes.handle_session_usage(
+        handler,
+        parsed,
+        bad_response_fn=bad,
+        json_response_fn=j,
+    )
+
+
+def _handle_session_yolo_post(handler, body):
+    return _session_routes.handle_session_yolo_post(
+        handler,
+        body,
+        require_fn=require,
+        bad_response_fn=bad,
+        json_response_fn=j,
+        enable_session_yolo_fn=enable_session_yolo,
+        disable_session_yolo_fn=disable_session_yolo,
+        resolve_gateway_approval_fn=resolve_gateway_approval,
     )
 
 

@@ -480,3 +480,82 @@ def handle_session_worktree_remove(
     except Exception as exc:
         logger.exception("failed to remove worktree for session %s", sid)
         return bad_response_fn(handler, sanitize_error_fn(exc), status=500)
+
+
+def handle_session_status(
+    handler,
+    parsed,
+    *,
+    get_session_fn,
+    clear_stale_stream_state_fn,
+    bad_response_fn,
+    json_response_fn,
+) -> bool:
+    sid = parse_qs(parsed.query).get("session_id", [""])[0]
+    if not sid:
+        return bad_response_fn(handler, "Missing session_id")
+    try:
+        from api.session_ops import session_status
+
+        clear_stale_stream_state_fn(get_session_fn(sid, metadata_only=True))
+        return json_response_fn(handler, session_status(sid))
+    except KeyError:
+        return bad_response_fn(handler, "Session not found", 404)
+
+
+def handle_session_yolo_get(
+    handler,
+    parsed,
+    *,
+    is_session_yolo_enabled_fn,
+    bad_response_fn,
+    json_response_fn,
+) -> bool:
+    sid = parse_qs(parsed.query).get("session_id", [""])[0]
+    if not sid:
+        return bad_response_fn(handler, "Missing session_id")
+    return json_response_fn(handler, {"yolo_enabled": is_session_yolo_enabled_fn(sid)})
+
+
+def handle_session_usage(handler, parsed, *, bad_response_fn, json_response_fn) -> bool:
+    sid = parse_qs(parsed.query).get("session_id", [""])[0]
+    if not sid:
+        return bad_response_fn(handler, "Missing session_id")
+    try:
+        from api.session_ops import session_usage
+
+        return json_response_fn(handler, session_usage(sid))
+    except KeyError:
+        return bad_response_fn(handler, "Session not found", 404)
+
+
+def handle_session_yolo_post(
+    handler,
+    body,
+    *,
+    require_fn,
+    bad_response_fn,
+    json_response_fn,
+    enable_session_yolo_fn,
+    disable_session_yolo_fn,
+    resolve_gateway_approval_fn,
+) -> bool:
+    try:
+        require_fn(body, "session_id")
+    except ValueError as exc:
+        return bad_response_fn(handler, str(exc))
+    sid = body["session_id"]
+    enabled = bool(body.get("enabled", True))
+    if enabled:
+        enable_session_yolo_fn(sid)
+        try:
+            from tools.approval import _pending as _p, _lock as _l
+
+            with _l:
+                _p.pop(sid, None)
+        except Exception:
+            pass
+        resolve_gateway_approval_fn(sid, "once", resolve_all=True)
+    else:
+        disable_session_yolo_fn(sid)
+    return json_response_fn(handler, {"ok": True, "yolo_enabled": enabled})
