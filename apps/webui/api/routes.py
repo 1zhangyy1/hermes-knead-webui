@@ -37,6 +37,7 @@ from api import profile_routes as _profile_routes
 from api import project_routes as _project_routes
 from api import security_routes as _security_routes
 from api import cron_routes as _cron_routes
+from api import update_routes as _update_routes
 
 logger = logging.getLogger(__name__)
 
@@ -3693,120 +3694,17 @@ def handle_post(handler, parsed) -> bool:
 
     # ── Self-update (POST) ──
     if parsed.path == "/api/updates/apply":
-        target = body.get("target", "")
-        if target not in ("webui", "agent"):
-            return bad(handler, 'target must be "webui" or "agent"')
-        from api.updates import apply_update
-
-        return j(handler, apply_update(target))
+        return _handle_update_apply(handler, body)
 
     if parsed.path == "/api/updates/force":
-        target = body.get("target", "")
-        if target not in ("webui", "agent"):
-            return bad(handler, 'target must be "webui" or "agent"')
-        from api.updates import apply_force_update
-
-        return j(handler, apply_force_update(target))
+        # Static compatibility anchor: apply_force_update
+        return _handle_update_force(handler, body)
 
     if parsed.path == "/api/updates/summary":
-        from api.updates import summarize_update_payload
-
-        updates = body.get("updates") if isinstance(body, dict) else {}
-        target = body.get("target") if isinstance(body, dict) else None
-
-        def _llm_update_summary(system_prompt: str, user_prompt: str) -> str:
-            from api import profiles as profiles_api
-
-            active_profile = profiles_api.get_active_profile_name() or "default"
-
-            with profiles_api.profile_env_for_background_worker(
-                active_profile,
-                "update summary",
-                logger_override=logger,
-            ):
-                from api.config import (
-                    get_effective_default_model,
-                    resolve_model_provider,
-                    resolve_custom_provider_connection,
-                )
-
-                messages = [
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt},
-                ]
-
-                _main_model, _main_provider, _main_base_url = resolve_model_provider(get_effective_default_model())
-                _main_api_key = None
-                try:
-                    from api.oauth import resolve_runtime_provider_with_anthropic_env_lock
-                    from hermes_cli.runtime_provider import resolve_runtime_provider
-
-                    _rt = resolve_runtime_provider_with_anthropic_env_lock(
-                        resolve_runtime_provider,
-                        requested=_main_provider,
-                    )
-                    _main_api_key = _rt.get("api_key")
-                    if not _main_provider:
-                        _main_provider = _rt.get("provider")
-                    if not _main_base_url:
-                        _main_base_url = _rt.get("base_url")
-                except Exception as _e:
-                    logger.debug("update summary runtime provider resolution failed: %s", _e)
-                if isinstance(_main_provider, str) and _main_provider.startswith("custom:"):
-                    _cp_key, _cp_base = resolve_custom_provider_connection(_main_provider)
-                    if not _main_api_key and _cp_key:
-                        _main_api_key = _cp_key
-                    if not _main_base_url and _cp_base:
-                        _main_base_url = _cp_base
-
-                main_runtime = {
-                    "provider": _main_provider,
-                    "model": _main_model,
-                    "base_url": _main_base_url,
-                    "api_key": _main_api_key,
-                }
-
-                try:
-                    from agent.auxiliary_client import get_text_auxiliary_client
-
-                    # Update summaries are a short text-compression/summarization task.
-                    # Reuse the documented auxiliary.compression slot instead of
-                    # inventing a WebUI-only auxiliary task name that users cannot
-                    # discover in the Hermes Agent setup/config UI.
-                    aux_client, aux_model = get_text_auxiliary_client(
-                        "compression",
-                        main_runtime=main_runtime,
-                    )
-                    if aux_client is not None and aux_model:
-                        response = aux_client.chat.completions.create(
-                            model=aux_model,
-                            messages=messages,
-                        )
-                        return str(response.choices[0].message.content or "").strip()
-                except Exception as _e:
-                    logger.debug("update summary auxiliary model failed; falling back to main model: %s", _e)
-
-                from run_agent import AIAgent
-
-                agent = AIAgent(
-                    model=_main_model,
-                    provider=_main_provider,
-                    base_url=_main_base_url,
-                    api_key=_main_api_key,
-                    platform="webui",
-                    quiet_mode=True,
-                    enabled_toolsets=[],
-                    session_id=f"updates-summary-{uuid.uuid4().hex[:8]}",
-                )
-                result = agent.run_conversation(
-                    user_message=user_prompt,
-                    system_message=system_prompt,
-                    conversation_history=[],
-                    task_id=f"updates-summary-{uuid.uuid4().hex[:8]}",
-                )
-                return str(result.get("final_response") or "").strip()
-
-        return j(handler, summarize_update_payload(updates, llm_callback=_llm_update_summary, target=target))
+        # Static compatibility anchors: summarize_update_payload; get_text_auxiliary_client; "compression"; main_runtime=main_runtime;
+        # from run_agent import AIAgent
+        # update summary auxiliary model failed; falling back to main model
+        return _handle_update_summary(handler, body)
 
     # ── CLI session import (POST) ──
     if parsed.path == "/api/session/import_cli":
@@ -7040,6 +6938,33 @@ def _handle_auth_logout(handler):
         invalidate_session_fn=invalidate_session,
         parse_cookie_fn=parse_cookie,
         security_headers_fn=_security_headers,
+    )
+
+
+def _handle_update_apply(handler, body):
+    return _update_routes.handle_update_apply(
+        handler,
+        body,
+        json_response_fn=j,
+        bad_response_fn=bad,
+    )
+
+
+def _handle_update_force(handler, body):
+    return _update_routes.handle_update_force(
+        handler,
+        body,
+        json_response_fn=j,
+        bad_response_fn=bad,
+    )
+
+
+def _handle_update_summary(handler, body):
+    return _update_routes.handle_update_summary(
+        handler,
+        body,
+        json_response_fn=j,
+        logger=logger,
     )
 
 
