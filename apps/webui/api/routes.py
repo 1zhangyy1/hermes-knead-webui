@@ -99,6 +99,7 @@ from api import file_response_routes as _file_response_routes
 from api import gateway_routes as _gateway_routes
 from api import gateway_sse_routes as _gateway_sse_routes
 from api import health_routes as _health_routes
+from api import handoff_routes as _handoff_routes
 from api import interaction_routes as _interaction_routes
 from api import llm_wiki_routes as _llm_wiki_routes
 from api import login_routes as _login_routes
@@ -7051,113 +7052,39 @@ def _build_handoff_summary_tool_message(
     fallback: bool = False,
 ) -> dict:
     """Build a compact tool-role transcript marker for persistence."""
-    now = time.time()
-    return {
-        "role": "tool",
-        # Keep this intentionally empty so API-history sanitization drops it from
-        # model context (it is display-only data).
-        "tool_call_id": "",
-        "name": "handoff_summary",
-        "timestamp": now,
-        "_ts": now,
-        "content": json.dumps({
-            "_handoff_summary_card": True,
-            "session_id": sid,
-            "summary": str(summary or "").strip(),
-            "channel": (str(channel or "").strip() or None),
-            "rounds": rounds,
-            "fallback": bool(fallback),
-            "generated_at": now,
-        }, ensure_ascii=False),
-    }
+    return _handoff_routes.build_handoff_summary_tool_message(sid, summary, channel, rounds, fallback)
 
 
 def _extract_handoff_summary_payload(message: dict) -> dict | None:
     """Return a normalized handoff-summary payload if *message* is a tool marker."""
-    if not isinstance(message, dict):
-        return None
-    if message.get("role") != "tool" or message.get("name") != "handoff_summary":
-        return None
-
-    content = message.get("content")
-    if isinstance(content, dict):
-        payload = content
-    else:
-        try:
-            payload = json.loads(content or "")
-        except Exception:
-            return None
-
-    if not isinstance(payload, dict) or not payload.get("_handoff_summary_card"):
-        return None
-    if payload.get("session_id") is None:
-        return None
-    return {
-        "session_id": str(payload.get("session_id")),
-        "summary": str(payload.get("summary", "")),
-        "channel": payload.get("channel"),
-        "rounds": payload.get("rounds"),
-        "fallback": bool(payload.get("fallback")),
-        "_handoff_summary_card": True,
-    }
+    return _handoff_routes.extract_handoff_summary_payload(message)
 
 
 def _is_matching_handoff_summary_message(existing: dict, target: dict) -> bool:
     """Return True when two message payloads represent the same handoff summary."""
-    existing_payload = _extract_handoff_summary_payload(existing)
-    target_payload = _extract_handoff_summary_payload(target)
-    if not existing_payload or not target_payload:
-        return False
-    return (
-        existing_payload.get("session_id") == target_payload.get("session_id") and
-        existing_payload.get("summary") == target_payload.get("summary") and
-        existing_payload.get("channel") == target_payload.get("channel") and
-        existing_payload.get("rounds") == target_payload.get("rounds") and
-        existing_payload.get("fallback") == target_payload.get("fallback") and
-        existing_payload.get("_handoff_summary_card") == target_payload.get("_handoff_summary_card")
+    return _handoff_routes.is_matching_handoff_summary_message(
+        existing,
+        target,
+        extract_payload_fn=_extract_handoff_summary_payload,
     )
 
 
 def _is_matching_handoff_summary_content(content: object, target_payload: dict | None) -> bool:
     """Return True if DB content JSON matches an expected handoff summary payload."""
-    if target_payload is None:
-        return False
-    try:
-        payload = json.loads(content or "")
-    except Exception:
-        return False
-    if not isinstance(payload, dict):
-        return False
-    if payload.get("session_id") is None:
-        return False
-    return (
-        payload.get("_handoff_summary_card") is True and
-        str(payload.get("session_id")) == str(target_payload.get("session_id")) and
-        str(payload.get("summary", "")) == str(target_payload.get("summary", "")) and
-        payload.get("channel") == target_payload.get("channel") and
-        payload.get("rounds") == target_payload.get("rounds") and
-        bool(payload.get("fallback")) == bool(target_payload.get("fallback"))
-    )
+    return _handoff_routes.is_matching_handoff_summary_content(content, target_payload)
 
 
 def _persist_handoff_summary_locally(sid: str, message: dict) -> bool:
     """Persist a handoff summary marker into a local WebUI session file."""
-    try:
-        from api.models import get_session
+    from api.models import get_session
 
-        s = get_session(sid)
-    except KeyError:
-        return False
-
-    try:
-        if s.messages and _is_matching_handoff_summary_message(s.messages[-1], message):
-            return True
-        s.messages.append(message)
-        s.save()
-        return True
-    except Exception as e:
-        logger.warning("Failed to persist handoff summary marker in local session %s: %s", sid, e)
-        return False
+    return _handoff_routes.persist_handoff_summary_locally(
+        sid,
+        message,
+        get_session_fn=get_session,
+        is_matching_message_fn=_is_matching_handoff_summary_message,
+        logger=logger,
+    )
 
 
 def _persist_handoff_summary_to_state_db(sid: str, message: dict) -> bool:
@@ -7166,78 +7093,31 @@ def _persist_handoff_summary_to_state_db(sid: str, message: dict) -> bool:
     This keeps summary cards available after hard-refresh for imported gateway
     sessions that are not in local session JSON yet.
     """
-    import os
+    from api.profiles import get_active_hermes_home
 
-    try:
-        import sqlite3
-    except ImportError:
-        return False
-
-    try:
-        from api.profiles import get_active_hermes_home
-
-        hermes_home = Path(get_active_hermes_home()).expanduser().resolve()
-    except Exception:
-        hermes_home = Path(os.getenv("HERMES_HOME", str(Path.home() / ".hermes"))).expanduser().resolve()
-
-    db_path = hermes_home / "state.db"
-    if not db_path.exists():
-        return False
-
-    ts = message.get("timestamp", time.time())
-    content = message.get("content", "")
-    if not isinstance(content, str):
-        content = json.dumps(content, ensure_ascii=False)
-
-    marker_payload = _extract_handoff_summary_payload(message)
-    try:
-        with sqlite3.connect(str(db_path)) as conn:
-            try:
-                if marker_payload is not None:
-                    cur = conn.execute(
-                        "SELECT content FROM messages WHERE session_id = ? AND role = 'tool' "
-                        "ORDER BY rowid DESC LIMIT 1",
-                        (sid,),
-                    )
-                    row = cur.fetchone()
-                    if row is not None and _is_matching_handoff_summary_content(row[0], marker_payload):
-                        return True
-            except Exception:
-                # If tail-read fails, continue with a best-effort write.
-                logger.debug("Unable to read tail handoff marker from state.db for %s", sid)
-
-            conn.execute(
-                "INSERT INTO messages (session_id, role, content, timestamp) "
-                "VALUES (?, 'tool', ?, ?)",
-                (sid, content, ts),
-            )
-            # Keep session row message_count/last-activity aligned with displayed
-            # transcript length. session rows are optional in some test DBs, so
-            # this update is best-effort.
-            conn.execute(
-                "UPDATE sessions SET message_count = COALESCE(message_count, 0) + 1 "
-                "WHERE id = ?",
-                (sid,),
-            )
-            conn.commit()
-        return True
-    except Exception as e:
-        logger.warning("Failed to persist handoff summary marker in state.db for %s: %s", sid, e)
-        return False
+    return _handoff_routes.persist_handoff_summary_to_state_db(
+        sid,
+        message,
+        active_home_fn=get_active_hermes_home,
+        extract_payload_fn=_extract_handoff_summary_payload,
+        is_matching_content_fn=_is_matching_handoff_summary_content,
+        logger=logger,
+    )
 
 
 def _persist_handoff_summary(sid: str, summary: str, channel: str | None, rounds: int | None, fallback: bool = False) -> dict:
     """Persist a handoff summary marker across local/session backends."""
-    marker = _build_handoff_summary_tool_message(sid, summary, channel, rounds, fallback)
-    is_messaging_session = _is_messaging_session_id(sid)
-    if is_messaging_session:
-        _persist_handoff_summary_to_state_db(sid, marker)
-        _persist_handoff_summary_locally(sid, marker)
-        return marker
-    persisted_local = _persist_handoff_summary_locally(sid, marker)
-    if persisted_local:
-        return marker
-    return marker if _persist_handoff_summary_to_state_db(sid, marker) else marker
+    return _handoff_routes.persist_handoff_summary(
+        sid,
+        summary,
+        channel,
+        rounds,
+        fallback,
+        is_messaging_session_fn=_is_messaging_session_id,
+        build_marker_fn=_build_handoff_summary_tool_message,
+        persist_local_fn=_persist_handoff_summary_locally,
+        persist_state_db_fn=_persist_handoff_summary_to_state_db,
+    )
 
 
 def _handle_handoff_summary(handler, body):
