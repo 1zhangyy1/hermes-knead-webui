@@ -372,6 +372,97 @@ def handle_session_move(
     return json_response_fn(handler, {"ok": True, "session": session.compact()})
 
 
+def handle_session_clear(
+    handler,
+    body,
+    *,
+    require_fn,
+    bad_response_fn,
+    json_response_fn,
+    get_session_fn,
+    session_lock_fn,
+    evict_session_agent_fn,
+) -> bool:
+    try:
+        require_fn(body, "session_id")
+    except ValueError as exc:
+        return bad_response_fn(handler, str(exc))
+    try:
+        session = get_session_fn(body["session_id"])
+    except KeyError:
+        return bad_response_fn(handler, "Session not found", 404)
+    sid = body["session_id"]
+    with session_lock_fn(sid):
+        session.messages = []
+        session.tool_calls = []
+        session.title = "Untitled"
+        session.save()
+    evict_session_agent_fn(sid)
+    return json_response_fn(handler, {"ok": True, "session": session.compact()})
+
+
+def handle_session_truncate(
+    handler,
+    body,
+    *,
+    require_fn,
+    bad_response_fn,
+    json_response_fn,
+    get_session_fn,
+    session_lock_fn,
+) -> bool:
+    try:
+        require_fn(body, "session_id")
+    except ValueError as exc:
+        return bad_response_fn(handler, str(exc))
+    if body.get("keep_count") is None:
+        return bad_response_fn(handler, "Missing required field(s): keep_count")
+    try:
+        session = get_session_fn(body["session_id"])
+    except KeyError:
+        return bad_response_fn(handler, "Session not found", 404)
+    keep = int(body["keep_count"])
+    with session_lock_fn(body["session_id"]):
+        session.messages = session.messages[:keep]
+        session.save()
+    return json_response_fn(
+        handler,
+        {"ok": True, "session": session.compact() | {"messages": session.messages}},
+    )
+
+
+def handle_session_retry(handler, body, *, require_fn, bad_response_fn, json_response_fn) -> bool:
+    try:
+        require_fn(body, "session_id")
+    except ValueError as exc:
+        return bad_response_fn(handler, str(exc))
+    try:
+        from api.session_ops import retry_last
+
+        result = retry_last(body["session_id"])
+        return json_response_fn(handler, {"ok": True, **result})
+    except KeyError:
+        return bad_response_fn(handler, "Session not found", 404)
+    except ValueError as exc:
+        return json_response_fn(handler, {"error": str(exc)})
+
+
+def handle_session_undo(handler, body, *, require_fn, bad_response_fn, json_response_fn) -> bool:
+    try:
+        require_fn(body, "session_id")
+    except ValueError as exc:
+        return bad_response_fn(handler, str(exc))
+    try:
+        from api.session_ops import undo_last
+
+        result = undo_last(body["session_id"])
+        return json_response_fn(handler, {"ok": True, **result})
+    except KeyError:
+        return bad_response_fn(handler, "Session not found", 404)
+    except ValueError as exc:
+        return json_response_fn(handler, {"error": str(exc)})
+
+
 def handle_personality_set(
     handler,
     body,
