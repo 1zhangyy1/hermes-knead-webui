@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
+from urllib.parse import parse_qs
 import urllib.parse as urlparse
 
 
@@ -122,3 +124,191 @@ def serve_file_bytes(
         except PermissionError:
             return True
     return True
+
+
+def handle_media(
+    handler,
+    parsed,
+    *,
+    mime_map: dict[str, str],
+    bad_response_fn,
+    json_response_fn,
+    serve_file_bytes_fn,
+):
+    """Serve a local file by absolute path for inline chat display."""
+    from api.auth import is_auth_enabled, parse_cookie, verify_session
+
+    home = Path(os.path.expanduser("~"))
+    hermes_home = Path(os.getenv("HERMES_HOME", str(home / ".hermes"))).expanduser()
+
+    if is_auth_enabled():
+        cv = parse_cookie(handler)
+        if not (cv and verify_session(cv)):
+            handler.send_response(401)
+            handler.send_header("Content-Type", "application/json")
+            handler.end_headers()
+            handler.wfile.write(b'{"error":"Authentication required"}')
+            return
+
+    qs = parse_qs(parsed.query)
+    raw_path = qs.get("path", [""])[0].strip()
+    if not raw_path:
+        return bad_response_fn(handler, "path parameter required", 400)
+
+    try:
+        target = Path(raw_path).resolve()
+    except Exception:
+        return bad_response_fn(handler, "Invalid path", 400)
+
+    allowed_roots = [
+        hermes_home.resolve(),
+        Path("/tmp").resolve(),
+        (home / ".hermes").resolve(),
+    ]
+    try:
+        from api.workspace import get_last_workspace
+
+        ws = Path(get_last_workspace()).resolve()
+        if ws.is_dir():
+            allowed_roots.append(ws)
+    except Exception:
+        pass
+
+    extra_roots = os.environ.get("MEDIA_ALLOWED_ROOTS", "").strip()
+    if extra_roots:
+        for root in extra_roots.split(os.pathsep):
+            root = root.strip()
+            if root:
+                try:
+                    rp = Path(root).resolve()
+                    if rp.is_dir():
+                        allowed_roots.append(rp)
+                except Exception:
+                    pass
+
+    within_allowed = any(
+        os.path.commonpath([str(target), str(root)]) == str(root)
+        for root in allowed_roots
+        if root.exists()
+    )
+    if not within_allowed:
+        return bad_response_fn(handler, "Path not in allowed location", 403)
+
+    if not target.exists() or not target.is_file():
+        return json_response_fn(handler, {"error": "not found"}, status=404)
+
+    mime = mime_map.get(target.suffix.lower(), "application/octet-stream")
+    inline_image_types = {
+        "image/png", "image/jpeg", "image/gif", "image/webp",
+        "image/x-icon", "image/bmp",
+    }
+    inline_preview_types = inline_image_types | {
+        "audio/mpeg", "audio/wav", "audio/x-wav", "audio/mp4", "audio/aac",
+        "audio/ogg", "audio/opus", "audio/flac",
+        "video/mp4", "video/quicktime", "video/webm", "video/ogg",
+        "application/pdf",
+    }
+    download_types = {"image/svg+xml"}
+    inline_preview = qs.get("inline", [""])[0] == "1"
+    html_inline_ok = inline_preview and mime == "text/html"
+    disposition = "inline" if (
+        mime not in download_types and (
+            mime in inline_image_types
+            or (inline_preview and mime in inline_preview_types)
+            or html_inline_ok
+        )
+    ) else "attachment"
+    csp = "sandbox allow-scripts" if html_inline_ok else None
+    return serve_file_bytes_fn(
+        handler,
+        target,
+        mime,
+        disposition,
+        "private, max-age=3600",
+        csp=csp,
+    )
+
+
+def file_raw_target(session, sid: str, rel: str, *, safe_resolve_fn) -> Path | None:
+    """Resolve /api/file/raw paths from the workspace or this session's uploads."""
+    try:
+        target = safe_resolve_fn(Path(session.workspace), rel)
+    except ValueError:
+        target = None
+    if target and target.exists() and target.is_file():
+        return target
+
+    try:
+        from api.upload import _session_attachment_dir
+
+        attachment_target = safe_resolve_fn(_session_attachment_dir(sid), rel)
+    except Exception:
+        return None
+    if attachment_target.exists() and attachment_target.is_file():
+        return attachment_target
+    return None
+
+
+def handle_file_raw(
+    handler,
+    parsed,
+    *,
+    mime_map: dict[str, str],
+    bad_response_fn,
+    json_response_fn,
+    get_session_fn,
+    file_raw_target_fn,
+    serve_file_bytes_fn,
+):
+    qs = parse_qs(parsed.query)
+    sid = qs.get("session_id", [""])[0]
+    if not sid:
+        return bad_response_fn(handler, "session_id is required")
+    try:
+        session = get_session_fn(sid)
+    except KeyError:
+        return bad_response_fn(handler, "Session not found", 404)
+    rel = qs.get("path", [""])[0]
+    force_download = qs.get("download", [""])[0] == "1"
+    target = file_raw_target_fn(session, sid, rel)
+    if target is None:
+        return json_response_fn(handler, {"error": "not found"}, status=404)
+
+    mime = mime_map.get(target.suffix.lower(), "application/octet-stream")
+    inline_preview = qs.get("inline", [""])[0] == "1"
+    dangerous_types = {"text/html", "application/xhtml+xml", "image/svg+xml"}
+    html_inline_ok = inline_preview and mime == "text/html"
+    disposition = (
+        "attachment"
+        if force_download or (mime in dangerous_types and not html_inline_ok)
+        else "inline"
+    )
+    csp = "sandbox allow-scripts" if html_inline_ok else None
+    return serve_file_bytes_fn(handler, target, mime, disposition, "no-store", csp=csp)
+
+
+def handle_file_read(
+    handler,
+    parsed,
+    *,
+    bad_response_fn,
+    json_response_fn,
+    get_session_fn,
+    read_file_content_fn,
+    sanitize_error_fn,
+):
+    qs = parse_qs(parsed.query)
+    sid = qs.get("session_id", [""])[0]
+    if not sid:
+        return bad_response_fn(handler, "session_id is required")
+    try:
+        session = get_session_fn(sid)
+    except KeyError:
+        return bad_response_fn(handler, "Session not found", 404)
+    rel = qs.get("path", [""])[0]
+    if not rel:
+        return bad_response_fn(handler, "path is required")
+    try:
+        return json_response_fn(handler, read_file_content_fn(Path(session.workspace), rel))
+    except (FileNotFoundError, ValueError) as exc:
+        return bad_response_fn(handler, sanitize_error_fn(exc), 404)
