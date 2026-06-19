@@ -7,6 +7,41 @@ from pathlib import Path
 from urllib.parse import parse_qs
 
 
+def handle_sessions_cleanup(
+    handler,
+    _body,
+    *,
+    zero_only: bool = False,
+    session_dir: Path,
+    session_cls,
+    sessions: dict,
+    lock,
+    session_index_file: Path,
+    json_response_fn,
+    logger,
+) -> bool:
+    cleaned = 0
+    for path in session_dir.glob("*.json"):
+        if path.name.startswith("_"):
+            continue
+        try:
+            session = session_cls.load(path.stem)
+            if zero_only:
+                should_delete = session and len(session.messages) == 0
+            else:
+                should_delete = session and session.title == "Untitled" and len(session.messages) == 0
+            if should_delete:
+                with lock:
+                    sessions.pop(path.stem, None)
+                path.unlink(missing_ok=True)
+                cleaned += 1
+        except Exception:
+            logger.debug("Failed to clean up session file %s", path)
+    if session_index_file.exists():
+        session_index_file.unlink(missing_ok=True)
+    return json_response_fn(handler, {"ok": True, "cleaned": cleaned})
+
+
 def handle_session_export(
     handler,
     parsed,

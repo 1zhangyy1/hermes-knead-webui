@@ -6258,26 +6258,18 @@ def _handle_memory_read(handler):
 
 
 def _handle_sessions_cleanup(handler, body, zero_only=False):
-    cleaned = 0
-    for p in SESSION_DIR.glob("*.json"):
-        if p.name.startswith("_"):
-            continue
-        try:
-            s = Session.load(p.stem)
-            if zero_only:
-                should_delete = s and len(s.messages) == 0
-            else:
-                should_delete = s and s.title == "Untitled" and len(s.messages) == 0
-            if should_delete:
-                with LOCK:
-                    SESSIONS.pop(p.stem, None)
-                p.unlink(missing_ok=True)
-                cleaned += 1
-        except Exception:
-            logger.debug("Failed to clean up session file %s", p)
-    if SESSION_INDEX_FILE.exists():
-        SESSION_INDEX_FILE.unlink(missing_ok=True)
-    return j(handler, {"ok": True, "cleaned": cleaned})
+    return _session_routes.handle_sessions_cleanup(
+        handler,
+        body,
+        zero_only=zero_only,
+        session_dir=SESSION_DIR,
+        session_cls=Session,
+        sessions=SESSIONS,
+        lock=LOCK,
+        session_index_file=SESSION_INDEX_FILE,
+        json_response_fn=j,
+        logger=logger,
+    )
 
 
 def _handle_btw(handler, body):
