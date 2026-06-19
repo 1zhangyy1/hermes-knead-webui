@@ -101,6 +101,7 @@ from api import mcp_routes as _mcp_routes
 from api import plugin_routes as _plugin_routes
 from api import rollback_routes as _rollback_routes
 from api import skills_routes as _skills_routes
+from api import terminal_routes as _terminal_routes
 
 
 def _all_profiles_query_flag(parsed_url) -> bool:
@@ -5291,123 +5292,67 @@ def _handle_sse_stream(handler, parsed):
 
 
 def _terminal_session_and_workspace(body_or_query):
-    sid = str(body_or_query.get("session_id", "")).strip()
-    if not sid:
-        raise ValueError("session_id required")
-    try:
-        s = get_session(sid)
-    except KeyError:
-        raise KeyError("Session not found")
-    workspace = resolve_trusted_workspace(getattr(s, "workspace", "") or "")
-    return sid, workspace
+    return _terminal_routes.terminal_session_and_workspace(
+        body_or_query,
+        get_session_fn=get_session,
+        resolve_trusted_workspace_fn=resolve_trusted_workspace,
+    )
 
 
 def _handle_terminal_start(handler, body):
-    try:
-        sid, workspace = _terminal_session_and_workspace(body)
-        from api.terminal import start_terminal
-        term = start_terminal(
-            sid,
-            workspace,
-            rows=int(body.get("rows") or 24),
-            cols=int(body.get("cols") or 80),
-            restart=bool(body.get("restart")),
-        )
-        return j(
-            handler,
-            {
-                "ok": True,
-                "session_id": sid,
-                "workspace": term.workspace,
-                "running": term.is_alive(),
-            },
-        )
-    except KeyError as e:
-        return bad(handler, str(e), 404)
-    except ValueError as e:
-        return bad(handler, str(e), 400)
-    except Exception as e:
-        return bad(handler, _sanitize_error(e), 500)
+    return _terminal_routes.handle_terminal_start(
+        handler,
+        body,
+        terminal_session_and_workspace_fn=_terminal_session_and_workspace,
+        json_response_fn=j,
+        bad_response_fn=bad,
+        sanitize_error_fn=_sanitize_error,
+    )
 
 
 def _handle_terminal_input(handler, body):
-    try:
-        require(body, "session_id")
-        data = str(body.get("data", ""))
-        if len(data) > 8192:
-            return bad(handler, "input too large", 413)
-        from api.terminal import write_terminal
-        write_terminal(body["session_id"], data)
-        return j(handler, {"ok": True})
-    except KeyError as e:
-        return bad(handler, str(e), 404)
-    except ValueError as e:
-        return bad(handler, str(e), 400)
-    except Exception as e:
-        return bad(handler, _sanitize_error(e), 500)
+    return _terminal_routes.handle_terminal_input(
+        handler,
+        body,
+        require_fn=require,
+        json_response_fn=j,
+        bad_response_fn=bad,
+        sanitize_error_fn=_sanitize_error,
+    )
 
 
 def _handle_terminal_resize(handler, body):
-    try:
-        require(body, "session_id")
-        from api.terminal import resize_terminal
-        resize_terminal(
-            body["session_id"],
-            rows=int(body.get("rows") or 24),
-            cols=int(body.get("cols") or 80),
-        )
-        return j(handler, {"ok": True})
-    except KeyError as e:
-        return bad(handler, str(e), 404)
-    except ValueError as e:
-        return bad(handler, str(e), 400)
-    except Exception as e:
-        return bad(handler, _sanitize_error(e), 500)
+    return _terminal_routes.handle_terminal_resize(
+        handler,
+        body,
+        require_fn=require,
+        json_response_fn=j,
+        bad_response_fn=bad,
+        sanitize_error_fn=_sanitize_error,
+    )
 
 
 def _handle_terminal_close(handler, body):
-    try:
-        require(body, "session_id")
-        from api.terminal import close_terminal
-        closed = close_terminal(body["session_id"])
-        return j(handler, {"ok": True, "closed": closed})
-    except ValueError as e:
-        return bad(handler, str(e), 400)
+    return _terminal_routes.handle_terminal_close(
+        handler,
+        body,
+        require_fn=require,
+        json_response_fn=j,
+        bad_response_fn=bad,
+    )
 
 
 def _handle_terminal_output(handler, parsed):
-    qs = parse_qs(parsed.query)
-    sid = qs.get("session_id", [""])[0]
-    if not sid:
-        return bad(handler, "session_id required")
-    from api.terminal import get_terminal
-    term = get_terminal(sid)
-    if term is None:
-        return j(handler, {"error": "terminal not running"}, status=404)
-
-    handler.send_response(200)
-    handler.send_header("Content-Type", "text/event-stream; charset=utf-8")
-    handler.send_header("Cache-Control", "no-cache")
-    handler.send_header("X-Accel-Buffering", "no")
-    handler.send_header("Connection", "keep-alive")
-    handler.end_headers()
-    try:
-        while True:
-            try:
-                event, data = term.output.get(timeout=_SSE_HEARTBEAT_INTERVAL_SECONDS)
-            except queue.Empty:
-                handler.wfile.write(b": terminal heartbeat\n\n")
-                handler.wfile.flush()
-                if term.closed.is_set() and term.output.empty():
-                    _sse(handler, "terminal_closed", {"exit_code": term.proc.poll()})
-                    break
-                continue
-            _sse(handler, event, data)
-            if event in ("terminal_closed", "terminal_error"):
-                break
-    except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
-        pass
-    return True
+    return _terminal_routes.handle_terminal_output(
+        handler,
+        parsed,
+        json_response_fn=j,
+        bad_response_fn=bad,
+        sse_fn=_sse,
+        heartbeat_interval_seconds=_SSE_HEARTBEAT_INTERVAL_SECONDS,
+        queue_empty_error=queue.Empty,
+        client_disconnect_errors=_CLIENT_DISCONNECT_ERRORS,
+    )
 
 
 def _gateway_sse_probe_payload(settings, watcher):
