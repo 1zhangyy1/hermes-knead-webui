@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
+import copy
 import io
 import json
+import re
 import threading
 import time
 from typing import Callable
+
+from api.compression_anchor import visible_messages_for_anchor
 
 
 class ManualCompressionMemoryHandler:
@@ -214,6 +218,290 @@ def handle_session_compress_status(
             return json_response_fn(handler, {"ok": True, "status": "idle", "session_id": sid})
         payload = status_payload_fn(job)
         return json_response_fn(handler, payload)
+
+
+def handle_session_compress(
+    handler,
+    body,
+    *,
+    require_fn: Callable,
+    bad_fn: Callable,
+    json_response_fn: Callable,
+    get_session_fn: Callable,
+    resolve_cli_toolsets_fn: Callable[[], list[str]],
+    sanitize_error_fn: Callable,
+    redact_session_data_fn: Callable,
+    logger,
+):
+    def _anchor_message_key(m):
+        if not isinstance(m, dict):
+            return None
+        role = str(m.get("role") or "")
+        if not role or role == "tool":
+            return None
+        content = m.get("content", "")
+        if isinstance(content, list):
+            text = "\n".join(
+                str(p.get("text") or p.get("content") or "")
+                for p in content
+                if isinstance(p, dict) and p.get("type") == "text"
+            )
+        else:
+            text = str(content or "")
+        norm = " ".join(text.split()).strip()[:160]
+        ts = m.get("_ts") or m.get("timestamp")
+        attachments = m.get("attachments")
+        attach_count = len(attachments) if isinstance(attachments, list) else 0
+        if not norm and not attach_count and not ts:
+            return None
+        return {"role": role, "ts": ts, "text": norm, "attachments": attach_count}
+
+    def _compression_summary_from_messages(messages):
+        text = None
+        for m in reversed(messages or []):
+            if not isinstance(m, dict):
+                continue
+            role = str(m.get("role") or "").lower()
+            if role != "assistant":
+                continue
+            if not isinstance(m.get("content"), str):
+                continue
+            content = str(m.get("content") or "").strip()
+            if not content:
+                continue
+            norm = re.sub(r"\s+", " ", content).strip()
+            if (
+                "context compaction" in norm.lower()
+                or "context compression" in norm.lower()
+            ):
+                return norm
+        return None
+
+    def _compact_summary_text(raw_text):
+        if not isinstance(raw_text, str):
+            return None
+        txt = raw_text.strip()
+        if not txt:
+            return None
+        txt = re.sub(r"\s+", " ", txt)
+        if len(txt) > 320:
+            txt = f"{txt[:314]}…"
+        return txt
+
+    try:
+        require_fn(body, "session_id")
+    except ValueError as e:
+        return bad_fn(handler, str(e))
+
+    sid = str(body.get("session_id") or "").strip()
+    if not sid:
+        return bad_fn(handler, "session_id is required")
+
+    focus_topic = str(body.get("focus_topic") or body.get("topic") or "").strip()[:500] or None
+
+    try:
+        s = get_session_fn(sid)
+    except KeyError:
+        return bad_fn(handler, "Session not found", 404)
+
+    if getattr(s, "active_stream_id", None):
+        return bad_fn(handler, "Session is still streaming; wait for the current turn to finish.", 409)
+
+    try:
+        from api.streaming import _sanitize_messages_for_api
+
+        messages = _sanitize_messages_for_api(s.messages)
+        if len(messages) < 4:
+            return bad_fn(handler, "Not enough conversation to compress (need at least 4 messages).")
+
+        def _fallback_estimate_messages_tokens_rough(msgs):
+            """Fallback heuristic token estimate when runtime metadata helpers are absent."""
+            total = 0
+            for m in msgs or []:
+                if not isinstance(m, dict):
+                    continue
+                content = m.get("content", "")
+                if isinstance(content, list):
+                    content_text = "\n".join(
+                        str(p.get("text") or p.get("content") or "")
+                        for p in content
+                        if isinstance(p, dict)
+                    )
+                else:
+                    content_text = str(content or "")
+                total += len(content_text.split())
+            return max(1, total)
+
+        def _fallback_summarize_manual_compression(original_messages, compressed_messages, before_tokens, after_tokens, focus_topic=None):
+            """Lightweight fallback summary to keep /session/compress usable in tests/runtime."""
+            after_tokens = after_tokens if after_tokens is not None else _fallback_estimate_messages_tokens_rough(compressed_messages)
+            headline = f"Compressed: {len(original_messages)} \u2192 {len(compressed_messages)} messages"
+            summary = {
+                "headline": headline,
+                "token_line": f"Rough transcript estimate: ~{before_tokens} \u2192 ~{after_tokens} tokens",
+                "note": f"Focus: {focus_topic}" if focus_topic else None,
+            }
+            summary["reference_message"] = (
+                f"[CONTEXT COMPACTION \u2014 REFERENCE ONLY] {headline}\n"
+                f"{summary['token_line']}\n"
+                + (summary["note"] + "\n" if summary.get("note") else "")
+                + "Compression completed."
+            )
+            return summary
+
+        def _estimate_messages_tokens_rough(msgs):
+            try:
+                from agent.model_metadata import estimate_messages_tokens_rough
+
+                return estimate_messages_tokens_rough(msgs)
+            except Exception:
+                return _fallback_estimate_messages_tokens_rough(msgs)
+
+        def _summarize_manual_compression(
+            original_messages,
+            compressed_messages,
+            before_tokens,
+            after_tokens,
+            focus_topic=None,
+        ):
+            try:
+                from agent.manual_compression_feedback import summarize_manual_compression
+
+                return summarize_manual_compression(
+                    original_messages,
+                    compressed_messages,
+                    before_tokens,
+                    after_tokens,
+                )
+            except Exception:
+                return _fallback_summarize_manual_compression(
+                    original_messages,
+                    compressed_messages,
+                    before_tokens,
+                    after_tokens,
+                    focus_topic,
+                )
+
+        import api.config as _cfg
+        from api.oauth import resolve_runtime_provider_with_anthropic_env_lock
+        import hermes_cli.runtime_provider as _runtime_provider
+        import run_agent as _run_agent
+
+        resolved_model, resolved_provider, resolved_base_url = _cfg.resolve_model_provider(
+            _cfg.model_with_provider_context(s.model, getattr(s, "model_provider", None))
+        )
+
+        resolved_api_key = None
+        try:
+            _rt = resolve_runtime_provider_with_anthropic_env_lock(
+                _runtime_provider.resolve_runtime_provider,
+                requested=resolved_provider,
+            )
+            resolved_api_key = _rt.get("api_key")
+            if not resolved_provider:
+                resolved_provider = _rt.get("provider")
+            if not resolved_base_url:
+                resolved_base_url = _rt.get("base_url")
+        except Exception as _e:
+            logger.warning("resolve_runtime_provider failed for compression: %s", _e)
+
+        if isinstance(resolved_provider, str) and resolved_provider.startswith("custom:"):
+            _cp_key, _cp_base = _cfg.resolve_custom_provider_connection(resolved_provider)
+            if not resolved_api_key and _cp_key:
+                resolved_api_key = _cp_key
+            if not resolved_base_url and _cp_base:
+                resolved_base_url = _cp_base
+
+        if not resolved_api_key:
+            return bad_fn(handler, "No provider configured -- cannot compress.")
+
+        original_messages = list(messages)
+        original_stream_state = (
+            getattr(s, "active_stream_id", None),
+            getattr(s, "pending_user_message", None),
+            copy.deepcopy(getattr(s, "pending_attachments", None)),
+            getattr(s, "pending_started_at", None),
+        )
+        approx_tokens = _estimate_messages_tokens_rough(original_messages)
+
+        agent = _run_agent.AIAgent(
+            model=resolved_model,
+            provider=resolved_provider,
+            base_url=resolved_base_url,
+            api_key=resolved_api_key,
+            platform="webui",
+            quiet_mode=True,
+            enabled_toolsets=resolve_cli_toolsets_fn(),
+            session_id=sid,
+        )
+        compressed = agent.context_compressor.compress(
+            original_messages,
+            current_tokens=approx_tokens,
+            focus_topic=focus_topic,
+        )
+        new_tokens = _estimate_messages_tokens_rough(compressed)
+        summary = _summarize_manual_compression(
+            original_messages,
+            compressed,
+            approx_tokens,
+            new_tokens,
+            focus_topic=focus_topic,
+        )
+
+        with _cfg._get_session_agent_lock(sid):
+            current_stream_state = (
+                getattr(s, "active_stream_id", None),
+                getattr(s, "pending_user_message", None),
+                copy.deepcopy(getattr(s, "pending_attachments", None)),
+                getattr(s, "pending_started_at", None),
+            )
+            if current_stream_state != original_stream_state:
+                return bad_fn(handler, "Session stream state changed during compression; please retry.", 409)
+            if _sanitize_messages_for_api(s.messages) != original_messages:
+                return bad_fn(handler, "Session was modified during compression; please retry.", 409)
+
+            s.messages = compressed
+            s.context_messages = compressed
+            s.tool_calls = []
+            s.active_stream_id = None
+            s.pending_user_message = None
+            s.pending_attachments = []
+            s.pending_started_at = None
+            visible_after = visible_messages_for_anchor(compressed, auto_compression=False)
+            s.compression_anchor_visible_idx = max(0, len(visible_after) - 1) if visible_after else None
+            s.compression_anchor_message_key = _anchor_message_key(visible_after[-1]) if visible_after else None
+            summary_text = None
+            if isinstance(summary, dict):
+                summary_text = summary.get("reference_message") or summary.get("token_line") or summary.get("headline")
+            s.compression_anchor_summary = _compact_summary_text(
+                summary_text or _compression_summary_from_messages(compressed) or ""
+            )
+            s.save()
+
+        session_payload = redact_session_data_fn(
+            s.compact() | {
+                "messages": s.messages,
+                "tool_calls": s.tool_calls,
+                "active_stream_id": s.active_stream_id,
+                "pending_user_message": s.pending_user_message,
+                "pending_attachments": s.pending_attachments,
+                "pending_started_at": s.pending_started_at,
+                "compression_anchor_visible_idx": getattr(s, "compression_anchor_visible_idx", None),
+                "compression_anchor_message_key": getattr(s, "compression_anchor_message_key", None),
+            }
+        )
+        return json_response_fn(
+            handler,
+            {
+                "ok": True,
+                "session": session_payload,
+                "summary": summary,
+                "focus_topic": focus_topic,
+            },
+        )
+    except Exception as e:
+        logger.warning("Manual session compression failed: %s", e)
+        return bad_fn(handler, f"Compression failed: {sanitize_error_fn(e)}")
 
 
 def handle_conversation_rounds(handler, body, *, require_fn: Callable, bad_fn: Callable, json_response_fn: Callable):
