@@ -27,21 +27,23 @@ from api.helpers import redact_session_data, _redact_text
 from api.metering import meter
 from api.streaming_errors import (
     CANCEL_MARKER_PATTERNS as _CANCEL_MARKER_PATTERNS,
-    cancelled_turn_content as _cancelled_turn_content_impl,
-    cancelled_turn_hint as _cancelled_turn_hint_impl,
-    classify_provider_error as _classify_provider_error_impl,
     is_quota_error_text as _is_quota_error_text_impl,
-    preferred_agent_display_name as _preferred_agent_display_name_impl,
-    provider_error_payload as _provider_error_payload_impl,
     sanitize_provider_error_text as _sanitize_provider_error_text,
+)
+from api.streaming_error_facade import (
+    cancelled_turn_content_from_facade as _cancelled_turn_content,
+    cancelled_turn_hint_from_facade as _cancelled_turn_hint,
+    classify_provider_error_from_facade as _classify_provider_error,
+    cleanup_ephemeral_cancelled_turn_from_facade as _cleanup_ephemeral_cancelled_turn,
+    finalize_cancelled_turn_from_facade as _finalize_cancelled_turn,
+    persist_cancelled_turn_from_facade as _persist_cancelled_turn,
+    preferred_agent_display_name_from_facade as _preferred_agent_display_name,
+    provider_error_payload_from_facade as _provider_error_payload,
 )
 from api.streaming_cancellation import (
     cancel_stream_request as _cancel_stream_request,
-    cleanup_ephemeral_cancelled_turn as _cleanup_ephemeral_cancelled_turn_impl,
-    finalize_cancelled_turn as _finalize_cancelled_turn_impl,
     handle_post_run_cancel as _handle_post_run_cancel,
     handle_preflight_cancel as _handle_preflight_cancel,
-    persist_cancelled_turn as _persist_cancelled_turn_impl,
     session_has_cancel_marker as _session_has_cancel_marker_impl,
 )
 from api.streaming_chat_steer import (
@@ -243,73 +245,7 @@ _webui_ephemeral_system_prompt = _webui_ephemeral_system_prompt_impl
 _has_new_assistant_reply = _has_new_assistant_reply_impl
 
 
-def _preferred_agent_display_name() -> str:
-    return _preferred_agent_display_name_impl(
-        load_settings_fn=load_settings,
-        logger=logger,
-    )
-
-
-def _cancelled_turn_hint(agent_name: str | None = None) -> str:
-    return _cancelled_turn_hint_impl(
-        agent_name,
-        load_settings_fn=load_settings,
-        logger=logger,
-    )
-
-
-def _classify_provider_error(err_str: str, exc=None, *, silent_failure: bool = False) -> dict:
-    return _classify_provider_error_impl(
-        err_str,
-        exc,
-        silent_failure=silent_failure,
-        cancelled_turn_hint_fn=_cancelled_turn_hint,
-        is_quota_error_text_fn=_is_quota_error_text,
-    )
-
-
-def _provider_error_payload(message: str, err_type: str, hint: str = '') -> dict:
-    return _provider_error_payload_impl(
-        message,
-        err_type,
-        hint,
-        redact_text_fn=_redact_text,
-    )
-
-
 _session_has_cancel_marker = _session_has_cancel_marker_impl
-
-
-def _cancelled_turn_content(message: str = 'Task cancelled.') -> str:
-    return _cancelled_turn_content_impl(
-        message,
-        cancelled_turn_hint_fn=_cancelled_turn_hint,
-    )
-
-
-def _persist_cancelled_turn(session, *, message: str = 'Task cancelled.') -> None:
-    _persist_cancelled_turn_impl(
-        session,
-        message=message,
-        materialize_pending_user_turn=_materialize_pending_user_turn_before_error,
-        session_has_cancel_marker_fn=_session_has_cancel_marker,
-        cancelled_turn_content_fn=_cancelled_turn_content,
-    )
-
-
-def _cleanup_ephemeral_cancelled_turn(session) -> None:
-    _cleanup_ephemeral_cancelled_turn_impl(session, logger=logger)
-
-
-def _finalize_cancelled_turn(session, *, ephemeral: bool = False, message: str = 'Task cancelled.') -> None:
-    _finalize_cancelled_turn_impl(
-        session,
-        ephemeral=ephemeral,
-        message=message,
-        cleanup_ephemeral_cancelled_turn_fn=_cleanup_ephemeral_cancelled_turn,
-        persist_cancelled_turn_fn=_persist_cancelled_turn,
-        logger=logger,
-    )
 
 
 _aiagent_import_error_detail = _aiagent_import_error_detail_impl

@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from api import streaming
 
 
@@ -46,9 +48,10 @@ def test_provider_error_payload_includes_bounded_redacted_details(monkeypatch):
 
 
 def test_frontend_renders_apperror_details_in_collapsible_block():
-    messages_js = (streaming.Path(__file__).resolve().parent.parent / 'static' / 'messages.js').read_text()
-    ui_js = (streaming.Path(__file__).resolve().parent.parent / 'static' / 'ui.js').read_text()
-    style_css = (streaming.Path(__file__).resolve().parent.parent / 'static' / 'style.css').read_text()
+    webui_root = Path(__file__).resolve().parent.parent
+    messages_js = (webui_root / 'static' / 'messages.js').read_text()
+    ui_js = (webui_root / 'static' / 'ui.js').read_text()
+    style_css = (webui_root / 'static' / 'style.css').read_text()
     apperror_idx = messages_js.find("source.addEventListener('apperror'")
     warning_idx = messages_js.find("source.addEventListener('warning'", apperror_idx)
     assert apperror_idx != -1 and warning_idx != -1
