@@ -1,0 +1,132 @@
+"""Session utility route handlers for WebUI."""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+from urllib.parse import parse_qs
+
+
+def handle_session_export(
+    handler,
+    parsed,
+    *,
+    get_session_fn,
+    redact_session_data_fn,
+    bad_response_fn,
+) -> bool:
+    sid = parse_qs(parsed.query).get("session_id", [""])[0]
+    if not sid:
+        return bad_response_fn(handler, "session_id is required")
+    try:
+        session = get_session_fn(sid)
+    except KeyError:
+        return bad_response_fn(handler, "Session not found", 404)
+    safe = redact_session_data_fn(session.__dict__)
+    payload = json.dumps(safe, ensure_ascii=False, indent=2)
+    encoded = payload.encode("utf-8")
+    handler.send_response(200)
+    handler.send_header("Content-Type", "application/json; charset=utf-8")
+    handler.send_header("Content-Disposition", f'attachment; filename="hermes-{sid}.json"')
+    handler.send_header("Content-Length", str(len(encoded)))
+    handler.send_header("Cache-Control", "no-store")
+    handler.end_headers()
+    handler.wfile.write(encoded)
+    return True
+
+
+def handle_sessions_search(
+    handler,
+    parsed,
+    *,
+    all_sessions_fn,
+    get_session_fn,
+    redact_text_fn,
+    json_response_fn,
+) -> bool:
+    qs = parse_qs(parsed.query)
+    query = qs.get("q", [""])[0].lower().strip()
+    content_search = qs.get("content", ["1"])[0] == "1"
+    depth = int(qs.get("depth", ["5"])[0])
+    if not query:
+        safe_sessions = []
+        for session in all_sessions_fn():
+            item = dict(session)
+            if isinstance(item.get("title"), str):
+                item["title"] = redact_text_fn(item["title"])
+            safe_sessions.append(item)
+        return json_response_fn(handler, {"sessions": safe_sessions})
+
+    results = []
+    for session in all_sessions_fn():
+        title_match = query in (session.get("title") or "").lower()
+        if title_match:
+            item = dict(session, match_type="title")
+            if isinstance(item.get("title"), str):
+                item["title"] = redact_text_fn(item["title"])
+            results.append(item)
+            continue
+        if content_search:
+            try:
+                full_session = get_session_fn(session["session_id"])
+                messages = full_session.messages[:depth] if depth else full_session.messages
+                for message in messages:
+                    content = message.get("content") or ""
+                    if isinstance(content, list):
+                        content = " ".join(
+                            part.get("text", "")
+                            for part in content
+                            if isinstance(part, dict) and part.get("type") == "text"
+                        )
+                    if query in str(content).lower():
+                        item = dict(session, match_type="content")
+                        if isinstance(item.get("title"), str):
+                            item["title"] = redact_text_fn(item["title"])
+                        results.append(item)
+                        break
+            except (KeyError, Exception):
+                pass
+    return json_response_fn(handler, {"sessions": results, "query": query, "count": len(results)})
+
+
+def handle_list_dir(
+    handler,
+    parsed,
+    *,
+    get_session_fn,
+    get_cli_sessions_fn,
+    list_dir_fn,
+    json_response_fn,
+    bad_response_fn,
+    sanitize_error_fn,
+) -> bool:
+    qs = parse_qs(parsed.query)
+    sid = qs.get("session_id", [""])[0]
+    if not sid:
+        return bad_response_fn(handler, "session_id is required")
+    try:
+        session = get_session_fn(sid)
+        workspace = session.workspace
+    except KeyError:
+        try:
+            cli_meta = None
+            for cli_session in get_cli_sessions_fn():
+                if cli_session["session_id"] == sid:
+                    cli_meta = cli_session
+                    break
+            if not cli_meta:
+                return bad_response_fn(handler, "Session not found", 404)
+            workspace = cli_meta.get("workspace", "")
+        except Exception:
+            return bad_response_fn(handler, "Session not found", 404)
+    try:
+        path = qs.get("path", ["."])[0]
+        return json_response_fn(
+            handler,
+            {
+                "entries": list_dir_fn(Path(workspace), path),
+                "path": path,
+            },
+        )
+    except (FileNotFoundError, ValueError) as exc:
+        return bad_response_fn(handler, sanitize_error_fn(exc), 404)
