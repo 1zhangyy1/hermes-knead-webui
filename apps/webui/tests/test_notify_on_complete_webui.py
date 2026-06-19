@@ -6,10 +6,12 @@ REPO = Path(__file__).resolve().parents[1]
 
 def test_webui_drains_only_matching_background_completion_events():
     streaming_src = (REPO / "api" / "streaming.py").read_text(encoding="utf-8")
+    facade_src = (REPO / "api" / "streaming_process_facade.py").read_text(encoding="utf-8")
     process_src = (REPO / "api" / "streaming_process_notifications.py").read_text(encoding="utf-8")
 
-    assert "def _drain_webui_process_notifications(session_id: str)" in streaming_src
-    assert "_drain_webui_process_notifications_impl(session_id, logger=logger)" in streaming_src
+    assert "drain_webui_process_notifications_from_facade as _drain_webui_process_notifications" in streaming_src
+    assert "def drain_webui_process_notifications_from_facade(session_id: str)" in facade_src
+    assert "drain_webui_process_notifications(session_id, logger=streaming.logger)" in facade_src
     assert "from tools.process_registry import process_registry" in process_src
     assert "proc = process_registry.get(evt_sid)" in process_src
     assert "getattr(proc, 'session_key', None) != session_id" in process_src
