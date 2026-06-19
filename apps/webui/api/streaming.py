@@ -115,11 +115,10 @@ from api.streaming_agent_runtime import (
     refresh_cached_agent_runtime as _refresh_cached_agent_runtime,
 )
 from api.streaming_agent_turn_setup import prepare_streaming_agent_turn_setup as _prepare_streaming_agent_turn_setup
-from api.streaming_process_notifications import (
-    drain_webui_process_notifications as _drain_webui_process_notifications_impl,
-    format_process_notification as _format_process_notification_impl,
-    message_text_with_process_notifications as _message_text_with_process_notifications,
-    mark_process_completion_consumed as _mark_process_completion_consumed_impl,
+from api.streaming_process_facade import (
+    drain_webui_process_notifications_from_facade as _drain_webui_process_notifications,
+    format_process_notification_from_facade as _format_process_notification,
+    mark_process_completion_consumed_from_facade as _mark_process_completion_consumed,
 )
 from api.streaming_turn_journal import (
     append_interrupted_turn_event as _append_interrupted_turn_event,
@@ -256,17 +255,6 @@ from api.workspace import set_last_workspace
 # Everything else (attachments, timestamp, _ts, etc.) is display-only
 # metadata added by the webui and must be stripped before the API call.
 _API_SAFE_MSG_KEYS = _API_SAFE_MSG_KEYS_IMPL
-
-
-_format_process_notification = _format_process_notification_impl
-
-
-def _mark_process_completion_consumed(process_registry, process_id: str) -> None:
-    _mark_process_completion_consumed_impl(process_registry, process_id, logger=logger)
-
-
-def _drain_webui_process_notifications(session_id: str) -> list[str]:
-    return _drain_webui_process_notifications_impl(session_id, logger=logger)
 
 
 _get_title_refresh_interval = _get_title_refresh_interval_impl
