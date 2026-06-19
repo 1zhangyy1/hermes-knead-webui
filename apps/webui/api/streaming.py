@@ -196,6 +196,8 @@ from api.streaming_runtime_prompt import (
 from api.streaming_worker_exception_facade import handle_streaming_exception_from_facade as _handle_streaming_exception
 from api.streaming_worker_context import initialize_streaming_worker_context as _initialize_streaming_worker_context
 from api.streaming_worker_pipeline_facade import run_streaming_turn_pipeline_from_facade as _run_streaming_turn_pipeline
+from api.streaming_worker_state import current_checkpoint_handles as _current_checkpoint_handles
+from api.streaming_worker_state import exception_runtime_vars as _exception_runtime_vars
 from api.streaming_worker_startup import prepare_streaming_worker_startup as _prepare_streaming_worker_startup
 
 # Global lock for os.environ writes. Per-session locks (_agent_lock) prevent
@@ -375,13 +377,10 @@ def _run_agent_streaming(
             )
 
     except Exception as e:
-        _checkpoint_stop = _checkpoint_state.get('stop') or _checkpoint_stop
-        _ckpt_thread = _checkpoint_state.get('thread') or _ckpt_thread
-        _exception_runtime_vars = dict(locals())
-        _exception_runtime_vars.update(_agent_setup_runtime_vars)
+        _checkpoint_stop, _ckpt_thread = _current_checkpoint_handles(_checkpoint_state, _checkpoint_stop, _ckpt_thread)
         _exception_result = _handle_streaming_exception(
             e,
-            runtime_vars=_exception_runtime_vars,
+            runtime_vars=_exception_runtime_vars(locals(), _agent_setup_runtime_vars),
             self_healed=_self_healed,
             session=s,
             stream_id=stream_id,
@@ -400,8 +399,7 @@ def _run_agent_streaming(
         if _exception_result.should_return:
             return  # skip error emission or stale exception writeback
     finally:
-        _checkpoint_stop = _checkpoint_state.get('stop') or _checkpoint_stop
-        _ckpt_thread = _checkpoint_state.get('thread') or _ckpt_thread
+        _checkpoint_stop, _ckpt_thread = _current_checkpoint_handles(_checkpoint_state, _checkpoint_stop, _ckpt_thread)
         _finalize_streaming_worker_exit(
             session=s,
             stream_id=stream_id,
