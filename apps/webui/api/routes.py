@@ -1386,10 +1386,10 @@ def _session_model_state_from_request(
 
 
 def _lookup_gateway_session_identity(session_id: str) -> dict:
-    if not session_id:
-        return {}
-    metadata = _load_gateway_session_identity_map().get(str(session_id))
-    return metadata if isinstance(metadata, dict) else {}
+    return _messaging_routes.lookup_gateway_session_identity(
+        session_id,
+        load_identity_map=_load_gateway_session_identity_map,
+    )
 
 
 def _lookup_cli_session_metadata(session_id: str) -> dict:
@@ -1405,74 +1405,32 @@ def _lookup_cli_session_metadata(session_id: str) -> dict:
 
 
 def _messaging_session_identity(session: dict, raw_source: str) -> str:
-    metadata = _lookup_gateway_session_identity(session.get("session_id"))
-    session_key = _safe_first(
-        metadata.get("session_key"),
-        session.get("session_key"),
-        session.get("gateway_session_key"),
+    return _messaging_routes.messaging_session_identity(
+        session,
+        raw_source,
+        lookup_gateway_identity_fn=_lookup_gateway_session_identity,
+        safe_first_fn=_safe_first,
     )
-    if session_key:
-        return f"{raw_source}|session_key:{session_key}"
-
-    chat_id = _safe_first(
-        metadata.get("chat_id"),
-        session.get("chat_id"),
-        session.get("origin_chat_id"),
-    )
-    thread_id = _safe_first(metadata.get("thread_id"), session.get("thread_id"))
-    chat_type = _safe_first(metadata.get("chat_type"), session.get("chat_type"))
-    user_id = _safe_first(
-        metadata.get("user_id"),
-        session.get("user_id"),
-        session.get("origin_user_id"),
-    )
-
-    identity_parts = []
-    if chat_type:
-        identity_parts.append(f"chat_type:{chat_type}")
-    if chat_id:
-        identity_parts.append(f"chat_id:{chat_id}")
-    if thread_id:
-        identity_parts.append(f"thread_id:{thread_id}")
-    if user_id:
-        identity_parts.append(f"user_id:{user_id}")
-
-    if identity_parts:
-        return f"{raw_source}|" + "|".join(identity_parts)
-    return raw_source
 
 
 def _session_messaging_raw_source(session: dict) -> str:
-    raw = _safe_first(
-        session.get("raw_source"),
-        session.get("source_tag"),
-        session.get("source"),
-        session.get("platform"),
+    return _messaging_routes.session_messaging_raw_source(
+        session,
+        safe_first_fn=_safe_first,
+        normalize_source_fn=_normalize_messaging_source,
     )
-    if not raw:
-        raw = session.get("source_label") or "messaging"
-    return _normalize_messaging_source(raw)
 
 
 def _has_durable_messaging_identity(session: dict) -> bool:
-    metadata = _lookup_gateway_session_identity(session.get("session_id"))
-    return bool(_safe_first(
-        metadata.get("session_key"),
-        session.get("session_key"),
-        session.get("gateway_session_key"),
-        metadata.get("chat_id"),
-        session.get("chat_id"),
-        session.get("origin_chat_id"),
-        metadata.get("thread_id"),
-        session.get("thread_id"),
-    ))
+    return _messaging_routes.has_durable_messaging_identity(
+        session,
+        lookup_gateway_identity_fn=_lookup_gateway_session_identity,
+        safe_first_fn=_safe_first,
+    )
 
 
 def _numeric_count(value) -> int:
-    try:
-        return int(float(_safe_first(value, 0) or 0))
-    except (TypeError, ValueError):
-        return 0
+    return _messaging_routes.numeric_count(value, safe_first_fn=_safe_first)
 
 
 def _should_hide_stale_messaging_session(
@@ -1489,66 +1447,29 @@ def _should_hide_stale_messaging_session(
     active session for the same messaging source. Without that source-of-truth
     file we keep the old fallback behavior.
     """
-    raw_source = _session_messaging_raw_source(session)
-    if not _is_known_messaging_source(raw_source):
-        return False
-    if not active_gateway_session_ids or raw_source not in active_gateway_sources:
-        return False
-
-    sid = _safe_first(session.get("session_id"))
-    if sid and sid in active_gateway_session_ids:
-        return False
-
-    if _safe_first(session.get("end_reason")) in _STALE_MESSAGING_END_REASONS:
-        return True
-
-    if not _has_durable_messaging_identity(session):
-        return True
-
-    if session.get("parent_session_id"):
-        return True
-
-    message_count = _numeric_count(session.get("message_count"))
-    actual_count = _numeric_count(session.get("actual_message_count"))
-    if message_count <= 0 and actual_count <= 0:
-        return True
-
-    return False
+    return _messaging_routes.should_hide_stale_messaging_session(
+        session,
+        active_gateway_session_ids,
+        active_gateway_sources,
+        stale_end_reasons=_STALE_MESSAGING_END_REASONS,
+        session_raw_source_fn=_session_messaging_raw_source,
+        is_known_messaging_source_fn=_is_known_messaging_source,
+        safe_first_fn=_safe_first,
+        has_durable_identity_fn=_has_durable_messaging_identity,
+        numeric_count_fn=_numeric_count,
+    )
 
 
 def _is_messaging_session_record(session) -> bool:
-    """Return true for sessions backed by external messaging channels."""
-    if not session:
-        return False
-    if (
-        (getattr(session, "session_source", None) if not isinstance(session, dict) else session.get("session_source")) == "messaging"
-    ):
-        return True
-    raw = _safe_first(
-        getattr(session, "raw_source", None) if not isinstance(session, dict) else session.get("raw_source"),
-        getattr(session, "source_tag", None) if not isinstance(session, dict) else session.get("source_tag"),
-        getattr(session, "source", None) if not isinstance(session, dict) else session.get("source"),
-        session.get("source_label") if isinstance(session, dict) else None,
+    return _messaging_routes.is_messaging_session_record(
+        session,
+        safe_first_fn=_safe_first,
+        is_known_messaging_source_fn=_is_known_messaging_source,
     )
-    return _is_known_messaging_source(raw)
 
 
 def _messages_include_tool_metadata(messages) -> bool:
-    """Return true when returned messages can reconstruct their own tool cards."""
-    if not isinstance(messages, list):
-        return False
-    for msg in messages:
-        if not isinstance(msg, dict) or msg.get("role") != "assistant":
-            continue
-        if isinstance(msg.get("tool_calls"), list) and msg.get("tool_calls"):
-            return True
-        content = msg.get("content")
-        if isinstance(content, list) and any(
-            isinstance(part, dict) and part.get("type") == "tool_use"
-            for part in content
-        ):
-            return True
-    return False
+    return _messaging_routes.messages_include_tool_metadata(messages)
 
 
 def _merged_session_messages_for_display(session, cli_messages=None) -> list:
@@ -1606,26 +1527,12 @@ def _session_requires_cli_metadata_lookup(session) -> bool:
     so all sessions that previously took the slow path still do, plus a few
     more legacy shapes.
     """
-    if not session:
-        return False
-
-    def _field(name):
-        return session.get(name) if isinstance(session, dict) else getattr(session, name, None)
-
-    if _is_messaging_session_record(session):
-        return True
-    if bool(_field("is_cli_session")) or bool(_field("read_only")):
-        return True
-    session_source = _normalize_messaging_source(_safe_first(_field("session_source")))
-    if session_source in {"messaging", "external_agent", "external-agent"}:
-        return True
-    return bool(_safe_first(
-        _field("source_tag"),
-        _field("raw_source"),
-        _field("source"),
-        _field("source_label"),
-        _field("platform"),
-    ))
+    return _messaging_routes.session_requires_cli_metadata_lookup(
+        session,
+        is_messaging_session_record_fn=_is_messaging_session_record,
+        safe_first_fn=_safe_first,
+        normalize_source_fn=_normalize_messaging_source,
+    )
 
 
 def _is_messaging_session_id(sid: str) -> bool:
@@ -1640,34 +1547,14 @@ def _is_messaging_session_id(sid: str) -> bool:
 
 
 def _session_sort_timestamp(session: dict) -> float:
-    return float(
-        _safe_first(
-            session.get("last_message_at"),
-            session.get("updated_at"),
-            session.get("created_at"),
-            session.get("started_at"),
-            0,
-        ) or 0
-    ) or 0.0
+    return _messaging_routes.session_sort_timestamp(session, safe_first_fn=_safe_first)
 
 
 def _is_cli_session_for_settings(session: dict) -> bool:
-    """Return True for importable CLI sessions that are safe to classify for settings."""
-    if not isinstance(session, dict):
-        return False
-    if is_cli_session_row(session):
-        return True
-
-    # Fallback for legacy local copies that had weak/empty metadata:
-    # keep this conservative so messaging sessions do not collapse incorrectly.
-    if not session.get("is_cli_session"):
-        return False
-    source = str(session.get("source") or "").strip().lower()
-    if source in MESSAGING_SOURCES:
-        return False
-    title = str(session.get("title") or "").strip().lower()
-    return title in ("", "untitled", "cli", "cli session") or title.endswith(" session") and (
-        not source or source == "cli"
+    return _messaging_routes.is_cli_session_for_settings(
+        session,
+        is_cli_session_row_fn=is_cli_session_row,
+        messaging_sources=MESSAGING_SOURCES,
     )
 
 
@@ -1675,122 +1562,42 @@ CLI_VISIBLE_SESSION_CAP = 20
 
 
 def _cap_recent_cli_sessions(sessions: list[dict], cli_cap: int = CLI_VISIBLE_SESSION_CAP) -> list[dict]:
-    """Keep only the most recent CLI-visible sessions after filtering."""
-    if cli_cap <= 0:
-        return sessions
-    kept = []
-    cli_seen = 0
-    for session in sessions:
-        if _is_cli_session_for_settings(session):
-            cli_seen += 1
-            if cli_seen > cli_cap:
-                continue
-        kept.append(session)
-    return kept
+    return _messaging_routes.cap_recent_cli_sessions(
+        sessions,
+        cli_cap,
+        is_cli_session_for_settings_fn=_is_cli_session_for_settings,
+    )
 
 
 def _merge_cli_sidebar_metadata(ui_session: dict, cli_meta: dict) -> dict:
-    """Merge source-of-truth CLI metadata into a sidebar session row.
-
-    Preserve UI-owned state (archived/pinned) while replacing metadata that can
-    legitimately drift in WebUI snapshots.
-    """
-    if not ui_session:
-        return ui_session
-    if not cli_meta:
-        return dict(ui_session)
-    merged = dict(ui_session)
-    merged["is_cli_session"] = True
-    for key in (
-        "source_tag",
-        "raw_source",
-        "session_source",
-        "source_label",
-        "user_id",
-        "chat_id",
-        "chat_type",
-        "thread_id",
-        "session_key",
-        "platform",
-        "parent_session_id",
-        "end_reason",
-        "actual_message_count",
-        "_lineage_root_id",
-        "_lineage_tip_id",
-        "_compression_segment_count",
-    ):
-        value = _safe_first(cli_meta.get(key))
-        if value:
-            merged[key] = value
-
-    if cli_meta.get("created_at") is not None:
-        merged["created_at"] = cli_meta["created_at"]
-    if cli_meta.get("updated_at") is not None:
-        merged["updated_at"] = cli_meta["updated_at"]
-    if cli_meta.get("last_message_at") is not None:
-        merged["last_message_at"] = cli_meta["last_message_at"]
-    if cli_meta.get("message_count") is not None:
-        merged["message_count"] = max(
-            _numeric_count(merged.get("message_count")),
-            _numeric_count(cli_meta.get("message_count")),
-        )
-    elif cli_meta.get("actual_message_count") is not None:
-        merged["message_count"] = max(
-            _numeric_count(merged.get("message_count")),
-            _numeric_count(cli_meta.get("actual_message_count")),
-        )
-
-    if cli_meta.get("title"):
-        current_title = merged.get("title")
-        if not current_title or current_title == "Untitled":
-            merged["title"] = cli_meta["title"]
-
-    if cli_meta.get("model"):
-        if not merged.get("model") or merged.get("model") == "unknown":
-            merged["model"] = cli_meta["model"]
-    return merged
+    return _messaging_routes.merge_cli_sidebar_metadata(
+        ui_session,
+        cli_meta,
+        safe_first_fn=_safe_first,
+        numeric_count_fn=_numeric_count,
+    )
 
 
 def _messaging_source_key(session: dict) -> str | None:
-    raw = _session_messaging_raw_source(session)
-    if not _is_known_messaging_source(raw):
-        return None
-    return _messaging_session_identity(session, raw)
+    return _messaging_routes.messaging_source_key(
+        session,
+        session_raw_source_fn=_session_messaging_raw_source,
+        is_known_messaging_source_fn=_is_known_messaging_source,
+        messaging_session_identity_fn=_messaging_session_identity,
+    )
 
 
 def _keep_latest_messaging_session_per_source(sessions: list[dict]) -> list[dict]:
-    """Keep only the newest sidebar row per messaging session identity."""
-    gateway_metadata = _load_gateway_session_identity_map()
-    active_gateway_session_ids = {str(sid) for sid in gateway_metadata.keys() if sid}
-    active_gateway_sources = {
-        _normalize_messaging_source(_safe_first(meta.get("raw_source"), meta.get("platform")))
-        for meta in gateway_metadata.values()
-        if isinstance(meta, dict)
-    }
-    active_gateway_sources = {source for source in active_gateway_sources if _is_known_messaging_source(source)}
-
-    kept_sources: set[str] = set()
-    best_by_source: dict[str, dict] = {}
-    kept: list[dict] = []
-    for session in sessions:
-        key = _messaging_source_key(session)
-        if not key:
-            kept.append(session)
-            continue
-        if _should_hide_stale_messaging_session(session, active_gateway_session_ids, active_gateway_sources):
-            continue
-        if key in kept_sources:
-            kept_sources.add(key)
-            current = best_by_source.get(key)
-            if current is None or _session_sort_timestamp(session) > _session_sort_timestamp(current):
-                best_by_source[key] = session
-            continue
-        kept_sources.add(key)
-        best_by_source[key] = session
-
-    kept.extend(best_by_source.values())
-    kept.sort(key=_session_sort_timestamp, reverse=True)
-    return kept
+    return _messaging_routes.keep_latest_messaging_session_per_source(
+        sessions,
+        load_identity_map=_load_gateway_session_identity_map,
+        normalize_source_fn=_normalize_messaging_source,
+        safe_first_fn=_safe_first,
+        is_known_messaging_source_fn=_is_known_messaging_source,
+        messaging_source_key_fn=_messaging_source_key,
+        should_hide_stale_fn=_should_hide_stale_messaging_session,
+        session_sort_timestamp_fn=_session_sort_timestamp,
+    )
 
 
 from api.models import (
