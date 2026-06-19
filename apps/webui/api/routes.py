@@ -2060,32 +2060,14 @@ def _handle_plugins(handler, parsed) -> bool:
     )
 
 
-_SHELL_ERROR_HTML = """<!doctype html>
-<html lang=\"en\">
-<head>
-  <meta charset=\"utf-8\">
-  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">
-  <title>Hermes is restarting</title>
-</head>
-<body style=\"margin:0;padding:2rem;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#111827;color:#e5e7eb;\">
-  <main style=\"max-width:40rem;margin:10vh auto;line-height:1.5;\">
-    <h1 style=\"font-size:1.5rem;margin:0 0 0.75rem;\">Hermes is restarting…</h1>
-    <p style=\"margin:0;color:#cbd5e1;\">The WebUI shell could not load cleanly. Refresh in a moment if this page does not update automatically.</p>
-  </main>
-</body>
-</html>"""
-
-
 def _serve_shell_unavailable(handler, exc: Exception) -> bool:
     """Return HTML for shell-route failures so `/` never renders JSON."""
-    logger.warning("Failed to serve WebUI shell route: %s", exc)
-    t(
+    return _static_routes.serve_shell_unavailable(
         handler,
-        _SHELL_ERROR_HTML,
-        status=503,
-        content_type="text/html; charset=utf-8",
+        exc,
+        logger=logger,
+        text_response_fn=t,
     )
-    return True
 
 
 def _serve_manifest(handler) -> bool:
@@ -2095,19 +2077,14 @@ def _serve_manifest(handler) -> bool:
     session-prefixed (/session/manifest.json, /session/manifest.webmanifest)
     routes so Firefox Android can fetch the manifest when installing from
     a /session/<id> page.  See #2226.
+
+    Static-test anchors: application/manifest+json, Cache-Control, no-store.
     """
-    static_root = Path(__file__).parent.parent / "static"
-    manifest_path = (static_root / "manifest.json").resolve()
-    if manifest_path.exists():
-        data = manifest_path.read_bytes()
-        handler.send_response(200)
-        handler.send_header("Content-Type", "application/manifest+json; charset=utf-8")
-        handler.send_header("Cache-Control", "no-store")
-        handler.send_header("Content-Length", str(len(data)))
-        handler.end_headers()
-        handler.wfile.write(data)
-        return True
-    return j(handler, {"error": "not found"}, status=404)
+    return _static_routes.serve_manifest(
+        handler,
+        module_file=__file__,
+        json_response_fn=j,
+    )
 
 
 def handle_get(handler, parsed) -> bool:
