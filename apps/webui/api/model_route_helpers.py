@@ -122,3 +122,24 @@ def should_attach_codex_provider_context(
             if isinstance(entry, dict)
         )
     return False
+
+
+def session_model_state_from_request(
+    model: str | None,
+    requested_provider: str | None,
+    current_provider: str | None = None,
+    *,
+    clean_provider_fn=clean_session_model_provider,
+    split_provider_qualified_model_fn=split_provider_qualified_model,
+    resolve_compatible_state_fn,
+) -> tuple[str | None, str | None]:
+    model_value = str(model).strip() if model is not None else None
+    provider = clean_provider_fn(requested_provider) if requested_provider is not None else None
+    if model_value:
+        _bare, explicit_provider = split_provider_qualified_model_fn(model_value)
+        if explicit_provider:
+            provider = explicit_provider
+        elif requested_provider is None:
+            provider = clean_provider_fn(current_provider)
+        model_value, provider, _changed = resolve_compatible_state_fn(model_value, provider)
+    return model_value, provider
