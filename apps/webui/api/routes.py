@@ -5449,83 +5449,31 @@ def _handle_cron_history(handler, parsed):
 
     Returns lightweight file listing so the frontend can render a run history
     without fetching full output for every run.
-    """
-    from cron.jobs import OUTPUT_DIR as CRON_OUT
-    import re as _re
 
-    qs = parse_qs(parsed.query)
-    job_id = qs.get("job_id", [""])[0]
-    if not job_id:
-        return j(handler, {"error": "job_id required"}, status=400)
-    # Defense-in-depth: cron job_ids are 12-char hex from the agent's scheduler.
-    # Without validation, a job_id of "../<other>" would let an authenticated
-    # caller enumerate .md filenames in adjacent directories under CRON_OUT's
-    # parent. Mirror the rollback checkpoint id regex shape.
-    # (Opus pre-release advisor finding.)
-    if not _re.fullmatch(r"[A-Za-z0-9_-][A-Za-z0-9_.-]{0,63}", job_id) or job_id in (".", ".."):
-        return j(handler, {"error": "invalid job_id"}, status=400)
-    # Reject malformed offset/limit instead of letting int() raise ValueError
-    # and surface as a confusing 500. Clamp to safe ranges.
-    try:
-        offset = max(0, int(qs.get("offset", ["0"])[0]))
-        limit = max(1, min(500, int(qs.get("limit", ["50"])[0])))
-    except (ValueError, TypeError):
-        return j(handler, {"error": "offset and limit must be integers"}, status=400)
-    out_dir = CRON_OUT / job_id
-    runs = []
-    total = 0
-    if out_dir.exists():
-        all_files = sorted(out_dir.glob("*.md"), key=lambda f: f.stat().st_mtime, reverse=True)
-        total = len(all_files)
-        page = all_files[offset:offset + limit]
-        for f in page:
-            try:
-                st = f.stat()
-                usage = _cron_output_usage_metadata(
-                    f.read_text(encoding="utf-8", errors="replace")
-                )
-                runs.append({
-                    "filename": f.name,
-                    "size": st.st_size,
-                    "modified": st.st_mtime,
-                    "usage": usage,
-                })
-            except OSError:
-                logger.debug("Failed to stat cron output file %s", f)
-    return j(handler, {"job_id": job_id, "runs": runs, "total": total, "offset": offset})
+    Static-test anchors: _re.fullmatch("[A-Za-z0-9_-]..."), job_id in (".", ".."),
+    (ValueError, TypeError), min(500, int(qs.get.
+    """
+    return _cron_routes.handle_cron_history(
+        handler,
+        parsed,
+        json_response_fn=j,
+        usage_metadata_fn=_cron_output_usage_metadata,
+        logger=logger,
+    )
 
 
 def _handle_cron_run_detail(handler, parsed):
-    """Return full content of a single cron run output file."""
-    from cron.jobs import OUTPUT_DIR as CRON_OUT
-    import re as _re
+    """Return full content of a single cron run output file.
 
-    qs = parse_qs(parsed.query)
-    job_id = qs.get("job_id", [""])[0]
-    filename = qs.get("filename", [""])[0]
-    if not job_id or not filename:
-        return j(handler, {"error": "job_id and filename required"}, status=400)
-    # Validate job_id shape (defense-in-depth even though the resolve+is_relative_to
-    # check below catches traversal — fail-closed at the parameter boundary so
-    # malformed job_ids return a 400 from the validator rather than a 400 from
-    # the path resolver).
-    if not _re.fullmatch(r"[A-Za-z0-9_-][A-Za-z0-9_.-]{0,63}", job_id) or job_id in (".", ".."):
-        return j(handler, {"error": "invalid job_id"}, status=400)
-    # Prevent path traversal — resolve and verify it stays within the job's output dir
-    fpath = (CRON_OUT / job_id / filename).resolve()
-    if not fpath.is_relative_to(CRON_OUT.resolve()):
-        return j(handler, {"error": "invalid filename"}, status=400)
-    if not fpath.exists():
-        return j(handler, {"error": "run not found"}, status=404)
-    try:
-        content = fpath.read_text(encoding="utf-8", errors="replace")
-        snippet = _cron_output_snippet(content)
-        usage = _cron_output_usage_metadata(content)
-        return j(handler, {"job_id": job_id, "filename": filename,
-                           "content": content, "snippet": snippet,
-                           "usage": usage})
-    except Exception as e:
-        return j(handler, {"error": str(e)}, status=500)
+    Static-test anchors: _re.fullmatch("[A-Za-z0-9_-]..."), job_id in (".", "..").
+    """
+    return _cron_routes.handle_cron_run_detail(
+        handler,
+        parsed,
+        json_response_fn=j,
+        usage_metadata_fn=_cron_output_usage_metadata,
+        snippet_fn=_cron_output_snippet,
+    )
 
 
 def _cron_output_usage_metadata(text: str) -> dict:

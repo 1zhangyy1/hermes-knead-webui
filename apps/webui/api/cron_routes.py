@@ -103,6 +103,91 @@ def handle_cron_output(
     return json_response_fn(handler, {"job_id": job_id, "outputs": outputs})
 
 
+def handle_cron_history(
+    handler,
+    parsed,
+    *,
+    json_response_fn,
+    usage_metadata_fn,
+    logger,
+) -> bool:
+    from cron.jobs import OUTPUT_DIR as cron_out
+
+    qs = parse_qs(parsed.query)
+    job_id = qs.get("job_id", [""])[0]
+    if not job_id:
+        return json_response_fn(handler, {"error": "job_id required"}, status=400)
+    if not re.fullmatch(r"[A-Za-z0-9_-][A-Za-z0-9_.-]{0,63}", job_id) or job_id in (".", ".."):
+        return json_response_fn(handler, {"error": "invalid job_id"}, status=400)
+    try:
+        offset = max(0, int(qs.get("offset", ["0"])[0]))
+        limit = max(1, min(500, int(qs.get("limit", ["50"])[0])))
+    except (ValueError, TypeError):
+        return json_response_fn(handler, {"error": "offset and limit must be integers"}, status=400)
+
+    out_dir = cron_out / job_id
+    runs = []
+    total = 0
+    if out_dir.exists():
+        all_files = sorted(out_dir.glob("*.md"), key=lambda f: f.stat().st_mtime, reverse=True)
+        total = len(all_files)
+        page = all_files[offset:offset + limit]
+        for path in page:
+            try:
+                stat = path.stat()
+                usage = usage_metadata_fn(path.read_text(encoding="utf-8", errors="replace"))
+                runs.append(
+                    {
+                        "filename": path.name,
+                        "size": stat.st_size,
+                        "modified": stat.st_mtime,
+                        "usage": usage,
+                    }
+                )
+            except OSError:
+                logger.debug("Failed to stat cron output file %s", path)
+    return json_response_fn(handler, {"job_id": job_id, "runs": runs, "total": total, "offset": offset})
+
+
+def handle_cron_run_detail(
+    handler,
+    parsed,
+    *,
+    json_response_fn,
+    usage_metadata_fn,
+    snippet_fn,
+) -> bool:
+    from cron.jobs import OUTPUT_DIR as cron_out
+
+    qs = parse_qs(parsed.query)
+    job_id = qs.get("job_id", [""])[0]
+    filename = qs.get("filename", [""])[0]
+    if not job_id or not filename:
+        return json_response_fn(handler, {"error": "job_id and filename required"}, status=400)
+    if not re.fullmatch(r"[A-Za-z0-9_-][A-Za-z0-9_.-]{0,63}", job_id) or job_id in (".", ".."):
+        return json_response_fn(handler, {"error": "invalid job_id"}, status=400)
+
+    path = (cron_out / job_id / filename).resolve()
+    if not path.is_relative_to(cron_out.resolve()):
+        return json_response_fn(handler, {"error": "invalid filename"}, status=400)
+    if not path.exists():
+        return json_response_fn(handler, {"error": "run not found"}, status=404)
+    try:
+        content = path.read_text(encoding="utf-8", errors="replace")
+        return json_response_fn(
+            handler,
+            {
+                "job_id": job_id,
+                "filename": filename,
+                "content": content,
+                "snippet": snippet_fn(content),
+                "usage": usage_metadata_fn(content),
+            },
+        )
+    except Exception as exc:
+        return json_response_fn(handler, {"error": str(exc)}, status=500)
+
+
 def handle_cron_status(
     handler,
     parsed,
