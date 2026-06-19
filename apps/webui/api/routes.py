@@ -109,6 +109,7 @@ from api import rollback_routes as _rollback_routes
 from api import session_routes as _session_routes
 from api import session_import_routes as _session_import_routes
 from api import skills_routes as _skills_routes
+from api import static_routes as _static_routes
 from api import terminal_routes as _terminal_routes
 
 
@@ -4729,75 +4730,43 @@ _TEXT_MIME_TYPES = {"text/css", "application/javascript", "text/html", "image/sv
 
 
 def _serve_static(handler, parsed):
-    static_root = (Path(__file__).parent.parent / "static").resolve()
-    # Strip the leading '/static/' prefix, then resolve and sandbox
-    rel = parsed.path[len("/static/") :]
-    static_file = (static_root / rel).resolve()
-    try:
-        static_file.relative_to(static_root)
-    except ValueError:
-        return j(handler, {"error": "not found"}, status=404)
-    if not static_file.exists() or not static_file.is_file():
-        return j(handler, {"error": "not found"}, status=404)
-    ext = static_file.suffix.lower()
-    ct = _STATIC_MIME.get(ext.lstrip("."), "text/plain")
-    ct_header = f"{ct}; charset=utf-8" if ct in _TEXT_MIME_TYPES else ct
-    handler.send_response(200)
-    handler.send_header("Content-Type", ct_header)
-    handler.send_header("Cache-Control", "no-store")
-    raw = static_file.read_bytes()
-    handler.send_header("Content-Length", str(len(raw)))
-    handler.end_headers()
-    handler.wfile.write(raw)
-    return True
+    return _static_routes.serve_static(
+        handler,
+        parsed,
+        module_file=__file__,
+        static_mime=_STATIC_MIME,
+        text_mime_types=_TEXT_MIME_TYPES,
+        json_response_fn=j,
+    )
 
 
 def _serve_product_preview(handler, parsed):
-    prefix = "/api/products/"
-    rest = parsed.path[len(prefix):]
-    if "/preview" not in rest:
-        return j(handler, {"error": "not found"}, status=404)
-    product_id, asset = rest.split("/preview", 1)
-    product_id = unquote(product_id)
-    asset = asset.strip("/") or "index.html"
-    asset = unquote(asset)
-    try:
-        target = preview_product_file(product_id, asset)
-    except Exception:
-        return j(handler, {"error": "not found"}, status=404)
-    return _serve_file_response(handler, target)
+    return _static_routes.serve_product_preview(
+        handler,
+        parsed,
+        preview_product_file_fn=preview_product_file,
+        serve_file_response_fn=_serve_file_response,
+        json_response_fn=j,
+    )
 
 
 def _serve_product_asset(handler, parsed):
-    prefix = "/api/products/"
-    rest = parsed.path[len(prefix):].strip("/")
-    if not rest:
-        return j(handler, {"error": "not found"}, status=404)
-    if "/" in rest:
-        product_id, asset = rest.split("/", 1)
-    else:
-        product_id, asset = rest, "index.html"
-    product_id = unquote(product_id)
-    asset = unquote(asset.strip("/") or "index.html")
-    try:
-        target = preview_product_file(product_id, asset)
-    except Exception:
-        return j(handler, {"error": "not found"}, status=404)
-    return _serve_file_response(handler, target)
+    return _static_routes.serve_product_asset(
+        handler,
+        parsed,
+        preview_product_file_fn=preview_product_file,
+        serve_file_response_fn=_serve_file_response,
+        json_response_fn=j,
+    )
 
 
 def _serve_file_response(handler, target: Path):
-    ext = target.suffix.lower().lstrip(".")
-    ct = _STATIC_MIME.get(ext, "text/plain")
-    ct_header = f"{ct}; charset=utf-8" if ct in _TEXT_MIME_TYPES else ct
-    raw = target.read_bytes()
-    handler.send_response(200)
-    handler.send_header("Content-Type", ct_header)
-    handler.send_header("Cache-Control", "no-store")
-    handler.send_header("Content-Length", str(len(raw)))
-    handler.end_headers()
-    handler.wfile.write(raw)
-    return True
+    return _static_routes.serve_file_response(
+        handler,
+        target,
+        static_mime=_STATIC_MIME,
+        text_mime_types=_TEXT_MIME_TYPES,
+    )
 
 
 def _handle_session_export(handler, parsed):
