@@ -116,6 +116,7 @@ from api.streaming_agent_runtime import (
     refresh_cached_agent_primary_runtime_snapshot as _refresh_cached_agent_primary_runtime_snapshot,
     refresh_cached_agent_runtime as _refresh_cached_agent_runtime,
 )
+from api.streaming_agent_facade import get_ai_agent_from_facade as _get_ai_agent
 from api.streaming_agent_turn_setup import prepare_streaming_agent_turn_setup as _prepare_streaming_agent_turn_setup
 from api.streaming_process_facade import (
     drain_webui_process_notifications_from_facade as _drain_webui_process_notifications,
@@ -213,24 +214,6 @@ try:
     from run_agent import AIAgent
 except ImportError:
     AIAgent = None
-
-def _get_ai_agent():
-    """Return AIAgent class, retrying the import if the initial attempt failed.
-
-    auto_install_agent_deps() in server.py may install missing packages after
-    this module is first imported (common in Docker with a volume-mounted agent).
-    Re-attempting the import here picks up the newly installed packages without
-    requiring a server restart.
-    """
-    global AIAgent
-    if AIAgent is None:
-        try:
-            from run_agent import AIAgent as _cls  # noqa: PLC0415
-            AIAgent = _cls
-        except ImportError:
-            pass
-    return AIAgent
-
 
 _is_quota_error_text = _is_quota_error_text_impl
 
