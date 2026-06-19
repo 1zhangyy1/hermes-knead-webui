@@ -209,6 +209,169 @@ def handle_session_rename(
     return json_response_fn(handler, {"session": session.compact()})
 
 
+def handle_session_pin(
+    handler,
+    body,
+    *,
+    require_fn,
+    bad_response_fn,
+    json_response_fn,
+    get_session_fn,
+    ensure_full_session_fn,
+    session_lock_fn,
+) -> bool:
+    try:
+        require_fn(body, "session_id")
+    except ValueError as exc:
+        return bad_response_fn(handler, str(exc))
+    try:
+        session = get_session_fn(body["session_id"])
+        session = ensure_full_session_fn(body["session_id"], session)
+    except KeyError:
+        return bad_response_fn(handler, "Session not found", 404)
+    with session_lock_fn(body["session_id"]):
+        session.pinned = bool(body.get("pinned", True))
+        session.save()
+    return json_response_fn(handler, {"ok": True, "session": session.compact()})
+
+
+def handle_session_archive(
+    handler,
+    body,
+    *,
+    require_fn,
+    bad_response_fn,
+    json_response_fn,
+    get_session_fn,
+    ensure_full_session_fn,
+    session_lock_fn,
+    session_cls,
+    sessions,
+    sessions_lock,
+    lookup_cli_session_metadata_fn,
+    is_messaging_session_record_fn,
+    get_cli_session_messages_fn,
+    import_cli_session_fn,
+    title_from_fn,
+    get_last_workspace_fn,
+    worktree_retained_payload_fn,
+) -> bool:
+    try:
+        require_fn(body, "session_id")
+    except ValueError as exc:
+        return bad_response_fn(handler, str(exc))
+    sid = body["session_id"]
+    try:
+        session = get_session_fn(sid)
+        session = ensure_full_session_fn(sid, session)
+    except KeyError:
+        cli_meta = lookup_cli_session_metadata_fn(sid)
+        if not cli_meta:
+            return bad_response_fn(handler, "Session not found", 404)
+        if cli_meta.get("read_only"):
+            return bad_response_fn(handler, "Read-only imported sessions cannot be archived from WebUI", 400)
+        if is_messaging_session_record_fn(cli_meta):
+            session = session_cls(
+                session_id=sid,
+                title=cli_meta.get("title") or title_from_fn(get_cli_session_messages_fn(sid), "CLI Session"),
+                workspace=get_last_workspace_fn(),
+                messages=[],
+                model=cli_meta.get("model") or "unknown",
+                created_at=cli_meta.get("created_at"),
+                updated_at=cli_meta.get("updated_at"),
+            )
+            session.is_cli_session = True
+            session.source_tag = cli_meta.get("source_tag")
+            session.raw_source = cli_meta.get("raw_source") or cli_meta.get("source_tag")
+            session.session_source = cli_meta.get("session_source")
+            session.source_label = cli_meta.get("source_label")
+            session.user_id = cli_meta.get("user_id")
+            session.chat_id = cli_meta.get("chat_id")
+            session.chat_type = cli_meta.get("chat_type")
+            session.thread_id = cli_meta.get("thread_id")
+            session.session_key = cli_meta.get("session_key")
+            session.platform = cli_meta.get("platform")
+            session.save(touch_updated_at=False)
+        else:
+            messages = get_cli_session_messages_fn(sid)
+            if not messages:
+                return bad_response_fn(handler, "Session not found", 404)
+            session = import_cli_session_fn(
+                sid,
+                cli_meta.get("title") or title_from_fn(messages, "CLI Session"),
+                messages,
+                cli_meta.get("model") or "unknown",
+                profile=cli_meta.get("profile"),
+                created_at=cli_meta.get("created_at"),
+                updated_at=cli_meta.get("updated_at"),
+            )
+            session.is_cli_session = True
+            session.source_tag = cli_meta.get("source_tag")
+            session.raw_source = cli_meta.get("raw_source") or cli_meta.get("source_tag")
+            session.session_source = cli_meta.get("session_source")
+            session.source_label = cli_meta.get("source_label")
+            session.user_id = cli_meta.get("user_id")
+            session.chat_id = cli_meta.get("chat_id")
+            session.chat_type = cli_meta.get("chat_type")
+            session.thread_id = cli_meta.get("thread_id")
+            session.session_key = cli_meta.get("session_key")
+            session.platform = cli_meta.get("platform")
+    if getattr(session, "_loaded_metadata_only", False):
+        loaded = session_cls.load(sid)
+        if loaded is None:
+            return bad_response_fn(handler, "Session not found", 404)
+        session = loaded
+        with sessions_lock:
+            sessions[sid] = session
+    with session_lock_fn(sid):
+        session.archived = bool(body.get("archived", True))
+        session.save(touch_updated_at=False)
+    return json_response_fn(
+        handler,
+        {"ok": True, "session": session.compact(), **worktree_retained_payload_fn(session)},
+    )
+
+
+def handle_session_move(
+    handler,
+    body,
+    *,
+    require_fn,
+    bad_response_fn,
+    json_response_fn,
+    get_session_fn,
+    session_lock_fn,
+    load_projects_fn,
+    profiles_match_fn,
+) -> bool:
+    try:
+        require_fn(body, "session_id")
+    except ValueError as exc:
+        return bad_response_fn(handler, str(exc))
+    try:
+        session = get_session_fn(body["session_id"])
+    except KeyError:
+        return bad_response_fn(handler, "Session not found", 404)
+
+    target_pid = body.get("project_id") or None
+    if target_pid:
+        from api.profiles import get_active_profile_name
+
+        active_profile = get_active_profile_name()
+        target = next(
+            (project for project in load_projects_fn() if project["project_id"] == target_pid),
+            None,
+        )
+        if not target:
+            return bad_response_fn(handler, "Project not found", 404)
+        if not profiles_match_fn(target.get("profile"), active_profile):
+            return bad_response_fn(handler, "Project not found", 404)
+    with session_lock_fn(body["session_id"]):
+        session.project_id = target_pid
+        session.save()
+    return json_response_fn(handler, {"ok": True, "session": session.compact()})
+
+
 def handle_personality_set(
     handler,
     body,

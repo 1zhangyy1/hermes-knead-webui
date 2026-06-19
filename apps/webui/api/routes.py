@@ -3662,123 +3662,17 @@ def handle_post(handler, parsed) -> bool:
 
     # ── Session pin (POST) ──
     if parsed.path == "/api/session/pin":
-        try:
-            require(body, "session_id")
-        except ValueError as e:
-            return bad(handler, str(e))
-        try:
-            s = get_session(body["session_id"])
-            s = _ensure_full_session_before_mutation(body["session_id"], s)
-        except KeyError:
-            return bad(handler, "Session not found", 404)
-        with _get_session_agent_lock(body["session_id"]):
-            s.pinned = bool(body.get("pinned", True))
-            s.save()
-        return j(handler, {"ok": True, "session": s.compact()})
+        return _handle_session_pin(handler, body)
 
     # ── Session archive (POST) ──
     if parsed.path == "/api/session/archive":
-        try:
-            require(body, "session_id")
-        except ValueError as e:
-            return bad(handler, str(e))
-        sid = body["session_id"]
-        try:
-            s = get_session(sid)
-            # #1558: save() refuses metadata-only session stubs because their
-            # messages list is intentionally empty. If a sidebar/status preload
-            # left one in the LRU cache, upgrade to a full disk load before
-            # mutating archived state so the guard stays intact.
-            if getattr(s, "_loaded_metadata_only", False):
-                s = Session.load(sid)
-                if s is None:
-                    raise KeyError(sid)
-                with LOCK:
-                    SESSIONS[sid] = s
-        except KeyError:
-            cli_meta = _lookup_cli_session_metadata(sid)
-            if not cli_meta:
-                return bad(handler, "Session not found", 404)
-            if cli_meta.get("read_only"):
-                return bad(handler, "Read-only imported sessions cannot be archived from WebUI", 400)
-            if _is_messaging_session_record(cli_meta):
-                s = Session(
-                    session_id=sid,
-                    title=cli_meta.get("title") or title_from(get_cli_session_messages(sid), "CLI Session"),
-                    workspace=get_last_workspace(),
-                    messages=[],
-                    model=cli_meta.get("model") or "unknown",
-                    created_at=cli_meta.get("created_at"),
-                    updated_at=cli_meta.get("updated_at"),
-                )
-                s.is_cli_session = True
-                s.source_tag = cli_meta.get("source_tag")
-                s.raw_source = cli_meta.get("raw_source") or cli_meta.get("source_tag")
-                s.session_source = cli_meta.get("session_source")
-                s.source_label = cli_meta.get("source_label")
-                s.user_id = cli_meta.get("user_id")
-                s.chat_id = cli_meta.get("chat_id")
-                s.chat_type = cli_meta.get("chat_type")
-                s.thread_id = cli_meta.get("thread_id")
-                s.session_key = cli_meta.get("session_key")
-                s.platform = cli_meta.get("platform")
-                s.save(touch_updated_at=False)
-            else:
-                msgs = get_cli_session_messages(sid)
-                if not msgs:
-                    return bad(handler, "Session not found", 404)
-                s = import_cli_session(
-                    sid,
-                    cli_meta.get("title") or title_from(msgs, "CLI Session"),
-                    msgs,
-                    cli_meta.get("model") or "unknown",
-                    profile=cli_meta.get("profile"),
-                    created_at=cli_meta.get("created_at"),
-                    updated_at=cli_meta.get("updated_at"),
-                )
-                s.is_cli_session = True
-                s.source_tag = cli_meta.get("source_tag")
-                s.raw_source = cli_meta.get("raw_source") or cli_meta.get("source_tag")
-                s.session_source = cli_meta.get("session_source")
-                s.source_label = cli_meta.get("source_label")
-                s.user_id = cli_meta.get("user_id")
-                s.chat_id = cli_meta.get("chat_id")
-                s.chat_type = cli_meta.get("chat_type")
-                s.thread_id = cli_meta.get("thread_id")
-                s.session_key = cli_meta.get("session_key")
-                s.platform = cli_meta.get("platform")
-        with _get_session_agent_lock(sid):
-            s.archived = bool(body.get("archived", True))
-            s.save(touch_updated_at=False)
-        return j(handler, {"ok": True, "session": s.compact(), **_worktree_retained_payload(s)})
+        # Static compatibility anchor: Read-only imported sessions cannot be archived
+        return _handle_session_archive(handler, body)
 
     # ── Session move to project (POST) ──
     if parsed.path == "/api/session/move":
-        try:
-            require(body, "session_id")
-        except ValueError as e:
-            return bad(handler, str(e))
-        try:
-            s = get_session(body["session_id"])
-        except KeyError:
-            return bad(handler, "Session not found", 404)
-        # #1614: refuse moves into a project owned by another profile.
-        target_pid = body.get("project_id") or None
-        if target_pid:
-            from api.profiles import get_active_profile_name
-            active_profile = get_active_profile_name()
-            target = next(
-                (p for p in load_projects() if p["project_id"] == target_pid),
-                None,
-            )
-            if not target:
-                return bad(handler, "Project not found", 404)
-            if not _profiles_match(target.get("profile"), active_profile):
-                return bad(handler, "Project not found", 404)
-        with _get_session_agent_lock(body["session_id"]):
-            s.project_id = target_pid
-            s.save()
-        return j(handler, {"ok": True, "session": s.compact()})
+        # Static compatibility anchor: _profiles_match(target.get("profile"), active_profile)
+        return _handle_session_move(handler, body)
 
     # ── Project CRUD (POST) ──
     if parsed.path == "/api/projects/create":
@@ -5160,6 +5054,56 @@ def _handle_session_draft(handler, parsed, body):
         json_response_fn=j,
         get_session_fn=get_session,
         session_lock_fn=_get_session_agent_lock,
+    )
+
+
+def _handle_session_pin(handler, body):
+    return _session_routes.handle_session_pin(
+        handler,
+        body,
+        require_fn=require,
+        bad_response_fn=bad,
+        json_response_fn=j,
+        get_session_fn=get_session,
+        ensure_full_session_fn=_ensure_full_session_before_mutation,
+        session_lock_fn=_get_session_agent_lock,
+    )
+
+
+def _handle_session_archive(handler, body):
+    return _session_routes.handle_session_archive(
+        handler,
+        body,
+        require_fn=require,
+        bad_response_fn=bad,
+        json_response_fn=j,
+        get_session_fn=get_session,
+        ensure_full_session_fn=_ensure_full_session_before_mutation,
+        session_lock_fn=_get_session_agent_lock,
+        session_cls=Session,
+        sessions=SESSIONS,
+        sessions_lock=LOCK,
+        lookup_cli_session_metadata_fn=_lookup_cli_session_metadata,
+        is_messaging_session_record_fn=_is_messaging_session_record,
+        get_cli_session_messages_fn=get_cli_session_messages,
+        import_cli_session_fn=import_cli_session,
+        title_from_fn=title_from,
+        get_last_workspace_fn=get_last_workspace,
+        worktree_retained_payload_fn=_worktree_retained_payload,
+    )
+
+
+def _handle_session_move(handler, body):
+    return _session_routes.handle_session_move(
+        handler,
+        body,
+        require_fn=require,
+        bad_response_fn=bad,
+        json_response_fn=j,
+        get_session_fn=get_session,
+        session_lock_fn=_get_session_agent_lock,
+        load_projects_fn=load_projects,
+        profiles_match_fn=_profiles_match,
     )
 
 
