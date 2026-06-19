@@ -90,7 +90,6 @@ from api.streaming_context import (
     message_identity as _message_identity_impl,
     messages_have_prefix as _messages_have_prefix_impl,
     normalize_fresh_chat_text as _normalize_fresh_chat_text_impl,
-    preserve_pre_compression_snapshot as _preserve_pre_compression_snapshot_impl,
     restore_reasoning_metadata as _restore_reasoning_metadata_impl,
     sanitize_messages_for_api as _sanitize_messages_for_api_impl,
     session_context_messages as _session_context_messages_impl,
@@ -98,6 +97,10 @@ from api.streaming_context import (
 )
 from api.streaming_context_window import (
     apply_context_window_to_usage as _apply_context_window_to_usage,
+)
+from api.streaming_context_facade import (
+    preserve_pre_compression_snapshot_from_facade as _preserve_pre_compression_snapshot,
+    stream_writeback_is_current_from_facade as _stream_writeback_is_current,
 )
 from api.streaming_checkpoint import (
     start_periodic_checkpoint as _start_periodic_checkpoint,
@@ -304,14 +307,6 @@ _generate_llm_session_title_for_agent = _generate_llm_session_title_for_agent_im
 _generate_llm_session_title_via_aux = _generate_llm_session_title_via_aux_impl
 
 
-def _preserve_pre_compression_snapshot(s, old_sid: str) -> None:
-    return _preserve_pre_compression_snapshot_impl(
-        s,
-        old_sid,
-        session_dir=SESSION_DIR,
-        logger=logger,
-    )
-
 _strip_native_image_parts_from_content = _strip_native_image_parts_from_content_impl
 
 
@@ -361,16 +356,6 @@ _has_task_resume_compaction_marker = _has_task_resume_compaction_marker_impl
 
 
 _context_messages_for_new_turn = _context_messages_for_new_turn_impl
-
-
-def _stream_writeback_is_current(session, stream_id):
-    """Return True only while a worker still owns the session writeback.
-
-    cancel_stream() intentionally clears ``active_stream_id`` early so the UI can
-    accept a follow-up turn while the old worker is unwinding. That old worker
-    must not later persist its stale result over the newer transcript.
-    """
-    return bool(stream_id) and getattr(session, 'active_stream_id', None) == stream_id
 
 
 _merge_display_messages_after_agent_result = _merge_display_messages_after_agent_result_impl
