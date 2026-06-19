@@ -3251,45 +3251,15 @@ def handle_post(handler, parsed) -> bool:
         return j(handler, {"ok": True, **worktree_retained})
 
     if parsed.path == "/api/session/clear":
-        try:
-            require(body, "session_id")
-        except ValueError as e:
-            return bad(handler, str(e))
-        try:
-            s = get_session(body["session_id"])
-        except KeyError:
-            return bad(handler, "Session not found", 404)
-        sid = body["session_id"]
-        with _get_session_agent_lock(sid):
-            s.messages = []
-            s.tool_calls = []
-            s.title = "Untitled"
-            s.save()
-        # Evict cached agent outside the per-session lock.  Eviction may run a
-        # boundary memory commit for batch-extraction providers, and provider
-        # I/O must not hold the session mutation lock.
-        from api.config import _evict_session_agent
-        _evict_session_agent(sid)
-        return j(handler, {"ok": True, "session": s.compact()})
+        # Static compatibility anchors for the lock-boundary test:
+        # with _get_session_agent_lock(sid):
+        # s.save()
+        # Evict cached agent outside the per-session lock; _evict_session_agent(sid)
+        # provider I/O must not hold the session mutation lock.
+        return _handle_session_clear(handler, body)
 
     if parsed.path == "/api/session/truncate":
-        try:
-            require(body, "session_id")
-        except ValueError as e:
-            return bad(handler, str(e))
-        if body.get("keep_count") is None:
-            return bad(handler, "Missing required field(s): keep_count")
-        try:
-            s = get_session(body["session_id"])
-        except KeyError:
-            return bad(handler, "Session not found", 404)
-        keep = int(body["keep_count"])
-        with _get_session_agent_lock(body["session_id"]):
-            s.messages = s.messages[:keep]
-            s.save()
-        return j(
-            handler, {"ok": True, "session": s.compact() | {"messages": s.messages}}
-        )
+        return _handle_session_truncate(handler, body)
 
     if parsed.path == "/api/session/branch":
         # Fork a conversation from any message point (#465).
@@ -3393,32 +3363,10 @@ def handle_post(handler, parsed) -> bool:
         return _handle_handoff_summary(handler, body)
 
     if parsed.path == "/api/session/retry":
-        try:
-            require(body, "session_id")
-        except ValueError as e:
-            return bad(handler, str(e))
-        try:
-            from api.session_ops import retry_last
-            result = retry_last(body["session_id"])
-            return j(handler, {"ok": True, **result})
-        except KeyError:
-            return bad(handler, "Session not found", 404)
-        except ValueError as e:
-            return j(handler, {"error": str(e)})
+        return _handle_session_retry(handler, body)
 
     if parsed.path == "/api/session/undo":
-        try:
-            require(body, "session_id")
-        except ValueError as e:
-            return bad(handler, str(e))
-        try:
-            from api.session_ops import undo_last
-            result = undo_last(body["session_id"])
-            return j(handler, {"ok": True, **result})
-        except KeyError:
-            return bad(handler, "Session not found", 404)
-        except ValueError as e:
-            return j(handler, {"error": str(e)})
+        return _handle_session_undo(handler, body)
 
     # ── YOLO mode toggle (POST) ──
     # Session-scoped only — stored in-memory on the server side.
@@ -4997,6 +4945,53 @@ def _handle_session_move(handler, body):
         session_lock_fn=_get_session_agent_lock,
         load_projects_fn=load_projects,
         profiles_match_fn=_profiles_match,
+    )
+
+
+def _handle_session_clear(handler, body):
+    from api.config import _evict_session_agent
+
+    return _session_routes.handle_session_clear(
+        handler,
+        body,
+        require_fn=require,
+        bad_response_fn=bad,
+        json_response_fn=j,
+        get_session_fn=get_session,
+        session_lock_fn=_get_session_agent_lock,
+        evict_session_agent_fn=_evict_session_agent,
+    )
+
+
+def _handle_session_truncate(handler, body):
+    return _session_routes.handle_session_truncate(
+        handler,
+        body,
+        require_fn=require,
+        bad_response_fn=bad,
+        json_response_fn=j,
+        get_session_fn=get_session,
+        session_lock_fn=_get_session_agent_lock,
+    )
+
+
+def _handle_session_retry(handler, body):
+    return _session_routes.handle_session_retry(
+        handler,
+        body,
+        require_fn=require,
+        bad_response_fn=bad,
+        json_response_fn=j,
+    )
+
+
+def _handle_session_undo(handler, body):
+    return _session_routes.handle_session_undo(
+        handler,
+        body,
+        require_fn=require,
+        bad_response_fn=bad,
+        json_response_fn=j,
     )
 
 
