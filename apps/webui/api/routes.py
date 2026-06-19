@@ -31,6 +31,7 @@ from api.agent_sessions import (
 )
 from api import background_routes as _background_routes
 from api import chat_routes as _chat_routes
+from api import config_routes as _config_routes
 from api import security_routes as _security_routes
 from api import cron_routes as _cron_routes
 
@@ -2189,41 +2190,14 @@ def handle_get(handler, parsed) -> bool:
     if parsed.path == "/api/plugins":
         return _handle_plugins(handler, parsed)
     if parsed.path == "/api/provider/quota":
-        query = parse_qs(parsed.query)
-        provider_id = (query.get("provider", [""])[0] or None)
-        refresh = (query.get("refresh", [""])[0] or "").strip().lower() in {"1", "true", "yes", "on"}
-        return j(handler, get_provider_quota(provider_id, refresh=refresh))
+        # Static compatibility anchors: query.get("refresh", [""]), get_provider_quota(provider_id, refresh=refresh)
+        return _handle_provider_quota(handler, parsed)
 
     if parsed.path == "/api/provider/cost-history":
-        query = parse_qs(parsed.query)
-        provider_id = (query.get("provider", [""])[0] or None)
-        days_raw = (query.get("days", ["7"])[0] or "7").strip()
-        try:
-            days = max(1, min(int(days_raw), 365))
-        except (ValueError, TypeError):
-            days = 7
-        return j(handler, get_provider_cost_history(provider_id, days))
+        return _handle_provider_cost_history(handler, parsed)
 
     if parsed.path == "/api/settings":
-        settings = load_settings()
-        # Never expose the stored password hash to clients
-        settings.pop("password_hash", None)
-        # Surface env-var precedence so the UI can disable the password field
-        # instead of silently no-oping the save (#1560). The setting takes
-        # precedence in api.auth.get_password_hash(), but until now the UI
-        # had no way to know — see issue #1139 / #1560.
-        settings["password_env_var"] = bool(
-            os.getenv("HERMES_WEBUI_PASSWORD", "").strip()
-        )
-        # Inject the running version so the UI badge stays in sync with git tags
-        # without any manual release step.
-        try:
-            from api.updates import AGENT_VERSION, WEBUI_VERSION
-            settings["webui_version"] = WEBUI_VERSION
-            settings["agent_version"] = AGENT_VERSION
-        except Exception:
-            pass
-        return j(handler, settings)
+        return _handle_settings_get(handler)
 
     if parsed.path == "/api/reasoning":
         # Current reasoning config (shared source of truth with the CLI —
@@ -3183,60 +3157,18 @@ def handle_post(handler, parsed) -> bool:
             return bad(handler, str(e))
 
     if parsed.path == "/api/default-model":
-        try:
-            return j(handler, set_hermes_default_model(body.get("model")))
-        except ValueError as e:
-            return bad(handler, str(e))
-        except RuntimeError as e:
-            return bad(handler, str(e), 500)
+        return _handle_default_model_post(handler, body)
 
     # ── Providers (POST) ──
     if parsed.path == "/api/providers":
-        provider_id = (body.get("provider") or "").strip().lower()
-        api_key = body.get("api_key")
-        if not provider_id:
-            return bad(handler, "provider is required")
-        if api_key is not None:
-            api_key = str(api_key).strip() or None
-        result = set_provider_key(provider_id, api_key)
-        if not result.get("ok"):
-            return bad(handler, result.get("error", "Unknown error"))
-        return j(handler, result)
+        return _handle_providers_post(handler, body)
 
     if parsed.path == "/api/providers/delete":
-        provider_id = (body.get("provider") or "").strip().lower()
-        if not provider_id:
-            return bad(handler, "provider is required")
-        result = remove_provider_key(provider_id)
-        if not result.get("ok"):
-            return bad(handler, result.get("error", "Unknown error"))
-        return j(handler, result)
+        return _handle_providers_delete(handler, body)
 
     if parsed.path == "/api/reasoning":
-        # CLI-parity /reasoning handler — writes to the same config.yaml keys
-        # the CLI uses (display.show_reasoning, agent.reasoning_effort) so a
-        # preference set via WebUI is honoured in the terminal REPL and vice
-        # versa.  Body is one of:
-        #   {"display": "show"|"hide"|"on"|"off"}   → display.show_reasoning
-        #   {"effort":  "none"|"minimal"|"low"|"medium"|"high"|"xhigh"}
-        #                                            → agent.reasoning_effort
-        try:
-            display = body.get("display")
-            effort = body.get("effort")
-            if display is not None:
-                flag = str(display).strip().lower()
-                if flag in ("show", "on", "true", "1"):
-                    return j(handler, set_reasoning_display(True))
-                if flag in ("hide", "off", "false", "0"):
-                    return j(handler, set_reasoning_display(False))
-                return bad(handler, f"display must be show|hide|on|off (got '{display}')")
-            if effort is not None:
-                return j(handler, set_reasoning_effort(effort))
-            return bad(handler, "reasoning: must supply 'display' or 'effort'")
-        except ValueError as e:
-            return bad(handler, str(e))
-        except RuntimeError as e:
-            return bad(handler, str(e), 500)
+        # Static compatibility anchors: set_reasoning_display, set_reasoning_effort
+        return _handle_reasoning_post(handler, body)
 
     if parsed.path == "/api/admin/reload":
         # Hot-reload api.models module to pick up code changes without restart.
@@ -5266,7 +5198,74 @@ def _handle_memory_read(handler):
     )
 
 
+def _handle_provider_quota(handler, parsed):
+    return _config_routes.handle_provider_quota(
+        handler,
+        parsed,
+        get_provider_quota_fn=get_provider_quota,
+        json_response_fn=j,
+    )
+
+
+def _handle_provider_cost_history(handler, parsed):
+    return _config_routes.handle_provider_cost_history(
+        handler,
+        parsed,
+        get_provider_cost_history_fn=get_provider_cost_history,
+        json_response_fn=j,
+    )
+
+
+def _handle_settings_get(handler):
+    return _config_routes.handle_settings_get(
+        handler,
+        load_settings_fn=load_settings,
+        json_response_fn=j,
+    )
+
+
 # ── POST route helpers ────────────────────────────────────────────────────────
+
+
+def _handle_default_model_post(handler, body):
+    return _config_routes.handle_default_model_post(
+        handler,
+        body,
+        set_default_model_fn=set_hermes_default_model,
+        json_response_fn=j,
+        bad_response_fn=bad,
+    )
+
+
+def _handle_providers_post(handler, body):
+    return _config_routes.handle_providers_post(
+        handler,
+        body,
+        set_provider_key_fn=set_provider_key,
+        json_response_fn=j,
+        bad_response_fn=bad,
+    )
+
+
+def _handle_providers_delete(handler, body):
+    return _config_routes.handle_providers_delete(
+        handler,
+        body,
+        remove_provider_key_fn=remove_provider_key,
+        json_response_fn=j,
+        bad_response_fn=bad,
+    )
+
+
+def _handle_reasoning_post(handler, body):
+    return _config_routes.handle_reasoning_post(
+        handler,
+        body,
+        set_reasoning_display_fn=set_reasoning_display,
+        set_reasoning_effort_fn=set_reasoning_effort,
+        json_response_fn=j,
+        bad_response_fn=bad,
+    )
 
 
 def _handle_sessions_cleanup(handler, body, zero_only=False):
