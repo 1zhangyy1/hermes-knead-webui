@@ -454,7 +454,7 @@ def test_materialize_helper_called_immediately_before_error_path_clears():
     """Pin error writeback call sites to the pending-user materialize helper.
 
     Catches a future refactor that drops the call from the apperror-no-response
-    or outer-Exception paths in api/streaming.py while leaving the
+    or outer-Exception paths in the streaming worker facades while leaving the
     materialize callback unwired — which is exactly the user-turn-data-loss
     regression #1361 was filed for.
     """
@@ -484,16 +484,26 @@ def test_materialize_helper_called_immediately_before_error_path_clears():
         'api',
         'streaming_turn_pipeline.py',
     ).read_text(encoding='utf-8')
+    pipeline_facade_src = Path(__file__).parent.parent.joinpath(
+        'api',
+        'streaming_worker_pipeline_facade.py',
+    ).read_text(encoding='utf-8')
+    exception_facade_src = Path(__file__).parent.parent.joinpath(
+        'api',
+        'streaming_worker_exception_facade.py',
+    ).read_text(encoding='utf-8')
 
     assert 'session.pending_user_message = None' in writeback_src
 
     pipeline_idx = src.find("_run_streaming_turn_pipeline(")
-    pipeline_call_block = src[pipeline_idx:pipeline_idx + 4000]
     silent_idx = pipeline_src.find("handle_completed_conversation_writeback_fn(")
     success_idx = pipeline_src.find("handle_completed_conversation_success_fn(", silent_idx)
     silent_block = pipeline_src[silent_idx:success_idx]
     assert pipeline_idx != -1
-    assert "materialize_pending_user_turn=_materialize_pending_user_turn_before_error" in pipeline_call_block
+    assert (
+        "materialize_pending_user_turn=streaming_api._materialize_pending_user_turn_before_error"
+        in pipeline_facade_src
+    )
     assert "materialize_pending_user_turn=materialize_pending_user_turn" in silent_block
     assert "if writeback_result.should_return:" in success_src
     assert "handle_silent_failure_after_merge_fn(" in completed_writeback_src
@@ -503,10 +513,12 @@ def test_materialize_helper_called_immediately_before_error_path_clears():
     assert "persist_streaming_error_message(" in writeback_src
 
     outer_idx = src.find("_handle_streaming_exception(")
-    outer_return_idx = src.find("if _exception_result.self_healed:", outer_idx)
-    outer_block = src[outer_idx:outer_return_idx]
+    assert outer_idx != -1
     assert "persist_error_message_fn(" in writeback_src
-    assert "materialize_pending_user_turn=_materialize_pending_user_turn_before_error" in outer_block
+    assert (
+        "materialize_pending_user_turn=streaming_api._materialize_pending_user_turn_before_error"
+        in exception_facade_src
+    )
     assert "emit_and_persist_exception_streaming_error_fn(" in exception_src
     assert "materialize_pending_user_turn=materialize_pending_user_turn" in exception_src
 

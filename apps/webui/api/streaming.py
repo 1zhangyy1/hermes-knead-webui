@@ -185,7 +185,7 @@ from api.streaming_runtime_prompt import (
     build_workspace_system_message as _build_workspace_system_message,
     configure_agent_runtime_prompt as _configure_agent_runtime_prompt,
 )
-from api.streaming_exception_handling import handle_streaming_exception as _handle_streaming_exception
+from api.streaming_worker_exception_facade import handle_streaming_exception_from_facade as _handle_streaming_exception
 from api.streaming_worker_context import initialize_streaming_worker_context as _initialize_streaming_worker_context
 from api.streaming_worker_pipeline_facade import run_streaming_turn_pipeline_from_facade as _run_streaming_turn_pipeline
 from api.streaming_worker_startup import prepare_streaming_worker_startup as _prepare_streaming_worker_startup
@@ -741,24 +741,9 @@ def _run_agent_streaming(
             checkpoint_stop=_checkpoint_stop,
             checkpoint_thread=_ckpt_thread,
             ephemeral=ephemeral,
-            logger=logger,
-            sanitize_provider_error_text=_sanitize_provider_error_text,
-            classify_provider_error=_classify_provider_error,
-            finalize_cancelled_turn=_finalize_cancelled_turn,
             put_cancel=_put_cancel,
-            provider_error_payload=_provider_error_payload,
             finalize_product_turn=_finalize_product_turn,
             put=put,
-            append_interrupted_turn_event=_append_interrupted_turn_event,
-            materialize_pending_user_turn=_materialize_pending_user_turn_before_error,
-            stop_checkpoint_thread=_stop_checkpoint_thread,
-            stream_writeback_is_current=_stream_writeback_is_current,
-            custom_provider_resolver=resolve_custom_provider_connection,
-            agent_instances=AGENT_INSTANCES,
-            streams_lock=STREAMS_LOCK,
-            sanitize_messages_for_api=_sanitize_messages_for_api,
-            apply_agent_result_to_session=_apply_agent_result_to_session,
-            agent_factory=_exception_runtime_vars.get('_AIAgent'),
         )
         if _exception_result.self_healed:
             _self_healed = True
