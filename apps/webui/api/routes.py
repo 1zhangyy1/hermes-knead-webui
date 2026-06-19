@@ -2955,112 +2955,7 @@ def handle_post(handler, parsed) -> bool:
         return _handle_dashboard_config_post(handler, body)
 
     if parsed.path == "/api/session/new":
-        try:
-            workspace = str(resolve_trusted_workspace(body.get("workspace"))) if body.get("workspace") else None
-        except (TypeError, ValueError) as e:
-            return bad(handler, str(e))
-        worktree_info = None
-        worktree_requested = (
-            body.get("worktree") is True
-            or str(body.get("worktree")).strip().lower() in {"1", "true", "yes", "on"}
-        )
-        if worktree_requested:
-            try:
-                from api.worktrees import create_worktree_for_workspace
-                base_workspace = workspace
-                if not base_workspace:
-                    base_workspace = str(resolve_trusted_workspace(get_last_workspace()))
-                worktree_info = create_worktree_for_workspace(base_workspace)
-                workspace = worktree_info["path"]
-            except (TypeError, ValueError) as e:
-                return bad(handler, str(e), status=400)
-            except Exception as e:
-                logger.exception("failed to create worktree-backed session")
-                return bad(handler, f"Failed to create worktree: {e}", status=500)
-        model, model_provider = _session_model_state_from_request(
-            body.get("model"),
-            body.get("model_provider"),
-        )
-        # Use the profile sent by the client tab (if any) so that two tabs on
-        # different profiles never clobber each other via the process-level global.
-        # ── Memory lifecycle: commit the previous session before starting a new one ──
-        prev_session_id = body.get("prev_session_id")
-        if prev_session_id:
-            try:
-                from api.session_lifecycle import commit_session_memory
-                from api.config import SESSION_AGENT_CACHE, SESSION_AGENT_CACHE_LOCK
-                prev_agent = None
-                with SESSION_AGENT_CACHE_LOCK:
-                    _cached = SESSION_AGENT_CACHE.get(prev_session_id)
-                    if _cached:
-                        prev_agent = _cached[0]
-                commit_session_memory(prev_session_id, agent=prev_agent)
-            except Exception:
-                logger.debug("Lifecycle commit for prev_session %s failed", prev_session_id, exc_info=True)
-        s = new_session(
-            workspace=workspace,
-            model=model,
-            model_provider=model_provider,
-            profile=body.get("profile") or None,
-            project_id=body.get("project_id") or None,
-            worktree_info=worktree_info,
-        )
-        session_needs_save = False
-        enabled_toolsets = _session_toolsets_from_request(body)
-        if enabled_toolsets:
-            s.enabled_toolsets = enabled_toolsets
-            session_needs_save = True
-        product_ctx = None
-        if body.get("product_id") or body.get("productId"):
-            try:
-                from api.product_context import product_context_from_request
-
-                product_ctx = product_context_from_request(body, workspace=workspace)
-            except ValueError as e:
-                return bad(handler, str(e), status=400)
-            if product_ctx:
-                product_task_title = _product_task_title_from_request(body)
-                if product_task_title and product_ctx["scope"] == "product_init":
-                    s.title = product_task_title
-                s.product_id = product_ctx["id"]
-                s.product_scope = product_ctx["scope"]
-                s.product_intent = product_ctx.get("intent") or ""
-                s.product_line = product_ctx.get("line") or "use"
-                session_needs_save = True
-                if not enabled_toolsets:
-                    product_toolsets = _session_toolsets_from_request({"toolsets": product_ctx.get("tools") or []})
-                    if product_toolsets:
-                        s.enabled_toolsets = product_toolsets
-                        session_needs_save = True
-                try:
-                    next_ui_status = (
-                        "generating"
-                        if product_ctx["scope"] in {"product_init", "product_builder"}
-                        and str(product_ctx.get("ui_mode") or "") != "chat_only"
-                        else None
-                    )
-                    record_product_session(
-                        product_ctx["id"],
-                        s.session_id,
-                        ui_status=next_ui_status,
-                    )
-                except Exception:
-                    logger.debug("Failed to bind session %s to product", s.session_id, exc_info=True)
-        if session_needs_save:
-            try:
-                s.save(skip_index=True)
-            except Exception:
-                logger.debug("Failed to persist new session %s metadata", s.session_id, exc_info=True)
-        session_payload = s.compact() | {"messages": s.messages}
-        if product_ctx:
-            session_payload.update(
-                {
-                    "product_id": product_ctx["id"],
-                    "product_scope": product_ctx["scope"],
-                    "product_intent": product_ctx.get("intent") or "",
-                }
-            )
-        return j(handler, {"session": session_payload})
+        return _handle_session_new(handler, body)
 
     if parsed.path == "/api/session/duplicate":
         try:
@@ -3745,6 +3640,23 @@ def _handle_sessions_search(handler, parsed):
         get_session_fn=get_session,
         redact_text_fn=_redact_text,
         json_response_fn=j,
+    )
+
+
+def _handle_session_new(handler, body):
+    return _session_routes.handle_session_new(
+        handler,
+        body,
+        bad_response_fn=bad,
+        json_response_fn=j,
+        resolve_trusted_workspace_fn=resolve_trusted_workspace,
+        get_last_workspace_fn=get_last_workspace,
+        session_model_state_from_request_fn=_session_model_state_from_request,
+        session_toolsets_from_request_fn=_session_toolsets_from_request,
+        product_task_title_from_request_fn=_product_task_title_from_request,
+        new_session_fn=new_session,
+        record_product_session_fn=record_product_session,
+        logger=logger,
     )
 
 
