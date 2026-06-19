@@ -96,6 +96,7 @@ from api import gateway_sse_routes as _gateway_sse_routes
 from api import health_routes as _health_routes
 from api import login_routes as _login_routes
 from api import logs_routes as _logs_routes
+from api import memory_routes as _memory_routes
 from api import messaging_routes as _messaging_routes
 from api import mcp_routes as _mcp_routes
 from api import plugin_routes as _plugin_routes
@@ -6246,45 +6247,10 @@ def _handle_cron_recent(handler, parsed):
 
 
 def _handle_memory_read(handler):
-    try:
-        from api.profiles import get_active_hermes_home
-
-        home = get_active_hermes_home()
-        mem_dir = home / "memories"
-    except ImportError:
-        home = Path.home() / ".hermes"
-        mem_dir = home / "memories"
-    mem_file = mem_dir / "MEMORY.md"
-    user_file = mem_dir / "USER.md"
-    soul_file = home / "SOUL.md"
-    memory = (
-        mem_file.read_text(encoding="utf-8", errors="replace")
-        if mem_file.exists()
-        else ""
-    )
-    user = (
-        user_file.read_text(encoding="utf-8", errors="replace")
-        if user_file.exists()
-        else ""
-    )
-    soul = (
-        soul_file.read_text(encoding="utf-8", errors="replace")
-        if soul_file.exists()
-        else ""
-    )
-    return j(
+    return _memory_routes.handle_memory_read(
         handler,
-        {
-            "memory": _redact_text(memory),
-            "user": _redact_text(user),
-            "soul": _redact_text(soul),
-            "memory_path": str(mem_file),
-            "user_path": str(user_file),
-            "soul_path": str(soul_file),
-            "memory_mtime": mem_file.stat().st_mtime if mem_file.exists() else None,
-            "user_mtime": user_file.stat().st_mtime if user_file.exists() else None,
-            "soul_mtime": soul_file.stat().st_mtime if soul_file.exists() else None,
-        },
+        json_response_fn=j,
+        redact_text_fn=_redact_text,
     )
 
 
@@ -8848,30 +8814,13 @@ def _handle_skill_delete(handler, body):
 
 
 def _handle_memory_write(handler, body):
-    try:
-        require(body, "section", "content")
-    except ValueError as e:
-        return bad(handler, str(e))
-    try:
-        from api.profiles import get_active_hermes_home
-
-        home = get_active_hermes_home()
-        mem_dir = home / "memories"
-    except ImportError:
-        home = Path.home() / ".hermes"
-        mem_dir = home / "memories"
-    mem_dir.mkdir(parents=True, exist_ok=True)
-    section = body["section"]
-    if section == "memory":
-        target = mem_dir / "MEMORY.md"
-    elif section == "user":
-        target = mem_dir / "USER.md"
-    elif section == "soul":
-        target = home / "SOUL.md"
-    else:
-        return bad(handler, 'section must be "memory", "user", or "soul"')
-    target.write_text(body["content"], encoding="utf-8")
-    return j(handler, {"ok": True, "section": section, "path": str(target)})
+    return _memory_routes.handle_memory_write(
+        handler,
+        body,
+        require_fn=require,
+        json_response_fn=j,
+        bad_response_fn=bad,
+    )
 
 
 def _normalize_message_for_import_refresh(message: object) -> object:
