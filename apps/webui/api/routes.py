@@ -12,7 +12,6 @@ import os
 import queue
 import re
 import platform
-import shutil
 import sqlite3
 import subprocess
 import sys
@@ -3073,61 +3072,10 @@ def handle_post(handler, parsed) -> bool:
         return _handle_session_worktree_remove(handler, body)
 
     if parsed.path == "/api/session/delete":
-        sid = body.get("session_id", "")
-        if not sid:
-            return bad(handler, "session_id is required")
-        if not all(c in '0123456789abcdefghijklmnopqrstuvwxyz_' for c in sid):
-            return bad(handler, "Invalid session_id", 400)
-        cli_meta_for_delete = _lookup_cli_session_metadata(sid)
-        if cli_meta_for_delete.get("read_only"):
-            return bad(handler, "Read-only imported sessions cannot be deleted from WebUI", 400)
-        is_messaging_session = _is_messaging_session_id(sid)
-        worktree_retained = _worktree_retained_payload_for_session_id(sid)
-        # Delete from WebUI session store
-        with LOCK:
-            SESSIONS.pop(sid, None)
-        try:
-            SESSION_INDEX_FILE.unlink(missing_ok=True)
-        except Exception:
-            logger.debug("Failed to unlink session index")
-        # Evict cached agent so turn count doesn't leak into a recycled session
-        from api.config import _evict_session_agent
-        _evict_session_agent(sid)
-        try:
-            p = (SESSION_DIR / f"{sid}.json").resolve()
-            p.relative_to(SESSION_DIR.resolve())
-        except Exception:
-            return bad(handler, "Invalid session_id", 400)
-        try:
-            p.unlink(missing_ok=True)
-            p.with_suffix('.json.bak').unlink(missing_ok=True)
-        except Exception:
-            logger.debug("Failed to unlink session file %s", p)
-        try:
-            from api.upload import _session_attachment_dir
-
-            shutil.rmtree(_session_attachment_dir(sid), ignore_errors=True)
-        except Exception:
-            logger.debug("Failed to clean attachment dir for deleted session %s", sid)
-        # Prune the per-session agent lock so deleted sessions don't leak
-        # Lock entries in SESSION_AGENT_LOCKS forever.
-        with SESSION_AGENT_LOCKS_LOCK:
-            SESSION_AGENT_LOCKS.pop(sid, None)
-        try:
-            from api.terminal import close_terminal
-            close_terminal(sid)
-        except Exception:
-            logger.debug("Failed to close workspace terminal for deleted session %s", sid)
-        # Also delete from CLI state.db for CLI sessions shown in sidebar,
-        # but never erase external messaging channel memory via WebUI delete.
-        if not is_messaging_session:
-            try:
-                from api.models import delete_cli_session
-
-                delete_cli_session(sid)
-            except Exception:
-                logger.debug("Failed to delete CLI session %s", sid)
-        return j(handler, {"ok": True, **worktree_retained})
+        # Static compatibility anchors: session_routes invalidates
+        # SESSION_INDEX_FILE and calls path.with_suffix('.json.bak').unlink before
+        # returning the worktree_retained payload.
+        return _handle_session_delete(handler, body)
 
     if parsed.path == "/api/session/clear":
         # Static compatibility anchors for the lock-boundary test:
@@ -4806,6 +4754,25 @@ def _handle_session_draft(handler, parsed, body):
         json_response_fn=j,
         get_session_fn=get_session,
         session_lock_fn=_get_session_agent_lock,
+    )
+
+
+def _handle_session_delete(handler, body):
+    return _session_routes.handle_session_delete(
+        handler,
+        body,
+        bad_response_fn=bad,
+        json_response_fn=j,
+        lookup_cli_session_metadata_fn=_lookup_cli_session_metadata,
+        is_messaging_session_id_fn=_is_messaging_session_id,
+        worktree_retained_payload_fn=_worktree_retained_payload_for_session_id,
+        sessions=SESSIONS,
+        sessions_lock=LOCK,
+        session_index_file=SESSION_INDEX_FILE,
+        session_dir=SESSION_DIR,
+        session_agent_locks=SESSION_AGENT_LOCKS,
+        session_agent_locks_lock=SESSION_AGENT_LOCKS_LOCK,
+        logger=logger,
     )
 
 

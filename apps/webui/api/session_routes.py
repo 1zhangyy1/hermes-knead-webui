@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 from pathlib import Path
 from urllib.parse import parse_qs
 
@@ -274,6 +275,86 @@ def handle_session_new(
             }
         )
     return json_response_fn(handler, {"session": session_payload})
+
+
+def handle_session_delete(
+    handler,
+    body,
+    *,
+    bad_response_fn,
+    json_response_fn,
+    lookup_cli_session_metadata_fn,
+    is_messaging_session_id_fn,
+    worktree_retained_payload_fn,
+    sessions: dict,
+    sessions_lock,
+    session_index_file: Path,
+    session_dir: Path,
+    session_agent_locks: dict,
+    session_agent_locks_lock,
+    logger,
+) -> bool:
+    sid = body.get("session_id", "")
+    if not sid:
+        return bad_response_fn(handler, "session_id is required")
+    if not all(char in "0123456789abcdefghijklmnopqrstuvwxyz_" for char in sid):
+        return bad_response_fn(handler, "Invalid session_id", 400)
+
+    cli_meta_for_delete = lookup_cli_session_metadata_fn(sid)
+    if cli_meta_for_delete.get("read_only"):
+        return bad_response_fn(handler, "Read-only imported sessions cannot be deleted from WebUI", 400)
+
+    is_messaging_session = is_messaging_session_id_fn(sid)
+    worktree_retained = worktree_retained_payload_fn(sid)
+
+    with sessions_lock:
+        sessions.pop(sid, None)
+    try:
+        session_index_file.unlink(missing_ok=True)
+    except Exception:
+        logger.debug("Failed to unlink session index")
+
+    from api.config import _evict_session_agent
+
+    _evict_session_agent(sid)
+    try:
+        path = (session_dir / f"{sid}.json").resolve()
+        path.relative_to(session_dir.resolve())
+    except Exception:
+        return bad_response_fn(handler, "Invalid session_id", 400)
+
+    try:
+        path.unlink(missing_ok=True)
+        path.with_suffix(".json.bak").unlink(missing_ok=True)
+    except Exception:
+        logger.debug("Failed to unlink session file %s", path)
+
+    try:
+        from api.upload import _session_attachment_dir
+
+        shutil.rmtree(_session_attachment_dir(sid), ignore_errors=True)
+    except Exception:
+        logger.debug("Failed to clean attachment dir for deleted session %s", sid)
+
+    with session_agent_locks_lock:
+        session_agent_locks.pop(sid, None)
+
+    try:
+        from api.terminal import close_terminal
+
+        close_terminal(sid)
+    except Exception:
+        logger.debug("Failed to close workspace terminal for deleted session %s", sid)
+
+    if not is_messaging_session:
+        try:
+            from api.models import delete_cli_session
+
+            delete_cli_session(sid)
+        except Exception:
+            logger.debug("Failed to delete CLI session %s", sid)
+
+    return json_response_fn(handler, {"ok": True, **worktree_retained})
 
 
 def handle_list_dir(
