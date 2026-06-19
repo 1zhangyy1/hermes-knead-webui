@@ -26,7 +26,7 @@ from api.helpers import redact_session_data, _redact_text
 from api.metering import meter
 from api.streaming_errors import (
     CANCEL_MARKER_PATTERNS as _CANCEL_MARKER_PATTERNS,
-    is_quota_error_text as _is_quota_error_text_impl,
+    is_quota_error_text as _is_quota_error_text,
     sanitize_provider_error_text as _sanitize_provider_error_text,
 )
 from api.streaming_error_facade import (
@@ -42,7 +42,7 @@ from api.streaming_error_facade import (
 from api.streaming_cancellation import (
     handle_post_run_cancel as _handle_post_run_cancel,
     handle_preflight_cancel as _handle_preflight_cancel,
-    session_has_cancel_marker as _session_has_cancel_marker_impl,
+    session_has_cancel_marker as _session_has_cancel_marker,
 )
 from api.streaming_cancel_facade import cancel_stream_from_facade
 from api.streaming_chat_steer import (
@@ -149,23 +149,23 @@ from api.streaming_titles import (
 # Source-guard anchor: streaming title helpers still reject generic completion
 # phrases such as "all set" before persisting generated session titles.
 from api.streaming_title_generation import (
-    _aux_title_configured as _aux_title_configured_impl,
-    _aux_title_timeout as _aux_title_timeout_impl,
-    _extract_title_response as _extract_title_response_impl,
-    _generate_llm_session_title_for_agent as _generate_llm_session_title_for_agent_impl,
-    _generate_llm_session_title_via_aux as _generate_llm_session_title_via_aux_impl,
-    _is_minimax_route as _is_minimax_route_impl,
-    _safe_obj_value as _safe_obj_value_impl,
-    _safe_text_value as _safe_text_value_impl,
-    _title_completion_budget as _title_completion_budget_impl,
-    _title_retry_completion_budget as _title_retry_completion_budget_impl,
-    _title_retry_status as _title_retry_status_impl,
-    _title_should_skip_remaining_attempts as _title_should_skip_remaining_attempts_impl,
-    generate_title_raw_via_agent as _generate_title_raw_via_agent_impl,
-    generate_title_raw_via_aux as _generate_title_raw_via_aux_impl,
+    _aux_title_configured,
+    _aux_title_timeout,
+    _extract_title_response,
+    _generate_llm_session_title_for_agent,
+    _generate_llm_session_title_via_aux,
+    _is_minimax_route,
+    _safe_obj_value,
+    _safe_text_value,
+    _title_completion_budget,
+    _title_retry_completion_budget,
+    _title_retry_status,
+    _title_should_skip_remaining_attempts,
+    generate_title_raw_via_agent,
+    generate_title_raw_via_aux,
 )
 from api.streaming_title_refresh import (
-    get_title_refresh_interval as _get_title_refresh_interval_impl,
+    get_title_refresh_interval as _get_title_refresh_interval,
 )
 from api.streaming_title_facade import (
     is_provisional_title_from_facade as _is_provisional_title,
@@ -182,11 +182,11 @@ from api.streaming_recovery_facade import (
     materialize_pending_user_turn_before_error_from_facade as _materialize_pending_user_turn_before_error,
 )
 from api.streaming_runtime_helpers import (
-    WEBUI_VISIBLE_PROGRESS_PROMPT as _WEBUI_VISIBLE_PROGRESS_PROMPT_IMPL,
-    aiagent_import_error_detail as _aiagent_import_error_detail_impl,
-    has_new_assistant_reply as _has_new_assistant_reply_impl,
+    WEBUI_VISIBLE_PROGRESS_PROMPT as _WEBUI_VISIBLE_PROGRESS_PROMPT,
+    aiagent_import_error_detail as _aiagent_import_error_detail,
+    has_new_assistant_reply as _has_new_assistant_reply,
     webui_clarify_callback as _webui_clarify_callback_impl,
-    webui_ephemeral_system_prompt as _webui_ephemeral_system_prompt_impl,
+    webui_ephemeral_system_prompt as _webui_ephemeral_system_prompt,
 )
 from api.streaming_runtime_facade import clarify_timeout_seconds_from_facade as _clarify_timeout_seconds
 from api.streaming_runtime_prompt import (
@@ -215,68 +215,8 @@ try:
 except ImportError:
     AIAgent = None
 
-_is_quota_error_text = _is_quota_error_text_impl
-
-
-_WEBUI_VISIBLE_PROGRESS_PROMPT = _WEBUI_VISIBLE_PROGRESS_PROMPT_IMPL
-
-_webui_ephemeral_system_prompt = _webui_ephemeral_system_prompt_impl
-
-
-_has_new_assistant_reply = _has_new_assistant_reply_impl
-
-
-_session_has_cancel_marker = _session_has_cancel_marker_impl
-
-
-_aiagent_import_error_detail = _aiagent_import_error_detail_impl
 from api.models import get_session, title_from
 from api.workspace import set_last_workspace
-
-_get_title_refresh_interval = _get_title_refresh_interval_impl
-
-
-_is_minimax_route = _is_minimax_route_impl
-
-
-_aux_title_configured = _aux_title_configured_impl
-
-
-_aux_title_timeout = _aux_title_timeout_impl
-
-
-_title_completion_budget = _title_completion_budget_impl
-
-
-_title_retry_completion_budget = _title_retry_completion_budget_impl
-
-
-_title_retry_status = _title_retry_status_impl
-
-
-_title_should_skip_remaining_attempts = _title_should_skip_remaining_attempts_impl
-
-
-_safe_obj_value = _safe_obj_value_impl
-
-
-_safe_text_value = _safe_text_value_impl
-
-
-_extract_title_response = _extract_title_response_impl
-
-
-generate_title_raw_via_aux = _generate_title_raw_via_aux_impl
-
-
-generate_title_raw_via_agent = _generate_title_raw_via_agent_impl
-
-
-_generate_llm_session_title_for_agent = _generate_llm_session_title_for_agent_impl
-
-
-_generate_llm_session_title_via_aux = _generate_llm_session_title_via_aux_impl
-
 
 def _run_agent_streaming(
     session_id,
