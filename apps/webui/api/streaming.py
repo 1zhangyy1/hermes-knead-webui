@@ -2,7 +2,6 @@
 Hermes Web UI -- SSE streaming engine and agent thread runner.
 Includes Sprint 10 cancel support via CANCEL_FLAGS.
 """
-import json
 import logging
 import os
 import threading
@@ -123,6 +122,7 @@ from api.streaming_process_facade import (
     format_process_notification_from_facade as _format_process_notification,
     mark_process_completion_consumed_from_facade as _mark_process_completion_consumed,
 )
+from api.streaming_sse_facade import write_sse_from_facade as _sse
 from api.streaming_turn_journal import (
     append_interrupted_turn_event as _append_interrupted_turn_event,
 )
@@ -360,13 +360,6 @@ _merge_display_messages_after_agent_result = _merge_display_messages_after_agent
 
 
 _assistant_reply_added_after_current_turn = _assistant_reply_added_after_current_turn_impl
-
-
-def _sse(handler, event, data):
-    """Write one SSE event to the response stream."""
-    payload = f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
-    handler.wfile.write(payload.encode('utf-8'))
-    handler.wfile.flush()
 
 
 def _run_agent_streaming(
