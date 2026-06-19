@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sqlite3
 import time
 from pathlib import Path
@@ -216,3 +217,435 @@ def persist_handoff_summary(
     if persist_local_fn(sid, marker):
         return marker
     return marker if persist_state_db_fn(sid, marker) else marker
+
+
+def handle_handoff_summary(
+    handler,
+    body,
+    *,
+    require_fn: Callable,
+    bad_response_fn: Callable,
+    json_response_fn: Callable,
+    persist_handoff_summary_fn: Callable,
+    sanitize_error_fn: Callable,
+    logger,
+):
+    """Generate an on-demand handoff summary for a gateway session."""
+    try:
+        require_fn(body, "session_id")
+    except ValueError as e:
+        return bad_response_fn(handler, str(e))
+
+    sid = str(body.get("session_id") or "").strip()
+    if not sid:
+        return bad_response_fn(handler, "session_id is required")
+
+    since = body.get("since")
+    if since is not None:
+        try:
+            since = float(since)
+        except (TypeError, ValueError):
+            return bad_response_fn(handler, "since must be a unix timestamp (number)")
+
+    from api.models import get_cli_session_messages, count_conversation_rounds, CONVERSATION_ROUND_THRESHOLD
+
+    rounds = count_conversation_rounds(sid, since=since)
+    if rounds < CONVERSATION_ROUND_THRESHOLD:
+        return bad_response_fn(handler, "Not enough conversation rounds to generate a summary.", 400)
+
+    # Filter messages by ``since``.
+    all_msgs = get_cli_session_messages(sid)
+    if since is not None:
+        import datetime as _dt
+
+        filtered = []
+        for m in all_msgs:
+            ts_raw = m.get("timestamp")
+            if ts_raw is None:
+                continue
+            try:
+                if isinstance(ts_raw, (int, float)):
+                    ts_val = float(ts_raw)
+                else:
+                    ts_val = _dt.datetime.fromisoformat(
+                        str(ts_raw).replace("Z", "+00:00")
+                    ).timestamp()
+                if ts_val > since:
+                    filtered.append(m)
+            except Exception:
+                pass
+        msgs = filtered
+    else:
+        msgs = all_msgs
+
+    # Cap to last 50 messages.
+    msgs = msgs[-50:]
+
+    if len(msgs) < 2:
+        return bad_response_fn(handler, "Not enough messages to summarize.", 400)
+
+    def _extract_handoff_text(raw_content):
+        if isinstance(raw_content, list):
+            return " ".join(
+                str(p.get("text") or p.get("content") or "")
+                for p in raw_content
+                if isinstance(p, dict)
+            ).strip()
+        return str(raw_content or "").strip()
+
+    def _contains_chinese(text):
+        return any("\u4e00" <= ch <= "\u9fff" for ch in str(text))
+
+    transcript_is_chinese = any(
+        _contains_chinese(_extract_handoff_text(m.get("content")))
+        for m in msgs
+    )
+    # Build a lightweight conversation transcript for the LLM.
+    lines = []
+    for m in msgs:
+        role = m.get("role", "")
+        content = _extract_handoff_text(m.get("content"))
+        content = str(content or "").strip()[:1000]
+        if role in ("user", "assistant") and content:
+            lines.append(content)
+    transcript = "\n".join(lines)
+
+    def _fallback_handoff_summary(items):
+        """Return a deterministic summary when LLM summary generation is unavailable."""
+        user_points = []
+        assistant_points = []
+
+        def _summarize_snippet(raw_text, max_len=78):
+            text = " ".join(str(raw_text or "").split()).strip()
+            if not text:
+                return ""
+            if len(text) <= max_len:
+                return text
+            return text[: max_len - 1].rstrip() + "…"
+
+        for m in items:
+            role = m.get("role", "")
+            content = _summarize_snippet(_extract_handoff_text(m.get("content")), 82)
+            if role in ("user", "assistant") and content:
+                if role == "user":
+                    user_points.append(content)
+                else:
+                    assistant_points.append(content)
+        if not user_points and not assistant_points:
+            return (
+                "近期可读文本不足，无法生成更完整的交接摘要，请补充一条消息后重试。"
+                if transcript_is_chinese
+                else "Not enough readable text to create a useful handoff summary; please send one more message and retry."
+            )
+
+        if transcript_is_chinese:
+            bullets = []
+            if user_points:
+                bullets.append(f"- 你刚讨论了：{user_points[-1]}。")
+            if assistant_points:
+                bullets.append(f"- 助手已回复：{assistant_points[-1]}。")
+            if len(user_points) + len(assistant_points) >= 2:
+                bullets.append("- 当前对话存在尚未确认的后续动作。")
+            else:
+                bullets.append("- 当前信息偏少，建议补充关键点后再切换。")
+            return "\n".join(bullets)
+
+        bullets = []
+        if user_points:
+            bullets.append(f"- You asked: {user_points[-1]}.")
+        if assistant_points:
+            bullets.append(f"- The assistant responded: {assistant_points[-1]}.")
+        if len(user_points) + len(assistant_points) >= 2:
+            bullets.append("- There is pending context to continue next.")
+        else:
+            bullets.append("- The conversation is still short; add one more turn before summarizing.")
+        return "\n".join(bullets)
+
+    def _summary_output_incomplete(text):
+        """Best-effort guard for truncated summaries when LLM signals are unavailable."""
+        if not isinstance(text, str):
+            text = str(text or "")
+        text = text.strip()
+        if not text:
+            return True
+        if text.endswith("...") or text.endswith("…"):
+            return True
+        lines = [line.strip() for line in text.splitlines() if line.strip()]
+        if not lines:
+            return True
+        last_line = lines[-1]
+        if re.search(r"[。！？；!?.；]$", last_line):
+            return False
+        if len(last_line) >= 56 and not re.search(r"\b(and|or|so|then|because|if|when|but|so|as)\b$", last_line, re.IGNORECASE):
+            return True
+        return bool(re.search(r"\b(and|or|but|so|because|if|when)$", last_line, re.IGNORECASE))
+
+    def _agent_summary_incomplete(summary_result):
+        if not isinstance(summary_result, dict):
+            return True
+        reason = (summary_result.get("finish_reason") or "").strip().lower()
+        if reason == "length":
+            return True
+        stop_reason = (summary_result.get("stop_reason") or "").strip().lower()
+        if stop_reason in {"max_tokens", "length"}:
+            return True
+        return _summary_output_incomplete(summary_result.get("text", ""))
+
+    def _resolve_handoff_channel_label():
+        channel_label = None
+        try:
+            from api.models import get_session as _get_session, get_cli_sessions
+
+            session_meta = _get_session(sid)
+            channel_label = (
+                session_meta.source_label
+                or session_meta.raw_source
+                or session_meta.source_tag
+                or session_meta.session_source
+            )
+            if not channel_label:
+                for candidate in get_cli_sessions():
+                    if candidate.get("session_id") == sid:
+                        channel_label = (
+                            candidate.get("source_label")
+                            or candidate.get("raw_source")
+                            or candidate.get("source_tag")
+                            or candidate.get("source")
+                        )
+                        break
+        except Exception:
+            pass
+        return channel_label
+
+    def _agent_text_completion(agent, system_prompt, user_text, max_tokens=700):
+        """Use the current Hermes Agent transport without mutating conversation history."""
+        api_messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_text},
+        ]
+        result = {
+            "text": "",
+            "finish_reason": None,
+            "stop_reason": None,
+            "incomplete": True,
+        }
+        disabled_reasoning = {"enabled": False}
+        previous_reasoning = getattr(agent, "reasoning_config", None)
+        try:
+            agent.reasoning_config = disabled_reasoning
+            if getattr(agent, "api_mode", "") == "codex_responses":
+                codex_kwargs = agent._build_api_kwargs(api_messages)
+                codex_kwargs.pop("tools", None)
+                codex_kwargs["max_output_tokens"] = max_tokens
+                resp = agent._run_codex_stream(codex_kwargs)
+                assistant_message, _ = agent._normalize_codex_response(resp)
+                result["text"] = str((assistant_message.content or "") if assistant_message else "").strip()
+                result["incomplete"] = _summary_output_incomplete(result["text"])
+                return result
+
+            if getattr(agent, "api_mode", "") == "anthropic_messages":
+                from agent.anthropic_adapter import build_anthropic_kwargs, normalize_anthropic_response
+
+                ant_kwargs = build_anthropic_kwargs(
+                    model=agent.model,
+                    messages=api_messages,
+                    tools=None,
+                    max_tokens=max_tokens,
+                    reasoning_config=disabled_reasoning,
+                    is_oauth=getattr(agent, "_is_anthropic_oauth", False),
+                    preserve_dots=agent._anthropic_preserve_dots(),
+                    base_url=getattr(agent, "_anthropic_base_url", None),
+                )
+                resp = agent._anthropic_messages_create(ant_kwargs)
+                assistant_message, _ = normalize_anthropic_response(
+                    resp,
+                    strip_tool_prefix=getattr(agent, "_is_anthropic_oauth", False),
+                )
+                result["text"] = str((assistant_message.content or "") if assistant_message else "").strip()
+                result["incomplete"] = _summary_output_incomplete(result["text"])
+                return result
+
+            api_kwargs = agent._build_api_kwargs(api_messages)
+            api_kwargs.pop("tools", None)
+            api_kwargs["temperature"] = 0.2
+            api_kwargs["timeout"] = 30.0
+            if "max_completion_tokens" in api_kwargs:
+                api_kwargs["max_completion_tokens"] = max_tokens
+            else:
+                api_kwargs["max_tokens"] = max_tokens
+            resp = agent._ensure_primary_openai_client(reason="handoff_summary").chat.completions.create(
+                **api_kwargs,
+            )
+            choice = (getattr(resp, "choices", None) or [None])[0]
+            msg = getattr(choice, "message", None) if choice is not None else None
+            result["text"] = str(getattr(msg, "content", "") or "").strip()
+            result["finish_reason"] = getattr(choice, "finish_reason", None)
+            result["stop_reason"] = getattr(choice, "stop_reason", None)
+            result["incomplete"] = _agent_summary_incomplete(result)
+            return result
+        finally:
+            agent.reasoning_config = previous_reasoning
+
+    # Call LLM for summary.
+    try:
+        import api.config as _cfg
+        from api.oauth import resolve_runtime_provider_with_anthropic_env_lock
+        import hermes_cli.runtime_provider as _runtime_provider
+        import run_agent as _run_agent
+
+        # Try to resolve model from an existing session, fall back to default.
+        resolved_model = None
+        resolved_provider = None
+        resolved_base_url = None
+        try:
+            from api.models import get_session
+
+            s_obj = get_session(sid)
+            resolved_model = getattr(s_obj, "model", None)
+        except Exception:
+            pass
+
+        resolved_model, resolved_provider, resolved_base_url = _cfg.resolve_model_provider(resolved_model)
+
+        resolved_api_key = None
+        try:
+            _rt = resolve_runtime_provider_with_anthropic_env_lock(
+                _runtime_provider.resolve_runtime_provider,
+                requested=resolved_provider,
+            )
+            resolved_api_key = _rt.get("api_key")
+            if not resolved_provider:
+                resolved_provider = _rt.get("provider")
+            if not resolved_base_url:
+                resolved_base_url = _rt.get("base_url")
+        except Exception as _e:
+            logger.warning("resolve_runtime_provider failed for handoff summary: %s", _e)
+
+        if isinstance(resolved_provider, str) and resolved_provider.startswith("custom:"):
+            _cp_key, _cp_base = _cfg.resolve_custom_provider_connection(resolved_provider)
+            if not resolved_api_key and _cp_key:
+                resolved_api_key = _cp_key
+            if not resolved_base_url and _cp_base:
+                resolved_base_url = _cp_base
+
+        if not resolved_api_key:
+            summary_text = _fallback_handoff_summary(msgs)
+            try:
+                persist_handoff_summary_fn(
+                    sid,
+                    summary_text,
+                    _resolve_handoff_channel_label(),
+                    rounds,
+                    fallback=True,
+                )
+            except Exception:
+                pass
+            return json_response_fn(handler, {
+                "ok": True,
+                "summary": summary_text,
+                "message_count": len(msgs),
+                "rounds": rounds,
+                "fallback": True,
+            })
+
+        agent = _run_agent.AIAgent(
+            model=resolved_model,
+            provider=resolved_provider,
+            base_url=resolved_base_url,
+            api_key=resolved_api_key,
+            platform="webui",
+            quiet_mode=True,
+            enabled_toolsets=[],
+            session_id=sid,
+        )
+
+        summary_system_prompt = (
+            "You are summarizing an external-channel conversation so a Web UI reader "
+            "can quickly catch up after switching contexts.\n\n"
+            "Only use the latest messages, and never copy raw transcript lines.\n"
+            "Do not output role labels (no “你:” / “assistant:” / “user:” / “assistant”).\n"
+            "Use direct 2–5 bullet points in the conversation language.\n"
+            "English: speak using “you”.\n"
+            "中文: 使用“你”。\n\n"
+            "Focus on:\n"
+            "- Unfinished tasks or action items\n"
+            "- Pending questions that need replies\n"
+            "- Key decisions made\n"
+            "- Open disagreements or TBD items\n\n"
+            "If the conversation is purely casual with no actionable items, "
+            "say so in one sentence."
+        )
+        summary_user_text = f"Conversation transcript:\n{transcript}"
+
+        try:
+            first_pass = _agent_text_completion(
+                agent,
+                summary_system_prompt,
+                summary_user_text,
+                max_tokens=700,
+            )
+            summary_text = first_pass.get("text") if isinstance(first_pass, dict) else ""
+            if _agent_summary_incomplete(first_pass):
+                second_pass = _agent_text_completion(
+                    agent,
+                    summary_system_prompt,
+                    summary_user_text,
+                    max_tokens=1400,
+                )
+                summary_text = second_pass.get("text") if isinstance(second_pass, dict) else ""
+                if _agent_summary_incomplete(second_pass):
+                    summary_text = _fallback_handoff_summary(msgs)
+                    fallback = True
+                else:
+                    fallback = False
+            else:
+                fallback = False
+        finally:
+            try:
+                agent.release_clients()
+            except Exception:
+                pass
+        if not summary_text:
+            summary_text = _fallback_handoff_summary(msgs)
+            fallback = True
+        elif _summary_output_incomplete(summary_text):
+            if not fallback:
+                fallback = True
+
+        channel_label = _resolve_handoff_channel_label()
+        persist_handoff_summary_fn(
+            sid,
+            summary_text,
+            channel_label,
+            rounds,
+            fallback=fallback,
+        )
+
+        return json_response_fn(handler, {
+            "ok": True,
+            "summary": summary_text,
+            "message_count": len(msgs),
+            "rounds": rounds,
+            "fallback": fallback,
+        })
+    except Exception as e:
+        logger.warning("Handoff summary generation failed: %s", e)
+        summary_text = _fallback_handoff_summary(msgs)
+        try:
+            persist_handoff_summary_fn(
+                sid,
+                summary_text,
+                _resolve_handoff_channel_label(),
+                rounds,
+                fallback=True,
+            )
+        except Exception:
+            pass
+        return json_response_fn(handler, {
+            "ok": True,
+            "summary": summary_text,
+            "message_count": len(msgs),
+            "rounds": rounds,
+            "fallback": True,
+            "warning": f"Summary generation used local fallback: {sanitize_error_fn(e)}",
+        })
