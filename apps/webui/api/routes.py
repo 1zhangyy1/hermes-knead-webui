@@ -1309,23 +1309,14 @@ def _session_model_state_from_request(
     requested_provider: str | None,
     current_provider: str | None = None,
 ) -> tuple[str | None, str | None]:
-    model_value = str(model).strip() if model is not None else None
-    provider = (
-        _clean_session_model_provider(requested_provider)
-        if requested_provider is not None
-        else None
+    return _model_route_helpers.session_model_state_from_request(
+        model,
+        requested_provider,
+        current_provider,
+        clean_provider_fn=_clean_session_model_provider,
+        split_provider_qualified_model_fn=_split_provider_qualified_model,
+        resolve_compatible_state_fn=_resolve_compatible_session_model_state,
     )
-    if model_value:
-        _bare, explicit_provider = _split_provider_qualified_model(model_value)
-        if explicit_provider:
-            provider = explicit_provider
-        elif requested_provider is None:
-            provider = _clean_session_model_provider(current_provider)
-        model_value, provider, _changed = _resolve_compatible_session_model_state(
-            model_value,
-            provider,
-        )
-    return model_value, provider
 
 
 def _lookup_gateway_session_identity(session_id: str) -> dict:
