@@ -32,6 +32,7 @@ from api.agent_sessions import (
 from api import background_routes as _background_routes
 from api import chat_routes as _chat_routes
 from api import config_routes as _config_routes
+from api import onboarding_routes as _onboarding_routes
 from api import security_routes as _security_routes
 from api import cron_routes as _cron_routes
 
@@ -3790,96 +3791,19 @@ def handle_post(handler, parsed) -> bool:
         return True
 
     if parsed.path == "/api/onboarding/oauth/start":
-        from api.auth import is_auth_enabled
-        import os as _os
-        if not is_auth_enabled() and not _os.getenv("HERMES_WEBUI_ONBOARDING_OPEN"):
-            import ipaddress
-            try:
-                _xff = handler.headers.get("X-Forwarded-For", "").split(",")[0].strip()
-                _xri = handler.headers.get("X-Real-IP", "").strip()
-                _raw = handler.client_address[0]
-                addr = ipaddress.ip_address(_xff or _xri or _raw)
-                is_local = addr.is_loopback or addr.is_private
-            except ValueError:
-                is_local = False
-            if not is_local:
-                return bad(handler, "Onboarding OAuth is only available from local networks when auth is not enabled. To bypass this on a remote server, set HERMES_WEBUI_ONBOARDING_OPEN=1.", 403)
-        try:
-            return j(handler, start_onboarding_oauth_flow(body), extra_headers={"Cache-Control": "no-store"})
-        except ValueError as e:
-            return bad(handler, str(e))
-        except RuntimeError as e:
-            return bad(handler, str(e), 500)
+        return _handle_onboarding_oauth_start(handler, body)
 
     if parsed.path == "/api/onboarding/oauth/cancel":
-        try:
-            return j(handler, cancel_onboarding_oauth_flow(body), extra_headers={"Cache-Control": "no-store"})
-        except ValueError as e:
-            return bad(handler, str(e))
+        return _handle_onboarding_oauth_cancel(handler, body)
 
     if parsed.path == "/api/onboarding/setup":
-        # Writing API keys to disk - restrict to local/private networks unless auth is active.
-        # In Docker, requests arrive from the bridge network (172.x.x.x), not 127.0.0.1,
-        # even when the user accesses via localhost:8787 on the host.
-        # Behind a reverse proxy (nginx/Caddy/Traefik) or SSH tunnel, X-Forwarded-For
-        # carries the real origin IP — read it first before falling back to the raw socket addr.
-        # HERMES_WEBUI_ONBOARDING_OPEN=1 lets operators on remote servers explicitly bypass
-        # the check when they control network access themselves (e.g. firewall + VPN).
-        from api.auth import is_auth_enabled
-        import os as _os
-        if not is_auth_enabled() and not _os.getenv("HERMES_WEBUI_ONBOARDING_OPEN"):
-            import ipaddress
-            try:
-                # Prefer forwarded headers set by reverse proxies
-                _xff = handler.headers.get("X-Forwarded-For", "").split(",")[0].strip()
-                _xri = handler.headers.get("X-Real-IP", "").strip()
-                _raw = handler.client_address[0]
-                _ip_str = _xff or _xri or _raw
-                addr = ipaddress.ip_address(_ip_str)
-                is_local = addr.is_loopback or addr.is_private
-            except ValueError:
-                is_local = False
-            if not is_local:
-                return bad(handler, "Onboarding setup is only available from local networks when auth is not enabled. To bypass this on a remote server, set HERMES_WEBUI_ONBOARDING_OPEN=1.", 403)
-        try:
-            return j(handler, apply_onboarding_setup(body))
-        except ValueError as e:
-            return bad(handler, str(e))
-        except RuntimeError as e:
-            return bad(handler, str(e), 500)
+        return _handle_onboarding_setup(handler, body)
 
     if parsed.path == "/api/onboarding/complete":
         return j(handler, complete_onboarding())
 
     if parsed.path == "/api/onboarding/probe":
-        # Probe a self-hosted provider endpoint (#1499).  Validates the
-        # configured base URL is reachable + parses /models, returns the
-        # model catalog so the wizard can populate its dropdown.
-        # Read-only: no config.yaml or .env writes happen here.  Same local-
-        # network gate as /api/onboarding/setup (also writing-adjacent in
-        # spirit because it carries an api_key the user typed).
-        from api.auth import is_auth_enabled
-        import os as _os
-        if not is_auth_enabled() and not _os.getenv("HERMES_WEBUI_ONBOARDING_OPEN"):
-            import ipaddress
-            try:
-                _xff = handler.headers.get("X-Forwarded-For", "").split(",")[0].strip()
-                _xri = handler.headers.get("X-Real-IP", "").strip()
-                _raw = handler.client_address[0]
-                _ip_str = _xff or _xri or _raw
-                addr = ipaddress.ip_address(_ip_str)
-                is_local = addr.is_loopback or addr.is_private
-            except ValueError:
-                is_local = False
-            if not is_local:
-                return bad(handler, "Onboarding probe is only available from local networks when auth is not enabled. To bypass this on a remote server, set HERMES_WEBUI_ONBOARDING_OPEN=1.", 403)
-        provider = str((body or {}).get("provider") or "").strip().lower()
-        base_url = str((body or {}).get("base_url") or "")
-        api_key = str((body or {}).get("api_key") or "").strip() or None
-        try:
-            return j(handler, probe_provider_endpoint(provider, base_url, api_key))
-        except Exception as e:
-            return bad(handler, f"probe failed: {e}", 500)
+        return _handle_onboarding_probe(handler, body)
 
     # ── Session pin (POST) ──
     if parsed.path == "/api/session/pin":
@@ -5263,6 +5187,55 @@ def _handle_reasoning_post(handler, body):
         body,
         set_reasoning_display_fn=set_reasoning_display,
         set_reasoning_effort_fn=set_reasoning_effort,
+        json_response_fn=j,
+        bad_response_fn=bad,
+    )
+
+
+def _handle_onboarding_oauth_start(handler, body):
+    from api.auth import is_auth_enabled
+
+    return _onboarding_routes.handle_onboarding_oauth_start(
+        handler,
+        body,
+        is_auth_enabled_fn=is_auth_enabled,
+        start_onboarding_oauth_flow_fn=start_onboarding_oauth_flow,
+        json_response_fn=j,
+        bad_response_fn=bad,
+    )
+
+
+def _handle_onboarding_oauth_cancel(handler, body):
+    return _onboarding_routes.handle_onboarding_oauth_cancel(
+        handler,
+        body,
+        cancel_onboarding_oauth_flow_fn=cancel_onboarding_oauth_flow,
+        json_response_fn=j,
+        bad_response_fn=bad,
+    )
+
+
+def _handle_onboarding_setup(handler, body):
+    from api.auth import is_auth_enabled
+
+    return _onboarding_routes.handle_onboarding_setup(
+        handler,
+        body,
+        is_auth_enabled_fn=is_auth_enabled,
+        apply_onboarding_setup_fn=apply_onboarding_setup,
+        json_response_fn=j,
+        bad_response_fn=bad,
+    )
+
+
+def _handle_onboarding_probe(handler, body):
+    from api.auth import is_auth_enabled
+
+    return _onboarding_routes.handle_onboarding_probe(
+        handler,
+        body,
+        is_auth_enabled_fn=is_auth_enabled,
+        probe_provider_endpoint_fn=probe_provider_endpoint,
         json_response_fn=j,
         bad_response_fn=bad,
     )
