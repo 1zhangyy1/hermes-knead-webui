@@ -33,6 +33,7 @@ from api import background_routes as _background_routes
 from api import chat_routes as _chat_routes
 from api import command_routes as _command_routes
 from api import config_routes as _config_routes
+from api import dashboard_routes as _dashboard_routes
 from api import onboarding_routes as _onboarding_routes
 from api import profile_routes as _profile_routes
 from api import project_routes as _project_routes
@@ -2173,19 +2174,10 @@ def handle_get(handler, parsed) -> bool:
         return _handle_live_models(handler, parsed)
 
     if parsed.path == "/api/dashboard/status":
-        from api import dashboard_probe
-
-        j(handler, dashboard_probe.get_dashboard_status())
-        return True
+        return _handle_dashboard_status(handler)
 
     if parsed.path == "/api/dashboard/config":
-        from api import dashboard_probe
-
-        try:
-            j(handler, dashboard_probe.get_dashboard_config())
-        except ValueError as exc:
-            bad(handler, str(exc), status=400)
-        return True
+        return _handle_dashboard_config_get(handler)
 
     # ── Providers (GET) ──
     if parsed.path == "/api/providers":
@@ -2960,16 +2952,7 @@ def handle_post(handler, parsed) -> bool:
         return j(handler, result, status=200 if result.get("clean") else 409)
 
     if parsed.path == "/api/dashboard/config":
-        from api import dashboard_probe
-
-        try:
-            j(handler, dashboard_probe.save_dashboard_config(body))
-        except ValueError as exc:
-            bad(handler, str(exc), status=400)
-        except Exception as exc:
-            logger.exception("dashboard config save failed")
-            bad(handler, str(exc), status=500)
-        return True
+        return _handle_dashboard_config_post(handler, body)
 
     if parsed.path == "/api/session/new":
         try:
@@ -4593,6 +4576,21 @@ def _handle_commands_list(handler):
     return _command_routes.handle_commands_list(
         handler,
         json_response_fn=j,
+    )
+
+
+def _handle_dashboard_status(handler):
+    return _dashboard_routes.handle_dashboard_status(
+        handler,
+        json_response_fn=j,
+    )
+
+
+def _handle_dashboard_config_get(handler):
+    return _dashboard_routes.handle_dashboard_config_get(
+        handler,
+        json_response_fn=j,
+        bad_response_fn=bad,
     )
 
 
@@ -6964,6 +6962,16 @@ def _handle_update_summary(handler, body):
         handler,
         body,
         json_response_fn=j,
+        logger=logger,
+    )
+
+
+def _handle_dashboard_config_post(handler, body):
+    return _dashboard_routes.handle_dashboard_config_post(
+        handler,
+        body,
+        json_response_fn=j,
+        bad_response_fn=bad,
         logger=logger,
     )
 
