@@ -48,8 +48,8 @@ from api.streaming_cancellation import (
 )
 from api.streaming_chat_steer import (
     drain_pending_steer_leftover as _drain_pending_steer_leftover,
-    handle_chat_steer as _handle_chat_steer_impl,
 )
+from api.streaming_chat_steer_facade import handle_chat_steer_from_facade as _handle_chat_steer
 from api.streaming_cleanup import (
     finalize_streaming_run_attempt as _finalize_streaming_run_attempt,
     finalize_webui_streaming_worker_exit as _finalize_streaming_worker_exit,
@@ -584,15 +584,6 @@ def _run_agent_streaming(
 # do_POST: mutating endpoints (session CRUD, chat, upload, approval)
 # Routing is a flat if/elif chain. See ARCHITECTURE.md section 4.1.
 # ============================================================
-
-
-def _handle_chat_steer(handler, body: dict) -> bool:
-    return _handle_chat_steer_impl(
-        handler,
-        body,
-        get_session=get_session,
-        logger=logger,
-    )
 
 
 def cancel_stream(stream_id: str) -> bool:
