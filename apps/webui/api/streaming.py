@@ -183,11 +183,11 @@ from api.streaming_recovery_facade import (
 from api.streaming_runtime_helpers import (
     WEBUI_VISIBLE_PROGRESS_PROMPT as _WEBUI_VISIBLE_PROGRESS_PROMPT_IMPL,
     aiagent_import_error_detail as _aiagent_import_error_detail_impl,
-    clarify_timeout_seconds as _clarify_timeout_seconds_impl,
     has_new_assistant_reply as _has_new_assistant_reply_impl,
     webui_clarify_callback as _webui_clarify_callback_impl,
     webui_ephemeral_system_prompt as _webui_ephemeral_system_prompt_impl,
 )
+from api.streaming_runtime_facade import clarify_timeout_seconds_from_facade as _clarify_timeout_seconds
 from api.streaming_runtime_prompt import (
     build_workspace_system_message as _build_workspace_system_message,
     configure_agent_runtime_prompt as _configure_agent_runtime_prompt,
@@ -233,10 +233,6 @@ def _get_ai_agent():
 
 
 _is_quota_error_text = _is_quota_error_text_impl
-
-
-def _clarify_timeout_seconds(default: int = 120) -> int:
-    return _clarify_timeout_seconds_impl(get_config, default)
 
 
 _WEBUI_VISIBLE_PROGRESS_PROMPT = _WEBUI_VISIBLE_PROGRESS_PROMPT_IMPL
