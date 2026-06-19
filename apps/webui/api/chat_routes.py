@@ -265,3 +265,170 @@ def handle_chat_sync(
             "result": {k: v for k, v in result.items() if k != "messages"},
         },
     )
+
+
+def handle_chat_start(
+    handler,
+    body,
+    *,
+    require_fn: Callable,
+    bad_response_fn: Callable,
+    json_response_fn: Callable,
+    get_session_fn: Callable,
+    profiles_match_fn: Callable,
+    normalize_chat_attachments_fn: Callable,
+    resolve_chat_workspace_with_recovery_fn: Callable,
+    product_task_title_from_request_fn: Callable,
+    is_default_or_empty_session_title_fn: Callable,
+    snapshot_product_fn: Callable,
+    record_product_session_fn: Callable,
+    resolve_session_model_state_fn: Callable,
+    start_chat_stream_fn: Callable,
+    logger,
+    diag=None,
+):
+    try:
+        diag.stage("validate_session_id") if diag else None
+        try:
+            require_fn(body, "session_id")
+        except ValueError as e:
+            return bad_response_fn(handler, str(e))
+        diag.stage("get_session") if diag else None
+        try:
+            s = get_session_fn(body["session_id"])
+        except KeyError:
+            return bad_response_fn(handler, "Session not found", 404)
+        diag.stage("validate_profile") if diag else None
+        requested_profile = str(body.get("profile") or "").strip()
+        if requested_profile:
+            try:
+                from api.profiles import _PROFILE_ID_RE
+
+                if requested_profile != "default" and not _PROFILE_ID_RE.fullmatch(requested_profile):
+                    return bad_response_fn(handler, "invalid profile", 400)
+            except ImportError:
+                requested_profile = ""
+        if requested_profile and not profiles_match_fn(getattr(s, "profile", None), requested_profile):
+            has_persisted_turns = bool(
+                getattr(s, "messages", None)
+                or getattr(s, "context_messages", None)
+                or getattr(s, "pending_user_message", None)
+            )
+            if not has_persisted_turns:
+                # Empty sessions are placeholders. If the user switches profiles
+                # before sending the first turn, run the placeholder under the
+                # currently-selected profile instead of the stale one stamped at
+                # creation time.
+                s.profile = requested_profile
+        diag.stage("normalize_message") if diag else None
+        msg = str(body.get("message", "")).strip()
+        if not msg:
+            return bad_response_fn(handler, "message is required")
+        diag.stage("normalize_attachments") if diag else None
+        attachments = normalize_chat_attachments_fn(body.get("attachments") or [])[:20]
+        diag.stage("resolve_workspace") if diag else None
+        try:
+            workspace = resolve_chat_workspace_with_recovery_fn(s, body.get("workspace"))
+        except ValueError as e:
+            return bad_response_fn(handler, str(e))
+        product_context = None
+        from api.product_context import product_context_request_body
+
+        product_body = product_context_request_body(body, s, msg)
+        if product_body.get("product_id") or product_body.get("productId"):
+            try:
+                from api.product_context import product_context_from_request
+
+                product_context = product_context_from_request(product_body, workspace=workspace)
+            except ValueError as e:
+                return bad_response_fn(handler, str(e), status=400)
+            if product_context:
+                product_task_title = product_task_title_from_request_fn(product_body)
+                if (
+                    product_task_title
+                    and product_context["scope"] == "product_init"
+                    and is_default_or_empty_session_title_fn(getattr(s, "title", None))
+                ):
+                    s.title = product_task_title
+                if product_context["scope"] in {"product_init", "product_builder"}:
+                    try:
+                        snapshot_product_fn(
+                            product_context["id"],
+                            reason=f"{product_context['scope']}: {product_context.get('intent') or ''}"[:240],
+                        )
+                    except Exception:
+                        logger.debug("Failed to snapshot product before builder turn", exc_info=True)
+                try:
+                    record_product_session_fn(
+                        product_context["id"],
+                        s.session_id,
+                        ui_status="generating" if product_context["scope"] in {"product_init", "product_builder"} else None,
+                    )
+                except Exception:
+                    logger.debug("Failed to update product session link", exc_info=True)
+        requested_model = body.get("model") or s.model
+        requested_provider = (
+            body.get("model_provider")
+            if "model_provider" in body
+            else getattr(s, "model_provider", None)
+        )
+        diag.stage("resolve_model_provider") if diag else None
+        model, model_provider, normalized_model = resolve_session_model_state_fn(
+            requested_model,
+            requested_provider,
+        )
+        from api.runtime_adapter import (
+            LegacyJournalRuntimeAdapter,
+            StartRunRequest,
+            runtime_adapter_enabled,
+        )
+
+        if runtime_adapter_enabled():
+            def _legacy_start_run(request: StartRunRequest) -> dict:
+                return start_chat_stream_fn(
+                    s,
+                    msg=request.message,
+                    attachments=request.attachments,
+                    workspace=request.workspace or workspace,
+                    model=request.model or model,
+                    model_provider=request.provider or model_provider,
+                    normalized_model=normalized_model,
+                    diag=diag,
+                    product_context=product_context,
+                )
+
+            adapter = LegacyJournalRuntimeAdapter(start_run_delegate=_legacy_start_run)
+            result = adapter.start_run(
+                StartRunRequest(
+                    session_id=s.session_id,
+                    message=msg,
+                    attachments=attachments,
+                    workspace=workspace,
+                    profile=getattr(s, "profile", None),
+                    provider=model_provider,
+                    model=model,
+                    source="webui",
+                    metadata={"route": "/api/chat/start", "product": product_context},
+                )
+            )
+            response = dict(result.payload)
+            response.setdefault("stream_id", result.stream_id)
+            response.setdefault("session_id", result.session_id)
+        else:
+            response = start_chat_stream_fn(
+                s,
+                msg=msg,
+                attachments=attachments,
+                workspace=workspace,
+                model=model,
+                model_provider=model_provider,
+                normalized_model=normalized_model,
+                diag=diag,
+                product_context=product_context,
+            )
+        status = int(response.pop("_status", 200) or 200)
+        diag.stage("response_write") if diag else None
+        return json_response_fn(handler, response, status=status)
+    finally:
+        if diag:
+            diag.finish()
