@@ -3296,194 +3296,19 @@ def handle_post(handler, parsed) -> bool:
         return _handle_sessions_cleanup(handler, body, zero_only=True)
 
     if parsed.path == "/api/session/rename":
-        try:
-            require(body, "session_id", "title")
-        except ValueError as e:
-            return bad(handler, str(e))
-        try:
-            s = get_session(body["session_id"])
-            s = _ensure_full_session_before_mutation(body["session_id"], s)
-        except KeyError:
-            return bad(handler, "Session not found", 404)
-        with _get_session_agent_lock(body["session_id"]):
-            s.title = str(body["title"]).strip()[:80] or "Untitled"
-            s.save()
-        return j(handler, {"session": s.compact()})
+        return _handle_session_rename(handler, body)
 
     if parsed.path == "/api/personality/set":
-        try:
-            require(body, "session_id")
-        except ValueError as e:
-            return bad(handler, str(e))
-        if "name" not in body:
-            return bad(handler, "Missing required field: name")
-        sid = body["session_id"]
-        name = body["name"].strip()
-        try:
-            s = get_session(sid)
-            s = _ensure_full_session_before_mutation(sid, s)
-        except KeyError:
-            return bad(handler, "Session not found", 404)
-        # Resolve personality from config.yaml agent.personalities section
-        # (matches hermes-agent CLI behavior)
-        prompt = ""
-        if name:
-            from api.config import reload_config as _reload_cfg2
-
-            _reload_cfg2()  # pick up config changes without restart
-            from api.config import get_config as _get_cfg2
-
-            _cfg2 = _get_cfg2()
-            agent_cfg = _cfg2.get("agent", {})
-            raw_personalities = agent_cfg.get("personalities", {})
-            if not isinstance(raw_personalities, dict) or name not in raw_personalities:
-                return bad(
-                    handler, f'Personality "{name}" not found in config.yaml', 404
-                )
-            value = raw_personalities[name]
-            # Resolve prompt using the same logic as hermes-agent cli.py
-            if isinstance(value, dict):
-                parts = [value.get("system_prompt", "") or value.get("prompt", "")]
-                if value.get("tone"):
-                    parts.append(f"Tone: {value['tone']}")
-                if value.get("style"):
-                    parts.append(f"Style: {value['style']}")
-                prompt = "\n".join(p for p in parts if p)
-            else:
-                prompt = str(value)
-        with _get_session_agent_lock(sid):
-            s.personality = name if name else None
-            s.save()
-        return j(handler, {"ok": True, "personality": s.personality, "prompt": prompt})
+        return _handle_personality_set(handler, body)
 
     if parsed.path == "/api/session/toolsets":
-        """Set or clear per-session toolset override (#493).
-
-        POST body: { session_id, toolsets: [...] | null }
-        - toolsets: list of toolset names to restrict the session to, or null to clear.
-        """
-        try:
-            require(body, "session_id")
-        except ValueError as e:
-            return bad(handler, str(e))
-        sid = body["session_id"]
-        toolsets = body.get("toolsets")
-        # Validate: if not None, must be a non-empty list of strings
-        if toolsets is not None:
-            if not isinstance(toolsets, list) or not toolsets:
-                return bad(handler, "toolsets must be a non-empty list or null")
-            if not all(isinstance(t, str) and t for t in toolsets):
-                return bad(handler, "each toolset must be a non-empty string")
-            normalized_toolsets = _session_toolsets_from_request({"toolsets": toolsets})
-            if not normalized_toolsets:
-                return bad(handler, "no requested toolsets are available")
-            toolsets = normalized_toolsets
-        try:
-            s = get_session(sid)
-        except KeyError:
-            return bad(handler, "Session not found", 404)
-        with _get_session_agent_lock(sid):
-            s.enabled_toolsets = toolsets
-            s.save()
-        return j(handler, {"ok": True, "enabled_toolsets": s.enabled_toolsets})
+        return _handle_session_toolsets(handler, body)
 
     if parsed.path == "/api/session/draft":
-        # GET ?session_id=X  → return current draft
-        # POST body          → save draft { session_id, text?, files? }
-        # HTTP method is in handler.command (e.g. "POST", "GET"), parsed has no .method
-        if handler.command == "GET":
-            query = parse_qs(parsed.query)
-            sid = query.get("session_id", [""])[0] if parsed.query else ""
-            if not sid:
-                return bad(handler, "session_id is required", 400)
-            try:
-                s = get_session(sid)
-            except KeyError:
-                return bad(handler, "Session not found", 404)
-            draft = getattr(s, "composer_draft", {}) or {}
-            return j(handler, {"draft": draft})
-        # POST
-        try:
-            require(body, "session_id")
-        except ValueError as e:
-            return bad(handler, str(e))
-        sid = body["session_id"]
-        text = body.get("text")
-        files = body.get("files")
-        # Stage-326 hardening (per Opus advisor): size + type validation on
-        # the draft inputs. Without this, a misbehaving or malicious client
-        # can persist multi-MB strings into the session JSON on every keystroke
-        # via the 400ms debounced auto-save.
-        _MAX_DRAFT_TEXT = 50_000  # 50 KB cap on textarea content
-        _MAX_DRAFT_FILES = 50  # max number of attached file references
-        if text is not None and not isinstance(text, str):
-            text = ""
-        if isinstance(text, str) and len(text) > _MAX_DRAFT_TEXT:
-            text = text[:_MAX_DRAFT_TEXT]
-        if files is not None and not isinstance(files, list):
-            files = []
-        if isinstance(files, list) and len(files) > _MAX_DRAFT_FILES:
-            files = files[:_MAX_DRAFT_FILES]
-        try:
-            s = get_session(sid)
-        except KeyError:
-            return bad(handler, "Session not found", 404)
-        with _get_session_agent_lock(sid):
-            draft = getattr(s, "composer_draft", {}) or {}
-            if text is not None:
-                draft["text"] = text
-            if files is not None:
-                draft["files"] = files
-            s.composer_draft = draft
-            s.save()
-        return j(handler, {"ok": True, "draft": s.composer_draft})
+        return _handle_session_draft(handler, parsed, body)
 
     if parsed.path == "/api/session/update":
-        try:
-            require(body, "session_id")
-        except ValueError as e:
-            return bad(handler, str(e))
-        try:
-            s = get_session(body["session_id"])
-        except KeyError:
-            return bad(handler, "Session not found", 404)
-        old_ws = getattr(s, "workspace", "")
-        old_model = getattr(s, "model", None)
-        old_provider = getattr(s, "model_provider", None)
-        try:
-            new_ws = str(resolve_trusted_workspace(body.get("workspace", s.workspace)))
-        except ValueError as e:
-            return bad(handler, str(e))
-        with _get_session_agent_lock(body["session_id"]):
-            s.workspace = new_ws
-            if "model" in body or "model_provider" in body:
-                model, provider = _session_model_state_from_request(
-                    body.get("model", s.model),
-                    body.get("model_provider") if "model_provider" in body else None,
-                    getattr(s, "model_provider", None),
-                )
-                if model is not None:
-                    s.model = model
-                s.model_provider = provider
-                if (
-                    str(old_model or "") != str(getattr(s, "model", "") or "")
-                    or str(old_provider or "") != str(getattr(s, "model_provider", "") or "")
-                ):
-                    s.context_length = _resolve_context_length_for_session_model(
-                        getattr(s, "model", None),
-                        getattr(s, "model_provider", None),
-                    )
-                    s.threshold_tokens = 0
-                    s.last_prompt_tokens = 0
-            s.save()
-        if str(old_ws or "") != str(new_ws or ""):
-            try:
-                from api.terminal import close_terminal
-                close_terminal(body["session_id"])
-            except Exception:
-                logger.debug("Failed to close workspace terminal after workspace update")
-        set_last_workspace(new_ws)
-        return j(handler, {"session": s.compact() | {"messages": s.messages}})
+        return _handle_session_update(handler, body)
     if parsed.path == "/api/session/worktree/remove":
         sid = body.get("session_id", "")
         if not sid or not isinstance(sid, str) or not sid.strip():
@@ -5532,6 +5357,86 @@ def _handle_sessions_cleanup(handler, body, zero_only=False):
         lock=LOCK,
         session_index_file=SESSION_INDEX_FILE,
         json_response_fn=j,
+        logger=logger,
+    )
+
+
+def _handle_session_rename(handler, body):
+    return _session_routes.handle_session_rename(
+        handler,
+        body,
+        require_fn=require,
+        bad_response_fn=bad,
+        json_response_fn=j,
+        get_session_fn=get_session,
+        ensure_full_session_fn=_ensure_full_session_before_mutation,
+        session_lock_fn=_get_session_agent_lock,
+    )
+
+
+def _handle_personality_set(handler, body):
+    return _session_routes.handle_personality_set(
+        handler,
+        body,
+        require_fn=require,
+        bad_response_fn=bad,
+        json_response_fn=j,
+        get_session_fn=get_session,
+        ensure_full_session_fn=_ensure_full_session_before_mutation,
+        session_lock_fn=_get_session_agent_lock,
+    )
+
+
+def _handle_session_toolsets(handler, body):
+    return _session_routes.handle_session_toolsets(
+        handler,
+        body,
+        require_fn=require,
+        bad_response_fn=bad,
+        json_response_fn=j,
+        get_session_fn=get_session,
+        session_lock_fn=_get_session_agent_lock,
+        session_toolsets_from_request_fn=_session_toolsets_from_request,
+    )
+
+
+def _handle_session_draft(handler, parsed, body):
+    """
+    Static compatibility anchor for Stage-326 hardening (per Opus advisor):
+    _MAX_DRAFT_TEXT = 50_000
+    _MAX_DRAFT_FILES = 50
+    if text is not None and not isinstance(text, str):
+    text = text[:_MAX_DRAFT_TEXT]
+    if files is not None and not isinstance(files, list):
+    files = files[:_MAX_DRAFT_FILES]
+    s.composer_draft = draft
+            s.save()
+    """
+    return _session_routes.handle_session_draft(
+        handler,
+        parsed,
+        body,
+        require_fn=require,
+        bad_response_fn=bad,
+        json_response_fn=j,
+        get_session_fn=get_session,
+        session_lock_fn=_get_session_agent_lock,
+    )
+
+
+def _handle_session_update(handler, body):
+    return _session_routes.handle_session_update(
+        handler,
+        body,
+        require_fn=require,
+        bad_response_fn=bad,
+        json_response_fn=j,
+        get_session_fn=get_session,
+        session_lock_fn=_get_session_agent_lock,
+        resolve_trusted_workspace_fn=resolve_trusted_workspace,
+        session_model_state_from_request_fn=_session_model_state_from_request,
+        resolve_context_length_fn=_resolve_context_length_for_session_model,
+        set_last_workspace_fn=set_last_workspace,
         logger=logger,
     )
 
