@@ -89,6 +89,7 @@ _CSP_REPORT_MAX_BODY_BYTES = 64 * 1024
 # Re-exported here so existing `_profiles_match(...)` call sites in this
 # module keep resolving without per-call-site refactors.
 from api.profiles import _profiles_match  # noqa: F401, E402  (re-export)
+from api import health_routes as _health_routes
 from api import logs_routes as _logs_routes
 from api import mcp_routes as _mcp_routes
 from api import plugin_routes as _plugin_routes
@@ -2562,173 +2563,39 @@ def _handle_llm_wiki_status(handler, parsed) -> bool:
 
 
 def _accept_loop_health(handler) -> dict:
-    server = getattr(handler, "server", None)
-    return {
-        "requests_total": int(getattr(server, "accept_loop_requests_total", 0) or 0),
-        "last_request_at": round(float(getattr(server, "accept_loop_last_request_at", 0.0) or 0.0), 3),
-    }
+    return _health_routes.accept_loop_health(handler)
 
 
 def _streams_lock_health(timeout_seconds: float = 0.5) -> dict:
-    t0 = time.time()
-    acquired = STREAMS_LOCK.acquire(timeout=timeout_seconds)
-    elapsed_ms = round((time.time() - t0) * 1000, 1)
-    if not acquired:
-        return {
-            "status": "blocked",
-            "timeout_seconds": timeout_seconds,
-            "ms": elapsed_ms,
-        }
-    try:
-        return {
-            "status": "ok",
-            "active_streams": len(STREAMS),
-            "ms": elapsed_ms,
-        }
-    finally:
-        STREAMS_LOCK.release()
+    return _health_routes.streams_lock_health(STREAMS_LOCK, STREAMS, timeout_seconds=timeout_seconds)
 
 
 def _run_lifecycle_health() -> dict:
-    """Return active worker-run state independent of SSE stream presence."""
-    # Import the module rather than relying only on imported scalar aliases so
-    # LAST_RUN_FINISHED_AT stays fresh after unregister_active_run() updates it.
-    from api import config as _live_config
-
-    now = time.time()
-    with _live_config.ACTIVE_RUNS_LOCK:
-        runs = []
-        for stream_id, raw in (_live_config.ACTIVE_RUNS or {}).items():
-            item = dict(raw or {})
-            started_at = item.get("started_at")
-            try:
-                age = max(0.0, now - float(started_at))
-            except Exception:
-                age = 0.0
-            item.setdefault("stream_id", stream_id)
-            item["age_seconds"] = round(age, 1)
-            runs.append(item)
-        last_finished = _live_config.LAST_RUN_FINISHED_AT
-    runs.sort(key=lambda item: float(item.get("started_at") or 0.0))
-    payload = {
-        "active_runs": len(runs),
-        "runs": runs,
-        "last_run_finished_at": last_finished,
-    }
-    if runs:
-        payload["oldest_run_age_seconds"] = runs[0].get("age_seconds", 0.0)
-    elif last_finished:
-        payload["idle_seconds_since_last_run"] = round(max(0.0, now - float(last_finished)), 1)
-    return payload
+    return _health_routes.run_lifecycle_health()
 
 
 def _deep_health_checks(stream_check: dict | None = None) -> tuple[dict, bool]:
-    """Run cheap probes that exercise the state paths used by the UI shell.
-
-    Plain /health intentionally stays tiny. /health?deep=1 is for supervisors
-    and watchdogs that need to know whether the process can still touch the
-    shared stream map, sidebar/session path, project state, and Hermes state.db
-    without hitting the RST-before-write failure mode from #1458.
-
-    `stream_check` is the result from a prior `_streams_lock_health()` call;
-    if provided, it's reused so we don't acquire `STREAMS_LOCK` twice on the
-    same /health?deep=1 request (per Opus advisor on stage-297).
-    """
-    checks: dict[str, dict] = {}
-
-    checks["streams_lock"] = stream_check if stream_check is not None else _streams_lock_health()
-    if checks["streams_lock"].get("status") != "ok":
-        return checks, False
-
-    t0 = time.time()
-    try:
-        sessions = all_sessions()
-        checks["sessions"] = {
-            "status": "ok",
-            "count": len(sessions),
-            "ms": round((time.time() - t0) * 1000, 1),
-        }
-    except Exception as exc:
-        checks["sessions"] = {
-            "status": "error",
-            "error": type(exc).__name__,
-            "ms": round((time.time() - t0) * 1000, 1),
-        }
-
-    t0 = time.time()
-    try:
-        projects = load_projects(_migrate=False)
-        checks["projects"] = {
-            "status": "ok",
-            "count": len(projects),
-            "ms": round((time.time() - t0) * 1000, 1),
-        }
-    except Exception as exc:
-        checks["projects"] = {
-            "status": "error",
-            "error": type(exc).__name__,
-            "ms": round((time.time() - t0) * 1000, 1),
-        }
-
-    t0 = time.time()
-    try:
-        db_path = _active_state_db_path()
-        if not db_path.exists():
-            checks["state_db"] = {
-                "status": "missing",
-                "ms": round((time.time() - t0) * 1000, 1),
-            }
-        else:
-            with closing(sqlite3.connect(str(db_path))) as conn:
-                conn.execute("PRAGMA schema_version").fetchone()
-            checks["state_db"] = {
-                "status": "ok",
-                "ms": round((time.time() - t0) * 1000, 1),
-            }
-    except Exception as exc:
-        checks["state_db"] = {
-            "status": "error",
-            "error": type(exc).__name__,
-            "ms": round((time.time() - t0) * 1000, 1),
-        }
-
-    healthy = all(
-        check.get("status") in {"ok", "missing"}
-        for check in checks.values()
+    return _health_routes.deep_health_checks(
+        stream_check=stream_check,
+        streams_lock_health_fn=_streams_lock_health,
+        all_sessions_fn=all_sessions,
+        load_projects_fn=load_projects,
+        active_state_db_path_fn=_active_state_db_path,
     )
-    return checks, healthy
 
 
 def _handle_health(handler, parsed):
-    deep = parse_qs(parsed.query or "").get("deep", [""])[0].lower() in {"1", "true", "yes", "on"}
-    stream_check = _streams_lock_health()
-    run_check = _run_lifecycle_health()
-    payload = {
-        "status": "ok" if stream_check.get("status") == "ok" else "degraded",
-        "sessions": len(SESSIONS),
-        "active_streams": int(stream_check.get("active_streams") or 0),
-        "active_runs": int(run_check.get("active_runs") or 0),
-        "runs": run_check.get("runs", []),
-        "last_run_finished_at": run_check.get("last_run_finished_at"),
-        "uptime_seconds": round(time.time() - SERVER_START_TIME, 1),
-        "accept_loop": _accept_loop_health(handler),
-    }
-    if "oldest_run_age_seconds" in run_check:
-        payload["oldest_run_age_seconds"] = run_check["oldest_run_age_seconds"]
-    if "idle_seconds_since_last_run" in run_check:
-        payload["idle_seconds_since_last_run"] = run_check["idle_seconds_since_last_run"]
-    if deep:
-        if stream_check.get("status") != "ok":
-            payload["checks"] = {"streams_lock": stream_check}
-            return j(handler, payload, status=503)
-        checks, healthy = _deep_health_checks(stream_check=stream_check)
-        payload["checks"] = checks
-        if not healthy:
-            payload["status"] = "degraded"
-            return j(handler, payload, status=503)
-    if payload["status"] != "ok":
-        return j(handler, payload, status=503)
-    return j(handler, payload)
+    return _health_routes.handle_health(
+        handler,
+        parsed,
+        sessions=SESSIONS,
+        server_start_time=SERVER_START_TIME,
+        streams_lock_health_fn=_streams_lock_health,
+        run_lifecycle_health_fn=_run_lifecycle_health,
+        deep_health_checks_fn=_deep_health_checks,
+        accept_loop_health_fn=_accept_loop_health,
+        responder=j,
+    )
 
 
 # ── Plugin visibility endpoint (#539) ───────────────────────────────────────
