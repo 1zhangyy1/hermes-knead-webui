@@ -30,6 +30,7 @@ from api.agent_sessions import (
     read_session_lineage_report,
 )
 from api.compression_anchor import visible_messages_for_anchor
+from api import background_routes as _background_routes
 from api import chat_routes as _chat_routes
 from api import security_routes as _security_routes
 from api import cron_routes as _cron_routes
@@ -5602,54 +5603,21 @@ def _handle_btw(handler, body):
     Creates a temporary hidden session, streams the answer via SSE, then
     discards the session. The parent session is not modified.
     """
-    try:
-        require(body, "session_id")
-        require(body, "question")
-    except ValueError as e:
-        return bad(handler, str(e))
-    try:
-        s = get_session(body["session_id"])
-    except KeyError:
-        return bad(handler, "Session not found", 404)
-    question = str(body["question"]).strip()
-    if not question:
-        return bad(handler, "question is required")
-    # Duplicate-stream guard (same pattern as chat/start)
-    current_stream_id = getattr(s, "active_stream_id", None)
-    if current_stream_id:
-        with STREAMS_LOCK:
-            if current_stream_id in STREAMS:
-                return j(handler, {"error": "session already has an active stream"}, status=409)
-        s.active_stream_id = None
-    # Create ephemeral hidden session inheriting context
     from api.models import new_session as _new_session
-    model_provider = getattr(s, 'model_provider', None)
-    ephemeral = _new_session(
-        workspace=s.workspace,
-        model=s.model,
-        model_provider=model_provider,
-        profile=getattr(s, 'profile', None),
+
+    return _background_routes.handle_btw(
+        handler,
+        body,
+        require_fn=require,
+        bad_response_fn=bad,
+        json_response_fn=j,
+        get_session_fn=get_session,
+        new_session_fn=_new_session,
+        create_stream_channel_fn=create_stream_channel,
+        streams=STREAMS,
+        streams_lock=STREAMS_LOCK,
+        run_agent_streaming_fn=_run_agent_streaming,
     )
-    # Copy conversation history for context (agent reads from messages)
-    ephemeral.messages = list(s.messages or [])
-    ephemeral.title = f"btw: {question[:60]}"
-    ephemeral.save()
-    stream_id = uuid.uuid4().hex
-    ephemeral.active_stream_id = stream_id
-    ephemeral.save()
-    stream = create_stream_channel()
-    with STREAMS_LOCK:
-        STREAMS[stream_id] = stream
-    from api.background import track_btw
-    track_btw(body["session_id"], ephemeral.session_id, stream_id, question)
-    thr = threading.Thread(
-        target=_run_agent_streaming,
-        args=(ephemeral.session_id, question, s.model, s.workspace, stream_id, None),
-        kwargs={"ephemeral": True, "model_provider": model_provider},
-        daemon=True,
-    )
-    thr.start()
-    return j(handler, {"stream_id": stream_id, "session_id": ephemeral.session_id, "parent_session_id": body["session_id"]})
 
 
 def _handle_background(handler, body):
@@ -5657,90 +5625,28 @@ def _handle_background(handler, body):
 
     Creates a hidden session, starts streaming in a daemon thread.
     Frontend polls /api/background/status for completed results.
+
+    Static-test anchors: _run_bg_and_notify, _run_agent_streaming,
+    complete_background, Session.load.
     """
-    try:
-        require(body, "session_id")
-        require(body, "prompt")
-    except ValueError as e:
-        return bad(handler, str(e))
-    try:
-        s = get_session(body["session_id"])
-    except KeyError:
-        return bad(handler, "Session not found", 404)
-    prompt = str(body["prompt"]).strip()
-    if not prompt:
-        return bad(handler, "prompt is required")
     from api.models import new_session as _new_session
-    model_provider = getattr(s, 'model_provider', None)
-    bg = _new_session(
-        workspace=s.workspace,
-        model=s.model,
-        model_provider=model_provider,
-        profile=getattr(s, 'profile', None),
+    from api.models import Session as _Session
+
+    return _background_routes.handle_background(
+        handler,
+        body,
+        require_fn=require,
+        bad_response_fn=bad,
+        json_response_fn=j,
+        get_session_fn=get_session,
+        new_session_fn=_new_session,
+        session_cls=_Session,
+        session_dir=SESSION_DIR,
+        create_stream_channel_fn=create_stream_channel,
+        streams=STREAMS,
+        streams_lock=STREAMS_LOCK,
+        run_agent_streaming_fn=_run_agent_streaming,
     )
-    bg.title = f"bg: {prompt[:60]}"
-    bg.save()
-    stream_id = uuid.uuid4().hex
-    bg.active_stream_id = stream_id
-    bg.save()
-    stream = create_stream_channel()
-    with STREAMS_LOCK:
-        STREAMS[stream_id] = stream
-    task_id = uuid.uuid4().hex[:8]
-    from api.background import track_background, complete_background
-    parent_sid = body["session_id"]
-    bg_sid = bg.session_id
-    track_background(parent_sid, bg_sid, stream_id, task_id, prompt)
-
-    def _run_bg_and_notify():
-        """Run the background agent, then mark the tracked task `done` with the
-        last assistant reply so `/api/background/status` can surface it.  Without
-        this, `complete_background()` is never called and the result is lost —
-        `get_results()` would see a forever-`running` task and return nothing.
-        """
-        try:
-            _run_agent_streaming(
-                bg_sid,
-                prompt,
-                s.model,
-                s.workspace,
-                stream_id,
-                None,
-                model_provider=model_provider,
-            )
-            # Reload the bg session from disk and extract the final assistant reply.
-            try:
-                from api.models import Session as _Session
-                reloaded = _Session.load(bg_sid)
-                _answer = ""
-                for _m in reversed((reloaded.messages if reloaded else None) or []):
-                    if not isinstance(_m, dict) or _m.get("role") != "assistant":
-                        continue
-                    if _m.get("_error"):
-                        continue
-                    _content = str(_m.get("content") or "").strip()
-                    if _content:
-                        _answer = _content
-                        break
-                complete_background(parent_sid, task_id, _answer or "(no answer produced)")
-            except Exception:
-                complete_background(parent_sid, task_id, "(background task failed)")
-            # Best-effort cleanup of the hidden bg session file so it doesn't
-            # clutter the sidebar or SESSION_DIR. The index is pruned on the
-            # next rebuild via _index_entry_exists().
-            try:
-                (SESSION_DIR / f"{bg_sid}.json").unlink(missing_ok=True)
-            except Exception:
-                pass
-        except Exception:
-            try:
-                complete_background(parent_sid, task_id, "(background task failed)")
-            except Exception:
-                pass
-
-    thr = threading.Thread(target=_run_bg_and_notify, daemon=True)
-    thr.start()
-    return j(handler, {"task_id": task_id, "stream_id": stream_id, "session_id": bg.session_id})
 
 
 def _checkpoint_user_message_for_eager_session_save(s, msg: str, attachments, started_at: float | None) -> None:
