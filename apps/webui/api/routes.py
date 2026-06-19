@@ -31,6 +31,7 @@ from api.agent_sessions import (
 )
 from api import background_routes as _background_routes
 from api import chat_routes as _chat_routes
+from api import command_routes as _command_routes
 from api import config_routes as _config_routes
 from api import onboarding_routes as _onboarding_routes
 from api import profile_routes as _profile_routes
@@ -2655,8 +2656,7 @@ def handle_get(handler, parsed) -> bool:
         return j(handler, {"git": info})
 
     if parsed.path == "/api/commands":
-        from api.commands import list_commands
-        return j(handler, {"commands": list_commands()})
+        return _handle_commands_list(handler)
 
     if parsed.path == "/api/updates/check":
         settings = load_settings()
@@ -3604,19 +3604,7 @@ def handle_post(handler, parsed) -> bool:
 
     # ── Commands (POST) ──
     if parsed.path == "/api/commands/exec":
-        from api.commands import execute_plugin_command
-
-        command = str(body.get("command", "") or "").strip()
-        if not command:
-            return bad(handler, "command is required")
-        try:
-            return j(handler, {"output": execute_plugin_command(command)})
-        except ValueError as e:
-            return bad(handler, str(e), 400)
-        except KeyError:
-            return bad(handler, "Plugin command not found", 404)
-        except RuntimeError as e:
-            return bad(handler, _sanitize_error(e), 500)
+        return _handle_command_exec(handler, body)
 
     # ── Skills (POST) ──
     if parsed.path == "/api/skills/save":
@@ -4650,6 +4638,13 @@ def _handle_memory_read(handler):
         handler,
         json_response_fn=j,
         redact_text_fn=_redact_text,
+    )
+
+
+def _handle_commands_list(handler):
+    return _command_routes.handle_commands_list(
+        handler,
+        json_response_fn=j,
     )
 
 
@@ -6069,6 +6064,16 @@ def _handle_clarify_respond(handler, body):
     else:
         ok = _resolve_clarify_legacy(sid, clarify_id, response)
     return j(handler, {"ok": ok, "response": response})
+
+
+def _handle_command_exec(handler, body):
+    return _command_routes.handle_command_exec(
+        handler,
+        body,
+        json_response_fn=j,
+        bad_response_fn=bad,
+        sanitize_error_fn=_sanitize_error,
+    )
 
 
 # Static compatibility anchor: class _ManualCompressionMemoryHandler now lives in api.compression_routes.
