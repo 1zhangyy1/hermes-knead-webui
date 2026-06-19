@@ -6099,181 +6099,23 @@ def _normalize_chat_attachments(raw_attachments):
 
 
 def _handle_chat_sync(handler, body):
-    """Fallback synchronous chat endpoint (POST /api/chat). Not used by frontend."""
-    s = get_session(body["session_id"])
-    msg = str(body.get("message", "")).strip()
-    if not msg:
-        return j(handler, {"error": "empty message"}, status=400)
-    try:
-        workspace = str(resolve_trusted_workspace(body.get("workspace") or s.workspace))
-    except ValueError as e:
-        return bad(handler, str(e))
-    product_context = None
-    from api.product_context import product_context_request_body
-
-    product_body = product_context_request_body(body, s, msg)
-    if product_body.get("product_id") or product_body.get("productId"):
-        try:
-            from api.product_context import product_context_from_request
-
-            product_context = product_context_from_request(product_body, workspace=workspace)
-        except ValueError as e:
-            return bad(handler, str(e), status=400)
-        if product_context and product_context["scope"] in {"product_init", "product_builder"}:
-            try:
-                snapshot_product(
-                    product_context["id"],
-                    reason=f"{product_context['scope']}: {product_context.get('intent') or ''}"[:240],
-                )
-            except Exception:
-                logger.debug("Failed to snapshot product before sync builder turn", exc_info=True)
-    with _get_session_agent_lock(s.session_id):
-        s.workspace = workspace
-        model, model_provider = _resolve_compatible_session_model_state(
-            body.get("model") or s.model,
-            body.get("model_provider") if "model_provider" in body else getattr(s, "model_provider", None),
-        )[:2]
-        s.model = model
-        s.model_provider = model_provider
-    from api.streaming import _ENV_LOCK
-
-    with _ENV_LOCK:
-        old_cwd = os.environ.get("TERMINAL_CWD")
-        os.environ["TERMINAL_CWD"] = str(workspace)
-        old_exec_ask = os.environ.get("HERMES_EXEC_ASK")
-        old_session_key = os.environ.get("HERMES_SESSION_KEY")
-        os.environ["HERMES_EXEC_ASK"] = "1"
-        os.environ["HERMES_SESSION_KEY"] = s.session_id
-    try:
-        from run_agent import AIAgent
-
-        with CHAT_LOCK:
-            from api.config import (
-                resolve_model_provider,
-                resolve_custom_provider_connection,
-            )
-
-            _model, _provider, _base_url = resolve_model_provider(
-                model_with_provider_context(s.model, getattr(s, "model_provider", None))
-            )
-            # Resolve API key via Hermes runtime provider (matches gateway behaviour)
-            _api_key = None
-            try:
-                from api.oauth import resolve_runtime_provider_with_anthropic_env_lock
-                from hermes_cli.runtime_provider import resolve_runtime_provider
-
-                _rt = resolve_runtime_provider_with_anthropic_env_lock(
-                    resolve_runtime_provider,
-                    requested=_provider,
-                )
-                _api_key = _rt.get("api_key")
-                # Also use runtime provider/base_url if the webui config didn't resolve them
-                if not _provider:
-                    _provider = _rt.get("provider")
-                if not _base_url:
-                    _base_url = _rt.get("base_url")
-            except Exception as _e:
-                print(
-                    f"[webui] WARNING: resolve_runtime_provider failed: {_e}",
-                    flush=True,
-                )
-            if isinstance(_provider, str) and _provider.startswith("custom:"):
-                _cp_key, _cp_base = resolve_custom_provider_connection(_provider)
-                if not _api_key and _cp_key:
-                    _api_key = _cp_key
-                if not _base_url and _cp_base:
-                    _base_url = _cp_base
-            agent = AIAgent(
-                model=_model,
-                provider=_provider,
-                base_url=_base_url,
-                api_key=_api_key,
-                # Identify browser-originated sessions as WebUI so Hermes Agent
-                # does not inject CLI-specific terminal/output guidance.
-                platform="webui",
-                quiet_mode=True,
-                enabled_toolsets=_resolve_cli_toolsets(),
-                session_id=s.session_id,
-            )
-            from api.streaming import (
-                _merge_display_messages_after_agent_result,
-                _restore_reasoning_metadata,
-                _sanitize_messages_for_api,
-                _context_messages_for_new_turn,
-                _workspace_context_prefix,
-                _webui_ephemeral_system_prompt,
-            )
-            _product_prompt = ""
-            if product_context:
-                try:
-                    from api.product_context import product_ephemeral_prompt
-
-                    _product_prompt = product_ephemeral_prompt(product_context)
-                except Exception:
-                    logger.debug("Failed to build product runtime prompt", exc_info=True)
-            agent.ephemeral_system_prompt = _webui_ephemeral_system_prompt(None, _product_prompt)
-            workspace_ctx = _workspace_context_prefix(str(s.workspace))
-            workspace_system_msg = (
-                f"Active workspace at session start: {s.workspace}\n"
-                "Every user message is prefixed with [Workspace::v1: /absolute/path] indicating the "
-                "workspace the user has selected in the web UI at the time they sent that message. "
-                "This tag is the single authoritative source of the active workspace and updates "
-                "with every message. It overrides any prior workspace mentioned in this system "
-                "prompt, memory, or conversation history. Always use the value from the most recent "
-                "[Workspace::v1: ...] tag as your default working directory for ALL file operations: "
-                "write_file, read_file, search_files, terminal workdir, and patch. "
-                "Never fall back to a hardcoded path when this tag is present."
-            )
-
-            _previous_messages = list(s.messages or [])
-            _previous_context_messages = list(_context_messages_for_new_turn(s, msg))
-
-            result = agent.run_conversation(
-                user_message=workspace_ctx + msg,
-                system_message=workspace_system_msg,
-                conversation_history=_sanitize_messages_for_api(_previous_context_messages, cfg=get_config()),
-                task_id=s.session_id,
-                persist_user_message=msg,
-            )
-    finally:
-        with _ENV_LOCK:
-            if old_cwd is None:
-                os.environ.pop("TERMINAL_CWD", None)
-            else:
-                os.environ["TERMINAL_CWD"] = old_cwd
-            if old_exec_ask is None:
-                os.environ.pop("HERMES_EXEC_ASK", None)
-            else:
-                os.environ["HERMES_EXEC_ASK"] = old_exec_ask
-            if old_session_key is None:
-                os.environ.pop("HERMES_SESSION_KEY", None)
-            else:
-                os.environ["HERMES_SESSION_KEY"] = old_session_key
-    with _get_session_agent_lock(s.session_id):
-        _result_messages = result.get("messages") or _previous_context_messages
-        _next_context_messages = _restore_reasoning_metadata(
-            _previous_context_messages,
-            _result_messages,
-        )
-        s.context_messages = _next_context_messages
-        s.messages = _merge_display_messages_after_agent_result(
-            _previous_messages,
-            _previous_context_messages,
-            _restore_reasoning_metadata(_previous_messages, _result_messages),
-            msg,
-        )
-        # Only auto-generate title when still default; preserves user renames
-        if s.title == "Untitled":
-            s.title = title_from(s.messages, s.title)
-        s.save()
-    return j(
+    # Static compatibility anchor for the legacy sync endpoint: chat_routes
+    # still calls conversation_history=_sanitize_messages_for_api(_previous_context_messages, cfg=get_config())
+    return _chat_routes.handle_chat_sync(
         handler,
-        {
-            "answer": result.get("final_response") or "",
-            "status": "done" if result.get("completed", True) else "partial",
-            "session": s.compact() | {"messages": s.messages},
-            "result": {k: v for k, v in result.items() if k != "messages"},
-        },
+        body,
+        get_session_fn=get_session,
+        resolve_trusted_workspace_fn=resolve_trusted_workspace,
+        json_response_fn=j,
+        bad_response_fn=bad,
+        snapshot_product_fn=snapshot_product,
+        session_lock_fn=_get_session_agent_lock,
+        resolve_session_model_state_fn=_resolve_compatible_session_model_state,
+        chat_lock=CHAT_LOCK,
+        model_with_provider_context_fn=model_with_provider_context,
+        resolve_cli_toolsets_fn=_resolve_cli_toolsets,
+        get_config_fn=get_config,
+        title_from_fn=title_from,
     )
 
 
@@ -6668,6 +6510,7 @@ def _handle_clarify_respond(handler, body):
     return j(handler, {"ok": ok, "response": response})
 
 
+# Static compatibility anchor: class _ManualCompressionMemoryHandler now lives in api.compression_routes.
 _ManualCompressionMemoryHandler = _compression_routes.ManualCompressionMemoryHandler
 
 
