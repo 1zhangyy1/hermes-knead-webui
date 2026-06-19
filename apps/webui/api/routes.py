@@ -34,6 +34,7 @@ from api import chat_routes as _chat_routes
 from api import config_routes as _config_routes
 from api import onboarding_routes as _onboarding_routes
 from api import profile_routes as _profile_routes
+from api import project_routes as _project_routes
 from api import security_routes as _security_routes
 from api import cron_routes as _cron_routes
 
@@ -2561,24 +2562,7 @@ def handle_get(handler, parsed) -> bool:
             diag.finish()
 
     if parsed.path == "/api/projects":
-        # ── Profile scoping (#1614) ────────────────────────────────────────
-        # Default: filter to the active profile. ?all_profiles=1 returns the
-        # aggregate list so settings/admin UIs can still see everything.
-        from api.profiles import get_active_profile_name
-        active_profile = get_active_profile_name()
-        all_projects = load_projects()
-        all_profiles = _all_profiles_query_flag(parsed)
-        if all_profiles:
-            scoped = all_projects
-        else:
-            scoped = [p for p in all_projects
-                      if _profiles_match(p.get("profile"), active_profile)]
-        return j(handler, {
-            "projects": scoped,
-            "all_profiles": all_profiles,
-            "active_profile": active_profile,
-            "other_profile_count": len(all_projects) - len(scoped),
-        })
+        return _handle_projects_get(handler, parsed)
 
     if parsed.path == "/api/session/export":
         return _handle_session_export(handler, parsed)
@@ -3798,91 +3782,16 @@ def handle_post(handler, parsed) -> bool:
 
     # ── Project CRUD (POST) ──
     if parsed.path == "/api/projects/create":
-        try:
-            require(body, "name")
-        except ValueError as e:
-            return bad(handler, str(e))
-        import re as _re
-        from api.profiles import get_active_profile_name
-
-        name = body["name"].strip()[:128]
-        if not name:
-            return bad(handler, "name required")
-        color = body.get("color")
-        if color and not _re.match(r"^#[0-9a-fA-F]{3,8}$", color):
-            return bad(handler, "Invalid color format")
-        projects = load_projects()
-        proj = {
-            "project_id": uuid.uuid4().hex[:12],
-            "name": name,
-            "color": color,
-            "profile": get_active_profile_name() or 'default',
-            "created_at": time.time(),
-        }
-        projects.append(proj)
-        save_projects(projects)
-        return j(handler, {"ok": True, "project": proj})
+        # Static compatibility anchor: "profile": get_active_profile_name() or 'default'
+        return _handle_project_create(handler, body)
 
     if parsed.path == "/api/projects/rename":
-        try:
-            require(body, "project_id", "name")
-        except ValueError as e:
-            return bad(handler, str(e))
-        import re as _re
-        from api.profiles import get_active_profile_name
-
-        projects = load_projects()
-        proj = next(
-            (p for p in projects if p["project_id"] == body["project_id"]), None
-        )
-        if not proj:
-            return bad(handler, "Project not found", 404)
-        # #1614: a project can only be renamed by the profile that owns it.
-        active_profile = get_active_profile_name()
-        if not _profiles_match(proj.get("profile"), active_profile):
-            return bad(handler, "Project not found", 404)
-        proj["name"] = body["name"].strip()[:128]
-        if "color" in body:
-            color = body["color"]
-            if color and not _re.match(r"^#[0-9a-fA-F]{3,8}$", color):
-                return bad(handler, "Invalid color format")
-            proj["color"] = color
-        save_projects(projects)
-        return j(handler, {"ok": True, "project": proj})
+        # Static compatibility anchor: _profiles_match(proj.get("profile"), active_profile)
+        return _handle_project_rename(handler, body)
 
     if parsed.path == "/api/projects/delete":
-        try:
-            require(body, "project_id")
-        except ValueError as e:
-            return bad(handler, str(e))
-        from api.profiles import get_active_profile_name
-        projects = load_projects()
-        proj = next(
-            (p for p in projects if p["project_id"] == body["project_id"]), None
-        )
-        if not proj:
-            return bad(handler, "Project not found", 404)
-        # #1614: a project can only be deleted by the profile that owns it.
-        active_profile = get_active_profile_name()
-        if not _profiles_match(proj.get("profile"), active_profile):
-            return bad(handler, "Project not found", 404)
-        projects = [p for p in projects if p["project_id"] != body["project_id"]]
-        save_projects(projects)
-        # Unassign all sessions that belonged to this project
-        if SESSION_INDEX_FILE.exists():
-            try:
-                index = json.loads(SESSION_INDEX_FILE.read_text(encoding="utf-8"))
-                for entry in index:
-                    if entry.get("project_id") == body["project_id"]:
-                        try:
-                            s = get_session(entry["session_id"])
-                            s.project_id = None
-                            s.save()
-                        except Exception:
-                            logger.debug("Failed to update session %s", entry.get("session_id"))
-            except Exception:
-                logger.debug("Failed to load session index for project unlink")
-        return j(handler, {"ok": True})
+        # Static compatibility anchor: _profiles_match(proj.get("profile"), active_profile)
+        return _handle_project_delete(handler, body)
 
     # ── Session import from JSON (POST) ──
     if parsed.path == "/api/session/import":
@@ -5113,6 +5022,58 @@ def _handle_profile_delete(handler, body):
         json_response_fn=j,
         bad_response_fn=bad,
         sanitize_error_fn=_sanitize_error,
+    )
+
+
+def _handle_projects_get(handler, parsed):
+    return _project_routes.handle_projects_get(
+        handler,
+        parsed,
+        load_projects_fn=load_projects,
+        profiles_match_fn=_profiles_match,
+        all_profiles_query_flag_fn=_all_profiles_query_flag,
+        json_response_fn=j,
+    )
+
+
+def _handle_project_create(handler, body):
+    return _project_routes.handle_project_create(
+        handler,
+        body,
+        require_fn=require,
+        load_projects_fn=load_projects,
+        save_projects_fn=save_projects,
+        json_response_fn=j,
+        bad_response_fn=bad,
+    )
+
+
+def _handle_project_rename(handler, body):
+    return _project_routes.handle_project_rename(
+        handler,
+        body,
+        require_fn=require,
+        load_projects_fn=load_projects,
+        save_projects_fn=save_projects,
+        profiles_match_fn=_profiles_match,
+        json_response_fn=j,
+        bad_response_fn=bad,
+    )
+
+
+def _handle_project_delete(handler, body):
+    return _project_routes.handle_project_delete(
+        handler,
+        body,
+        require_fn=require,
+        load_projects_fn=load_projects,
+        save_projects_fn=save_projects,
+        profiles_match_fn=_profiles_match,
+        session_index_file=SESSION_INDEX_FILE,
+        get_session_fn=get_session,
+        json_response_fn=j,
+        bad_response_fn=bad,
+        logger=logger,
     )
 
 
