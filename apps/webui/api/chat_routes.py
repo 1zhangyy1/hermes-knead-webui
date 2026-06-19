@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+import uuid
 from typing import Callable
 
 logger = logging.getLogger(__name__)
@@ -432,3 +433,138 @@ def handle_chat_start(
     finally:
         if diag:
             diag.finish()
+
+
+def start_chat_stream_for_session(
+    s,
+    *,
+    msg: str,
+    attachments=None,
+    workspace: str,
+    model: str,
+    model_provider=None,
+    normalized_model: bool = False,
+    diag=None,
+    goal_related: bool = False,
+    product_context=None,
+    streams: dict,
+    streams_lock,
+    stream_goal_related: dict,
+    pending_goal_continuation: set,
+    clear_stale_stream_state_fn: Callable,
+    get_session_agent_lock_fn: Callable,
+    prepare_chat_start_session_fn: Callable,
+    session_toolsets_from_request_fn: Callable,
+    set_last_workspace_fn: Callable,
+    create_stream_channel_fn: Callable,
+    run_agent_streaming_fn: Callable,
+    thread_factory: Callable,
+    logger,
+):
+    """Persist pending state, register an SSE channel, and start an agent turn."""
+    attachments = attachments or []
+    # Prevent duplicate runs in the same session while a stream is still active.
+    # This commonly happens after page refresh/reconnect races and can produce
+    # duplicated clarify cards for what appears to be a single user request.
+    diag.stage("active_stream_check") if diag else None
+    current_stream_id = getattr(s, "active_stream_id", None)
+    if current_stream_id:
+        diag.stage("active_stream_lock_wait") if diag else None
+        with streams_lock:
+            current_active = current_stream_id in streams
+        if current_active:
+            diag.stage("response_write") if diag else None
+            return {
+                "error": "session already has an active stream",
+                "active_stream_id": current_stream_id,
+                "_status": 409,
+            }
+        # Stale stream id from a previous run; clear and continue.
+        diag.stage("stale_stream_cleanup") if diag else None
+        clear_stale_stream_state_fn(s)
+
+    # #1932: check if this session has a pending goal continuation flag.
+    # The streaming hook sets PENDING_GOAL_CONTINUATION when goal_continue fires,
+    # so the next chat/start for this session is automatically treated as goal-related.
+    if not goal_related and s.session_id in pending_goal_continuation:
+        goal_related = True
+        pending_goal_continuation.discard(s.session_id)
+
+    stream_id = uuid.uuid4().hex
+    session_lock = get_session_agent_lock_fn(s.session_id)
+    diag.stage("session_lock_wait") if diag else None
+    with session_lock:
+        diag.stage("save_pending_state") if diag else None
+        prepare_chat_start_session_fn(
+            s,
+            msg=msg,
+            attachments=attachments,
+            workspace=workspace,
+            model=model,
+            model_provider=model_provider,
+            stream_id=stream_id,
+        )
+        if product_context:
+            s.product_id = product_context.get("id")
+            s.product_scope = product_context.get("scope")
+            s.product_intent = product_context.get("intent") or ""
+            s.product_line = product_context.get("line") or "use"
+            product_toolsets = session_toolsets_from_request_fn({"toolsets": product_context.get("tools") or []})
+            if product_toolsets:
+                s.enabled_toolsets = product_toolsets
+            s.save(skip_index=True)
+    diag.stage("turn_journal_submitted") if diag else None
+    journal_event = {}
+    try:
+        from api.turn_journal import append_turn_journal_event
+
+        journal_event = append_turn_journal_event(
+            s.session_id,
+            {
+                "event": "submitted",
+                "stream_id": stream_id,
+                "role": "user",
+                "content": msg,
+                "attachments": attachments,
+                "workspace": workspace,
+                "model": model,
+                "model_provider": model_provider,
+                "product": {
+                    "id": product_context.get("id"),
+                    "scope": product_context.get("scope"),
+                    "title": product_context.get("title"),
+                } if product_context else None,
+                "created_at": s.pending_started_at,
+            },
+        )
+    except Exception:
+        logger.warning("Failed to append submitted turn journal event", exc_info=True)
+    diag.stage("set_last_workspace") if diag else None
+    set_last_workspace_fn(workspace)
+    diag.stage("stream_registration") if diag else None
+    stream = create_stream_channel_fn()
+    with streams_lock:
+        streams[stream_id] = stream
+    # #1932: mark stream as goal-related so the streaming hook evaluates the goal.
+    if goal_related:
+        stream_goal_related[stream_id] = True
+    diag.stage("worker_thread_start") if diag else None
+    thr = thread_factory(
+        target=run_agent_streaming_fn,
+        args=(s.session_id, msg, model, workspace, stream_id, attachments),
+        kwargs={"model_provider": model_provider, "goal_related": goal_related, "product_context": product_context},
+        daemon=True,
+    )
+    thr.start()
+    response = {
+        "stream_id": stream_id,
+        "session_id": s.session_id,
+        "pending_started_at": s.pending_started_at,
+        "turn_id": journal_event.get("turn_id"),
+        "title": s.title,
+    }
+    if normalized_model:
+        response["effective_model"] = model
+    if model_provider:
+        response["effective_model_provider"] = model_provider
+    return response
