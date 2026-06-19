@@ -5,6 +5,7 @@ from __future__ import annotations
 from api.streaming_recovery import (
     attempt_credential_self_heal,
     last_resort_sync_from_core,
+    materialize_pending_user_turn_before_error,
 )
 
 
@@ -32,3 +33,7 @@ def attempt_credential_self_heal_from_facade(provider_id, session_id, agent_lock
         agent_lock_ref,
         logger=streaming.logger,
     )
+
+
+def materialize_pending_user_turn_before_error_from_facade(session) -> bool:
+    return materialize_pending_user_turn_before_error(session)
