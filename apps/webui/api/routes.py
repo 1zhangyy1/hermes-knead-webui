@@ -90,6 +90,7 @@ _CSP_REPORT_MAX_BODY_BYTES = 64 * 1024
 # module keep resolving without per-call-site refactors.
 from api.profiles import _profiles_match  # noqa: F401, E402  (re-export)
 from api import health_routes as _health_routes
+from api import login_routes as _login_routes
 from api import logs_routes as _logs_routes
 from api import mcp_routes as _mcp_routes
 from api import plugin_routes as _plugin_routes
@@ -2147,144 +2148,11 @@ except ImportError:
 
 
 # ── Login page locale strings ─────────────────────────────────────────────────
-# Add entries here to support more languages on the login page.
-# The key must match the 'language' setting value (from static/i18n.js LOCALES).
-_LOGIN_LOCALE = {
-    "en": {
-        "lang": "en",
-        "title": "Sign in",
-        "subtitle": "Enter your password to continue",
-        "placeholder": "Password",
-        "btn": "Sign in",
-        "invalid_pw": "Invalid password",
-        "conn_failed": "Connection failed",
-    },
-    "fr": {
-        "lang": "fr-FR",
-        "title": "Se connecter",
-        "subtitle": "Entrez votre mot de passe pour continuer",
-        "placeholder": "Mot de passe",
-        "btn": "Se connecter",
-        "invalid_pw": "Mot de passe invalide",
-        "conn_failed": "\u00c9chec de la connexion",
-    },
-    "es": {
-        "lang": "es-ES",
-        "title": "Iniciar sesi\u00f3n",
-        "subtitle": "Introduce tu contrase\u00f1a para continuar",
-        "placeholder": "Contrase\u00f1a",
-        "btn": "Entrar",
-        "invalid_pw": "Contrase\u00f1a inv\u00e1lida",
-        "conn_failed": "Error de conexi\u00f3n",
-    },
-    "de": {
-        "lang": "de-DE",
-        "title": "Anmelden",
-        "subtitle": "Geben Sie Ihr Passwort ein, um fortzufahren",
-        "placeholder": "Passwort",
-        "btn": "Anmelden",
-        "invalid_pw": "Ung\u00fcltiges Passwort",
-        "conn_failed": "Verbindung fehlgeschlagen",
-    },
-    "ru": {
-        "lang": "ru-RU",
-        "title": "\u0412\u043e\u0439\u0442\u0438",
-        "subtitle": "\u0412\u0432\u0435\u0434\u0438\u0442\u0435 \u043f\u0430\u0440\u043e\u043b\u044c, \u0447\u0442\u043e\u0431\u044b \u043f\u0440\u043e\u0434\u043e\u043b\u0436\u0438\u0442\u044c",
-        "placeholder": "\u041f\u0430\u0440\u043e\u043b\u044c",
-        "btn": "\u0412\u043e\u0439\u0442\u0438",
-        "invalid_pw": "\u041d\u0435\u0432\u0435\u0440\u043d\u044b\u0439 \u043f\u0430\u0440\u043e\u043b\u044c",
-        "conn_failed": "\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u043f\u043e\u0434\u043a\u043b\u044e\u0447\u0438\u0442\u044c\u0441\u044f",
-    },
-    "zh": {
-        "lang": "zh-CN",
-        "title": "\u767b\u5f55",
-        "subtitle": "\u8f93\u5165\u5bc6\u7801\u7ee7\u7eed\u4f7f\u7528",
-        "placeholder": "\u5bc6\u7801",
-        "btn": "\u767b\u5f55",
-        "invalid_pw": "\u5bc6\u7801\u9519\u8bef",
-        "conn_failed": "\u8fde\u63a5\u5931\u8d25",
-    },
-    "zh-Hant": {
-        "lang": "zh-TW",
-        "title": "\u767b\u5f55",
-        "subtitle": "\u8f38\u5165\u5bc6\u78bc\u7e7c\u7e8c\u4f7f\u7528",
-        "placeholder": "\u5bc6\u78bc",
-        "btn": "\u767b\u5f55",
-        "invalid_pw": "\u5bc6\u78bc\u932f\u8aa4",
-        "conn_failed": "\u9023\u63a5\u5931\u6557",
-    },
-    # Strings mirror static/i18n.js login_* keys for the corresponding locale.
-    # See issue #1442. When adding a new locale to LOCALES in i18n.js, also add
-    # the matching entry here — tests/test_login_locale_parity.py enforces this.
-    "it": {
-        "lang": "it-IT",
-        "title": "Accedi",
-        "subtitle": "Inserisci la password per continuare",
-        "placeholder": "Password",
-        "btn": "Accedi",
-        "invalid_pw": "Password non valida",
-        "conn_failed": "Connessione fallita",
-    },
-    "ja": {
-        "lang": "ja-JP",
-        "title": "\u30b5\u30a4\u30f3\u30a4\u30f3",
-        "subtitle": "\u30d1\u30b9\u30ef\u30fc\u30c9\u3092\u5165\u529b\u3057\u3066\u7d9a\u884c",
-        "placeholder": "\u30d1\u30b9\u30ef\u30fc\u30c9",
-        "btn": "\u30b5\u30a4\u30f3\u30a4\u30f3",
-        "invalid_pw": "\u30d1\u30b9\u30ef\u30fc\u30c9\u304c\u7121\u52b9\u3067\u3059",
-        "conn_failed": "\u63a5\u7d9a\u5931\u6557",
-    },
-    "pt": {
-        "lang": "pt-BR",
-        "title": "Entrar",
-        "subtitle": "Digite sua senha para continuar",
-        "placeholder": "Senha",
-        "btn": "Entrar",
-        "invalid_pw": "Senha inv\u00e1lida",
-        "conn_failed": "Falha na conex\u00e3o",
-    },
-    "ko": {
-        "lang": "ko-KR",
-        "title": "\ub85c\uadf8\uc778",
-        "subtitle": "\uacc4\uc18d\ud558\ub824\uba74 \ube44\ubc00\ubc88\ud638\ub97c \uc785\ub825\ud558\uc138\uc694",
-        "placeholder": "\ube44\ubc00\ubc88\ud638",
-        "btn": "\ub85c\uadf8\uc778",
-        "invalid_pw": "\ube44\ubc00\ubc88\ud638\uac00 \uc62c\ubc14\ub974\uc9c0 \uc54a\uc2b5\ub2c8\ub2e4",
-        "conn_failed": "\uc5f0\uacb0 \uc2e4\ud328",
-    },
-}
+_LOGIN_LOCALE = _login_routes.LOGIN_LOCALE
 
 
 def _resolve_login_locale_key(raw_lang: str | None) -> str:
-    """Resolve settings.language to a known _LOGIN_LOCALE key."""
-    if not raw_lang:
-        return "en"
-    lang = str(raw_lang).strip()
-    if not lang:
-        return "en"
-    if lang in _LOGIN_LOCALE:
-        return lang
-
-    normalized = lang.replace("_", "-")
-    lower = normalized.lower()
-
-    # Case-insensitive direct key match first.
-    for key in _LOGIN_LOCALE:
-        if key.lower() == lower:
-            return key
-
-    # Common Chinese aliases.
-    if lower == "zh" or lower.startswith("zh-cn") or lower.startswith("zh-sg") or lower.startswith("zh-hans"):
-        return "zh"
-    if lower.startswith("zh-tw") or lower.startswith("zh-hk") or lower.startswith("zh-mo") or lower.startswith("zh-hant"):
-        return "zh-Hant" if "zh-Hant" in _LOGIN_LOCALE else "zh"
-
-    # Fallback to base language subtag (e.g. en-US -> en).
-    base = lower.split("-", 1)[0]
-    for key in _LOGIN_LOCALE:
-        if key.lower() == base:
-            return key
-    return "en"
+    return _login_routes.resolve_login_locale_key(raw_lang, _LOGIN_LOCALE)
 
 # ── Login page (self-contained, no external deps) ────────────────────────────
 _LOGIN_PAGE_HTML = """<!doctype html>
