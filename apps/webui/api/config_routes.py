@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 from urllib.parse import parse_qs
 
@@ -96,3 +97,71 @@ def handle_reasoning_post(
         return bad_response_fn(handler, str(exc))
     except RuntimeError as exc:
         return bad_response_fn(handler, str(exc), 500)
+
+
+def handle_settings_post(
+    handler,
+    body,
+    *,
+    save_settings_fn,
+    create_session_fn,
+    is_auth_enabled_fn,
+    parse_cookie_fn,
+    set_auth_cookie_fn,
+    verify_session_fn,
+    security_headers_fn,
+    json_response_fn,
+    bad_response_fn,
+):
+    if "bot_name" in body:
+        body["bot_name"] = (str(body["bot_name"]) or "").strip() or "Hermes"
+
+    auth_enabled_before = is_auth_enabled_fn()
+    current_cookie = parse_cookie_fn(handler)
+    logged_in_before = bool(current_cookie and verify_session_fn(current_cookie))
+    requested_password = bool(
+        isinstance(body.get("_set_password"), str)
+        and body.get("_set_password", "").strip()
+    )
+    requested_clear_password = bool(body.get("_clear_password"))
+
+    if requested_password or requested_clear_password:
+        if os.getenv("HERMES_WEBUI_PASSWORD", "").strip():
+            return bad_response_fn(
+                handler,
+                "HERMES_WEBUI_PASSWORD env var is set — it overrides the settings password. "
+                "Unset the env var and restart the server before changing the password here.",
+                409,
+            )
+
+    saved = save_settings_fn(body)
+    saved.pop("password_hash", None)
+
+    auth_enabled_after = is_auth_enabled_fn()
+    auth_just_enabled = bool(
+        requested_password and auth_enabled_after and not auth_enabled_before
+    )
+    logged_in_after = logged_in_before
+    new_cookie = None
+
+    if auth_just_enabled and not logged_in_before:
+        new_cookie = create_session_fn()
+        logged_in_after = True
+
+    saved["auth_enabled"] = auth_enabled_after
+    saved["logged_in"] = logged_in_after
+    saved["auth_just_enabled"] = auth_just_enabled
+
+    if not new_cookie:
+        return json_response_fn(handler, saved)
+
+    response_body = json.dumps(saved, ensure_ascii=False, indent=2).encode("utf-8")
+    handler.send_response(200)
+    handler.send_header("Content-Type", "application/json; charset=utf-8")
+    handler.send_header("Content-Length", str(len(response_body)))
+    handler.send_header("Cache-Control", "no-store")
+    set_auth_cookie_fn(handler, new_cookie)
+    security_headers_fn(handler)
+    handler.end_headers()
+    handler.wfile.write(response_body)
+    return True

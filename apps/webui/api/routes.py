@@ -3724,71 +3724,7 @@ def handle_post(handler, parsed) -> bool:
 
     # ── Settings (POST) ──
     if parsed.path == "/api/settings":
-        from api.auth import (
-            create_session,
-            is_auth_enabled,
-            parse_cookie,
-            set_auth_cookie,
-            verify_session,
-        )
-
-        if "bot_name" in body:
-            body["bot_name"] = (str(body["bot_name"]) or "").strip() or "Hermes"
-
-        auth_enabled_before = is_auth_enabled()
-        current_cookie = parse_cookie(handler)
-        logged_in_before = bool(current_cookie and verify_session(current_cookie))
-        requested_password = bool(
-            isinstance(body.get("_set_password"), str)
-            and body.get("_set_password", "").strip()
-        )
-        requested_clear_password = bool(body.get("_clear_password"))
-
-        # #1560: HERMES_WEBUI_PASSWORD env var takes precedence in
-        # api.auth.get_password_hash(), so writing password_hash to settings.json
-        # has no effect on auth. Refuse loudly with 409 instead of silently
-        # succeeding — the previous behaviour returned 200 + a green save toast
-        # while every subsequent login still required the env-var password.
-        if requested_password or requested_clear_password:
-            if os.getenv("HERMES_WEBUI_PASSWORD", "").strip():
-                return bad(
-                    handler,
-                    "HERMES_WEBUI_PASSWORD env var is set — it overrides the settings password. "
-                    "Unset the env var and restart the server before changing the password here.",
-                    409,
-                )
-
-        saved = save_settings(body)
-        saved.pop("password_hash", None)  # never expose hash to client
-
-        auth_enabled_after = is_auth_enabled()
-        auth_just_enabled = bool(
-            requested_password and auth_enabled_after and not auth_enabled_before
-        )
-        logged_in_after = logged_in_before
-        new_cookie = None
-
-        if auth_just_enabled and not logged_in_before:
-            new_cookie = create_session()
-            logged_in_after = True
-
-        saved["auth_enabled"] = auth_enabled_after
-        saved["logged_in"] = logged_in_after
-        saved["auth_just_enabled"] = auth_just_enabled
-
-        if not new_cookie:
-            return j(handler, saved)
-
-        response_body = json.dumps(saved, ensure_ascii=False, indent=2).encode("utf-8")
-        handler.send_response(200)
-        handler.send_header("Content-Type", "application/json; charset=utf-8")
-        handler.send_header("Content-Length", str(len(response_body)))
-        handler.send_header("Cache-Control", "no-store")
-        set_auth_cookie(handler, new_cookie)
-        _security_headers(handler)
-        handler.end_headers()
-        handler.wfile.write(response_body)
-        return True
+        return _handle_settings_post(handler, body)
 
     if parsed.path == "/api/onboarding/oauth/start":
         return _handle_onboarding_oauth_start(handler, body)
@@ -5187,6 +5123,30 @@ def _handle_reasoning_post(handler, body):
         body,
         set_reasoning_display_fn=set_reasoning_display,
         set_reasoning_effort_fn=set_reasoning_effort,
+        json_response_fn=j,
+        bad_response_fn=bad,
+    )
+
+
+def _handle_settings_post(handler, body):
+    from api.auth import (
+        create_session,
+        is_auth_enabled,
+        parse_cookie,
+        set_auth_cookie,
+        verify_session,
+    )
+
+    return _config_routes.handle_settings_post(
+        handler,
+        body,
+        save_settings_fn=save_settings,
+        create_session_fn=create_session,
+        is_auth_enabled_fn=is_auth_enabled,
+        parse_cookie_fn=parse_cookie,
+        set_auth_cookie_fn=set_auth_cookie,
+        verify_session_fn=verify_session,
+        security_headers_fn=_security_headers,
         json_response_fn=j,
         bad_response_fn=bad,
     )
