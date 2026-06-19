@@ -92,6 +92,7 @@ _CSP_REPORT_MAX_BODY_BYTES = 64 * 1024
 # module keep resolving without per-call-site refactors.
 from api.profiles import _profiles_match  # noqa: F401, E402  (re-export)
 from api import compression_routes as _compression_routes
+from api import file_workspace_routes as _file_workspace_routes
 from api import file_response_routes as _file_response_routes
 from api import gateway_routes as _gateway_routes
 from api import gateway_sse_routes as _gateway_sse_routes
@@ -6965,119 +6966,68 @@ def _handle_cron_resume(handler, body):
 
 
 def _handle_file_delete(handler, body):
-    try:
-        require(body, "session_id", "path")
-    except ValueError as e:
-        return bad(handler, str(e))
-    try:
-        s = get_session(body["session_id"])
-    except KeyError:
-        return bad(handler, "Session not found", 404)
-    try:
-        target = safe_resolve(Path(s.workspace), body["path"])
-        if not target.exists():
-            return bad(handler, "File not found", 404)
-        if target.is_dir():
-            if not body.get("recursive"):
-                return bad(handler, "Set recursive=true to delete directories")
-            shutil.rmtree(target)
-        else:
-            target.unlink()
-        return j(handler, {"ok": True, "path": body["path"]})
-    except (ValueError, PermissionError) as e:
-        return bad(handler, _sanitize_error(e))
+    return _file_workspace_routes.handle_file_delete(
+        handler,
+        body,
+        require_fn=require,
+        bad_fn=bad,
+        json_response_fn=j,
+        get_session_fn=get_session,
+        safe_resolve_fn=safe_resolve,
+        sanitize_error_fn=_sanitize_error,
+    )
 
 
 def _handle_file_save(handler, body):
-    try:
-        require(body, "session_id", "path")
-    except ValueError as e:
-        return bad(handler, str(e))
-    try:
-        s = get_session(body["session_id"])
-    except KeyError:
-        return bad(handler, "Session not found", 404)
-    try:
-        target = safe_resolve(Path(s.workspace), body["path"])
-        if not target.exists():
-            return bad(handler, "File not found", 404)
-        if target.is_dir():
-            return bad(handler, "Cannot save: path is a directory")
-        target.write_text(body.get("content", ""), encoding="utf-8")
-        return j(
-            handler, {"ok": True, "path": body["path"], "size": target.stat().st_size}
-        )
-    except (ValueError, PermissionError) as e:
-        return bad(handler, _sanitize_error(e))
+    return _file_workspace_routes.handle_file_save(
+        handler,
+        body,
+        require_fn=require,
+        bad_fn=bad,
+        json_response_fn=j,
+        get_session_fn=get_session,
+        safe_resolve_fn=safe_resolve,
+        sanitize_error_fn=_sanitize_error,
+    )
 
 
 def _handle_file_create(handler, body):
-    try:
-        require(body, "session_id", "path")
-    except ValueError as e:
-        return bad(handler, str(e))
-    try:
-        s = get_session(body["session_id"])
-    except KeyError:
-        return bad(handler, "Session not found", 404)
-    try:
-        target = safe_resolve(Path(s.workspace), body["path"])
-        if target.exists():
-            return bad(handler, "File already exists")
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(body.get("content", ""), encoding="utf-8")
-        return j(
-            handler, {"ok": True, "path": str(target.relative_to(Path(s.workspace)))}
-        )
-    except (ValueError, PermissionError) as e:
-        return bad(handler, _sanitize_error(e))
+    return _file_workspace_routes.handle_file_create(
+        handler,
+        body,
+        require_fn=require,
+        bad_fn=bad,
+        json_response_fn=j,
+        get_session_fn=get_session,
+        safe_resolve_fn=safe_resolve,
+        sanitize_error_fn=_sanitize_error,
+    )
 
 
 def _handle_file_rename(handler, body):
-    try:
-        require(body, "session_id", "path", "new_name")
-    except ValueError as e:
-        return bad(handler, str(e))
-    try:
-        s = get_session(body["session_id"])
-    except KeyError:
-        return bad(handler, "Session not found", 404)
-    try:
-        source = safe_resolve(Path(s.workspace), body["path"])
-        if not source.exists():
-            return bad(handler, "File not found", 404)
-        new_name = body["new_name"].strip()
-        if not new_name or "/" in new_name or ".." in new_name:
-            return bad(handler, "Invalid file name")
-        dest = source.parent / new_name
-        if dest.exists():
-            return bad(handler, f'A file named "{new_name}" already exists')
-        source.rename(dest)
-        new_rel = str(dest.relative_to(Path(s.workspace)))
-        return j(handler, {"ok": True, "old_path": body["path"], "new_path": new_rel})
-    except (ValueError, PermissionError, OSError) as e:
-        return bad(handler, _sanitize_error(e))
+    return _file_workspace_routes.handle_file_rename(
+        handler,
+        body,
+        require_fn=require,
+        bad_fn=bad,
+        json_response_fn=j,
+        get_session_fn=get_session,
+        safe_resolve_fn=safe_resolve,
+        sanitize_error_fn=_sanitize_error,
+    )
 
 
 def _handle_create_dir(handler, body):
-    try:
-        require(body, "session_id", "path")
-    except ValueError as e:
-        return bad(handler, str(e))
-    try:
-        s = get_session(body["session_id"])
-    except KeyError:
-        return bad(handler, "Session not found", 404)
-    try:
-        target = safe_resolve(Path(s.workspace), body["path"])
-        if target.exists():
-            return bad(handler, "Path already exists")
-        target.mkdir(parents=True)
-        return j(
-            handler, {"ok": True, "path": str(target.relative_to(Path(s.workspace)))}
-        )
-    except (ValueError, PermissionError, OSError) as e:
-        return bad(handler, _sanitize_error(e))
+    return _file_workspace_routes.handle_create_dir(
+        handler,
+        body,
+        require_fn=require,
+        bad_fn=bad,
+        json_response_fn=j,
+        get_session_fn=get_session,
+        safe_resolve_fn=safe_resolve,
+        sanitize_error_fn=_sanitize_error,
+    )
 
 
 def _handle_file_reveal(handler, body):
@@ -7144,68 +7094,40 @@ def _handle_file_path(handler, body):
 
 
 def _handle_workspace_add(handler, body):
-    # Strip surrounding paired quotes BEFORE any further processing — macOS
-    # Finder's "Copy as Pathname" wraps paths in single quotes, and users
-    # routinely paste those quoted strings into the Add Space input.
-    # Doing this at the route entry means every downstream check (blocked
-    # system path, validate_workspace_to_add, duplicate detection) sees the
-    # cleaned form.
-    path_str = _strip_surrounding_quotes(body.get("path", "").strip())
-    name = body.get("name", "").strip()
-    auto_create = body.get("create", False)
-    if not path_str:
-        return bad(handler, "path is required")
-    # Validate the path is NOT a blocked system root BEFORE any filesystem mutation.
-    # This prevents creating orphan directories on rejected paths (#782 review).
-    # _is_blocked_system_path honours user-tmp carve-outs (e.g. /var/folders on
-    # macOS) so pytest's tmp_path_factory paths and other legit user-tmp dirs
-    # still register cleanly.
-    candidate = Path(path_str).expanduser().resolve()
-    if _is_blocked_system_path(candidate):
-        return bad(handler, f"Path points to a system directory: {candidate}")
-    # Now safe to create the directory if requested
-    if auto_create:
-        try:
-            candidate.mkdir(parents=True, exist_ok=True)
-        except (OSError, PermissionError) as e:
-            return bad(handler, f"Could not create directory: {_sanitize_error(e)}")
-    # Full validation (exists, is_dir) — should pass now that dir exists
-    try:
-        p = validate_workspace_to_add(path_str)
-    except ValueError as e:
-        return bad(handler, str(e))
-    wss = load_workspaces()
-    if any(w["path"] == str(p) for w in wss):
-        return bad(handler, "Workspace already in list")
-    wss.append({"path": str(p), "name": name or p.name})
-    save_workspaces(wss)
-    return j(handler, {"ok": True, "workspaces": wss})
+    return _file_workspace_routes.handle_workspace_add(
+        handler,
+        body,
+        bad_fn=bad,
+        json_response_fn=j,
+        load_workspaces_fn=load_workspaces,
+        save_workspaces_fn=save_workspaces,
+        strip_quotes_fn=_strip_surrounding_quotes,
+        is_blocked_system_path_fn=_is_blocked_system_path,
+        validate_workspace_to_add_fn=validate_workspace_to_add,
+        sanitize_error_fn=_sanitize_error,
+    )
 
 
 def _handle_workspace_remove(handler, body):
-    path_str = body.get("path", "").strip()
-    if not path_str:
-        return bad(handler, "path is required")
-    wss = load_workspaces()
-    wss = [w for w in wss if w["path"] != path_str]
-    save_workspaces(wss)
-    return j(handler, {"ok": True, "workspaces": wss})
+    return _file_workspace_routes.handle_workspace_remove(
+        handler,
+        body,
+        bad_fn=bad,
+        json_response_fn=j,
+        load_workspaces_fn=load_workspaces,
+        save_workspaces_fn=save_workspaces,
+    )
 
 
 def _handle_workspace_rename(handler, body):
-    path_str = body.get("path", "").strip()
-    name = body.get("name", "").strip()
-    if not path_str or not name:
-        return bad(handler, "path and name are required")
-    wss = load_workspaces()
-    for w in wss:
-        if w["path"] == path_str:
-            w["name"] = name
-            break
-    else:
-        return bad(handler, "Workspace not found", 404)
-    save_workspaces(wss)
-    return j(handler, {"ok": True, "workspaces": wss})
+    return _file_workspace_routes.handle_workspace_rename(
+        handler,
+        body,
+        bad_fn=bad,
+        json_response_fn=j,
+        load_workspaces_fn=load_workspaces,
+        save_workspaces_fn=save_workspaces,
+    )
 
 
 def _handle_workspace_reorder(handler, body):
@@ -7215,25 +7137,14 @@ def _handle_workspace_reorder(handler, body):
     rewritten so that entries appear in the given order. Any workspace
     not included in the request is appended at the end (preserves data).
     """
-    paths = body.get("paths", [])
-    if not paths or not isinstance(paths, list):
-        return bad(handler, "paths is required and must be a list")
-    wss = load_workspaces()
-    by_path = {w["path"]: w for w in wss}
-    # Build reordered list: given order first, then any omitted entries
-    reordered = []
-    seen = set()
-    for p in paths:
-        p = p.strip()
-        if p in by_path and p not in seen:
-            reordered.append(by_path[p])
-            seen.add(p)
-    # Append any workspaces not mentioned (safety net)
-    for w in wss:
-        if w["path"] not in seen:
-            reordered.append(w)
-    save_workspaces(reordered)
-    return j(handler, {"ok": True, "workspaces": reordered})
+    return _file_workspace_routes.handle_workspace_reorder(
+        handler,
+        body,
+        bad_fn=bad,
+        json_response_fn=j,
+        load_workspaces_fn=load_workspaces,
+        save_workspaces_fn=save_workspaces,
+    )
 
 
 def _resolve_approval_legacy(sid: str, approval_id: str, choice: str) -> bool:
