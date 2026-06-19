@@ -161,10 +161,13 @@ from api.streaming_title_generation import (
 )
 from api.streaming_title_refresh import (
     get_title_refresh_interval as _get_title_refresh_interval_impl,
-    maybe_schedule_title_refresh as _maybe_schedule_title_refresh_impl,
-    put_title_status as _put_title_status_impl,
-    run_background_title_refresh as _run_background_title_refresh_impl,
-    run_background_title_update as _run_background_title_update_impl,
+)
+from api.streaming_title_facade import (
+    is_provisional_title_from_facade as _is_provisional_title,
+    maybe_schedule_title_refresh_from_facade as _maybe_schedule_title_refresh,
+    put_title_status_from_facade as _put_title_status,
+    run_background_title_refresh_from_facade as _run_background_title_refresh,
+    run_background_title_update_from_facade as _run_background_title_update,
 )
 # Source-guard anchor: MiniMax title calls set reasoning_split in
 # streaming_title_generation while streaming.py keeps the public wrappers.
@@ -333,10 +336,6 @@ def _drain_webui_process_notifications(session_id: str) -> list[str]:
 _get_title_refresh_interval = _get_title_refresh_interval_impl
 
 
-def _is_provisional_title(current_title: str, messages) -> bool:
-    return _is_provisional_title_impl(current_title, messages, title_from_fn=title_from)
-
-
 _is_minimax_route = _is_minimax_route_impl
 
 
@@ -379,62 +378,6 @@ _generate_llm_session_title_for_agent = _generate_llm_session_title_for_agent_im
 _generate_llm_session_title_via_aux = _generate_llm_session_title_via_aux_impl
 
 
-def _put_title_status(put_event, session_id: str, status: str, reason: str = '', title: str = '', raw_preview: str = '') -> None:
-    _put_title_status_impl(
-        put_event,
-        session_id,
-        status,
-        reason,
-        title,
-        raw_preview,
-        logger=logger,
-    )
-
-
-def _run_background_title_update(session_id: str, user_text: str, assistant_text: str, placeholder_title: str, put_event, agent=None):
-    return _run_background_title_update_impl(
-        session_id,
-        user_text,
-        assistant_text,
-        placeholder_title,
-        put_event,
-        agent,
-        get_session=get_session,
-        put_title_status_fn=_put_title_status,
-        looks_invalid_generated_title=_looks_invalid_generated_title,
-        is_provisional_title=_is_provisional_title,
-        aux_title_configured=_aux_title_configured,
-        generate_title_for_agent=_generate_llm_session_title_for_agent,
-        generate_title_via_aux=_generate_llm_session_title_via_aux,
-        fallback_title_from_exchange=_fallback_title_from_exchange,
-        is_generic_fallback_title=_is_generic_fallback_title,
-        get_session_agent_lock=_get_session_agent_lock,
-        lock=LOCK,
-        sessions=SESSIONS,
-        logger=logger,
-    )
-
-
-def _run_background_title_refresh(session_id: str, user_text: str, assistant_text: str, current_title: str, put_event, agent=None):
-    return _run_background_title_refresh_impl(
-        session_id,
-        user_text,
-        assistant_text,
-        current_title,
-        put_event,
-        agent,
-        get_session=get_session,
-        put_title_status_fn=_put_title_status,
-        aux_title_configured=_aux_title_configured,
-        generate_title_for_agent=_generate_llm_session_title_for_agent,
-        generate_title_via_aux=_generate_llm_session_title_via_aux,
-        get_session_agent_lock=_get_session_agent_lock,
-        lock=LOCK,
-        sessions=SESSIONS,
-        logger=logger,
-    )
-
-
 def _preserve_pre_compression_snapshot(s, old_sid: str) -> None:
     return _preserve_pre_compression_snapshot_impl(
         s,
@@ -442,20 +385,6 @@ def _preserve_pre_compression_snapshot(s, old_sid: str) -> None:
         session_dir=SESSION_DIR,
         logger=logger,
     )
-
-
-def _maybe_schedule_title_refresh(session, put_event, agent):
-    return _maybe_schedule_title_refresh_impl(
-        session,
-        put_event,
-        agent,
-        get_title_refresh_interval_fn=_get_title_refresh_interval,
-        count_exchanges=_count_exchanges,
-        latest_exchange_snippets=_latest_exchange_snippets,
-        run_background_title_refresh_fn=_run_background_title_refresh,
-        thread_factory=threading.Thread,
-    )
-
 
 _strip_native_image_parts_from_content = _strip_native_image_parts_from_content_impl
 
