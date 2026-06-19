@@ -105,6 +105,7 @@ from api import mcp_routes as _mcp_routes
 from api import plugin_routes as _plugin_routes
 from api import rollback_routes as _rollback_routes
 from api import session_routes as _session_routes
+from api import session_import_routes as _session_import_routes
 from api import skills_routes as _skills_routes
 from api import terminal_routes as _terminal_routes
 
@@ -8288,33 +8289,15 @@ def _normalize_message_for_import_refresh(message: object) -> object:
     Strip timing keys before comparison so we can safely treat semantic
     prefixes as equivalent.
     """
-    if not isinstance(message, dict):
-        return message
-    normalized = dict(message)
-    normalized.pop("timestamp", None)
-    normalized.pop("_ts", None)
-    return normalized
+    return _session_import_routes.normalize_message_for_import_refresh(message)
 
 
 def _message_has_cli_tool_metadata(message: object) -> bool:
-    if not isinstance(message, dict):
-        return False
-    if message.get("role") == "assistant" and message.get("tool_calls"):
-        return True
-    if message.get("role") == "tool" and (message.get("tool_call_id") or message.get("tool_name") or message.get("name")):
-        return True
-    return False
+    return _session_import_routes.message_has_cli_tool_metadata(message)
 
 
 def _strip_cli_tool_metadata_for_refresh(message: object) -> object:
-    if not isinstance(message, dict):
-        return _normalize_message_for_import_refresh(message)
-    normalized = _normalize_message_for_import_refresh(message)
-    if not isinstance(normalized, dict):
-        return normalized
-    for key in ("tool_calls", "tool_call_id", "tool_name", "name"):
-        normalized.pop(key, None)
-    return normalized
+    return _session_import_routes.strip_cli_tool_metadata_for_refresh(message)
 
 
 def _is_cli_tool_metadata_enrichment(existing_messages: list, fresh_messages: list) -> bool:
@@ -8325,18 +8308,7 @@ def _is_cli_tool_metadata_enrichment(existing_messages: list, fresh_messages: li
     transcript can have the same length but richer metadata, so re-imports must
     rebuild the stored sidecar even without a new row.
     """
-    if not isinstance(existing_messages, list) or not isinstance(fresh_messages, list):
-        return False
-    if len(existing_messages) != len(fresh_messages):
-        return False
-    if any(_message_has_cli_tool_metadata(m) for m in existing_messages):
-        return False
-    if not any(_message_has_cli_tool_metadata(m) for m in fresh_messages):
-        return False
-    for idx, existing_message in enumerate(existing_messages):
-        if _strip_cli_tool_metadata_for_refresh(existing_message) != _strip_cli_tool_metadata_for_refresh(fresh_messages[idx]):
-            return False
-    return True
+    return _session_import_routes.is_cli_tool_metadata_enrichment(existing_messages, fresh_messages)
 
 
 def _is_messages_refresh_prefix_match(existing_messages: list, fresh_messages: list) -> bool:
@@ -8346,15 +8318,7 @@ def _is_messages_refresh_prefix_match(existing_messages: list, fresh_messages: l
     structural equality. It intentionally ignores timing fields that may differ
     in type/precision between storage layers.
     """
-    if not isinstance(existing_messages, list) or not isinstance(fresh_messages, list):
-        return False
-    if len(existing_messages) > len(fresh_messages):
-        return False
-    for idx, existing_message in enumerate(existing_messages):
-        fresh_message = fresh_messages[idx]
-        if _normalize_message_for_import_refresh(existing_message) != _normalize_message_for_import_refresh(fresh_message):
-            return False
-    return True
+    return _session_import_routes.is_messages_refresh_prefix_match(existing_messages, fresh_messages)
 
 
 def _handle_session_import_cli(handler, body):
@@ -8533,33 +8497,19 @@ def _handle_session_import_cli(handler, body):
 
 
 def _handle_session_import(handler, body):
-    """Import a session from a JSON export. Creates a new session with a new ID."""
-    if not body or not isinstance(body, dict):
-        return bad(handler, "Request body must be a JSON object")
-    messages = body.get("messages")
-    if not isinstance(messages, list):
-        return bad(handler, 'JSON must contain a "messages" array')
-    title = body.get("title", "Imported session")
-    try:
-        workspace = str(resolve_trusted_workspace(body.get("workspace", str(DEFAULT_WORKSPACE))))
-    except (TypeError, ValueError) as e:
-        return bad(handler, str(e))
-    model = body.get("model", DEFAULT_MODEL)
-    s = Session(
-        title=title,
-        workspace=workspace,
-        model=model,
-        messages=messages,
-        tool_calls=body.get("tool_calls", []),
+    return _session_import_routes.handle_session_import(
+        handler,
+        body,
+        bad_fn=bad,
+        json_response_fn=j,
+        resolve_trusted_workspace_fn=resolve_trusted_workspace,
+        session_cls=Session,
+        sessions=SESSIONS,
+        sessions_lock=LOCK,
+        sessions_max=SESSIONS_MAX,
+        default_workspace=DEFAULT_WORKSPACE,
+        default_model=DEFAULT_MODEL,
     )
-    s.pinned = body.get("pinned", False)
-    with LOCK:
-        SESSIONS[s.session_id] = s
-        SESSIONS.move_to_end(s.session_id)
-        while len(SESSIONS) > SESSIONS_MAX:
-            SESSIONS.popitem(last=False)
-    s.save()
-    return j(handler, {"ok": True, "session": s.compact() | {"messages": s.messages}})
 
 
 # ── MCP Server helpers ──
