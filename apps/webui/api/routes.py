@@ -94,6 +94,7 @@ from api import gateway_routes as _gateway_routes
 from api import health_routes as _health_routes
 from api import login_routes as _login_routes
 from api import logs_routes as _logs_routes
+from api import messaging_routes as _messaging_routes
 from api import mcp_routes as _mcp_routes
 from api import plugin_routes as _plugin_routes
 from api import rollback_routes as _rollback_routes
@@ -202,77 +203,29 @@ _SSE_HEARTBEAT_INTERVAL_SECONDS = 5
 
 
 def _normalize_messaging_source(raw_source) -> str:
-    return str(raw_source or "").strip().lower()
+    return _messaging_routes.normalize_messaging_source(raw_source)
 
 
 def _is_known_messaging_source(raw_source) -> bool:
-    return _normalize_messaging_source(raw_source) in _MESSAGING_RAW_SOURCES
+    return _messaging_routes.is_known_messaging_source(raw_source, _MESSAGING_RAW_SOURCES)
 
 
 def _safe_first(*values):
-    for value in values:
-        if value is None:
-            continue
-        text = str(value).strip()
-        if text:
-            return text
-    return ""
+    return _messaging_routes.safe_first(*values)
 
 
 def _gateway_session_metadata_path():
-    try:
-        from api.profiles import get_active_hermes_home
-        hermes_home = Path(get_active_hermes_home()).expanduser().resolve()
-    except Exception:
-        hermes_home = Path(os.getenv("HERMES_HOME", str(Path.home() / ".hermes"))).expanduser().resolve()
-    return hermes_home / "sessions" / "sessions.json"
+    return _messaging_routes.gateway_session_metadata_path()
 
 
 def _load_gateway_session_identity_map() -> dict[str, dict]:
-    path = _gateway_session_metadata_path()
-    if not path.exists():
-        return {}
-
-    try:
-        st = path.stat()
-        cache = _MESSAGING_SESSION_METADATA_CACHE
-        with _MESSAGING_SESSION_METADATA_LOCK:
-            if cache["path"] == str(path) and cache["mtime"] == st.st_mtime:
-                return cache["identity"].copy()
-    except Exception:
-        return {}
-
-    try:
-        raw_sessions = json.loads(path.read_text(encoding="utf-8"))
-    except Exception as _json_err:
-        logger.debug("Failed to parse gateway sessions metadata from %s: %s", path, _json_err)
-        return {}
-
-    mapping: dict[str, dict] = {}
-    if isinstance(raw_sessions, dict):
-        for _entry in raw_sessions.values():
-            if not isinstance(_entry, dict):
-                continue
-            session_id = _safe_first(_entry.get("session_id"))
-            if not session_id:
-                continue
-            origin = _entry.get("origin") if isinstance(_entry.get("origin"), dict) else {}
-            platform = _safe_first(origin.get("platform"), _entry.get("platform"))
-            mapping[session_id] = {
-                "session_key": _safe_first(_entry.get("session_key"), _entry.get("key")),
-                "chat_id": _safe_first(origin.get("chat_id"), _entry.get("chat_id")),
-                "thread_id": _safe_first(origin.get("thread_id"), _entry.get("thread_id")),
-                "chat_type": _safe_first(origin.get("chat_type"), _entry.get("chat_type")),
-                "user_id": _safe_first(origin.get("user_id"), _entry.get("user_id")),
-                "platform": platform,
-                "raw_source": platform,
-            }
-
-    with _MESSAGING_SESSION_METADATA_LOCK:
-        _MESSAGING_SESSION_METADATA_CACHE["path"] = str(path)
-        _MESSAGING_SESSION_METADATA_CACHE["mtime"] = st.st_mtime
-        _MESSAGING_SESSION_METADATA_CACHE["identity"] = mapping
-    return mapping.copy()
+    return _messaging_routes.load_gateway_session_identity_map(
+        path_fn=_gateway_session_metadata_path,
+        cache=_MESSAGING_SESSION_METADATA_CACHE,
+        cache_lock=_MESSAGING_SESSION_METADATA_LOCK,
+        safe_first_fn=_safe_first,
+        logger=logger,
+    )
 
 
 def _mark_cron_running(job_id: str):
