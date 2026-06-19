@@ -2486,11 +2486,7 @@ def handle_get(handler, parsed) -> bool:
         return _handle_session_usage(handler, parsed)
 
     if parsed.path == "/api/background/status":
-        sid = parse_qs(parsed.query).get("session_id", [""])[0]
-        if not sid:
-            return bad(handler, "Missing session_id")
-        from api.background import get_results
-        return j(handler, {"results": get_results(sid)})
+        return _handle_background_status(handler, parsed)
 
     if parsed.path == "/api/sessions":
         diag = RequestDiagnostics.maybe_start("GET", parsed.path, logger=logger)
@@ -5455,6 +5451,15 @@ def _handle_btw(handler, body):
         streams=STREAMS,
         streams_lock=STREAMS_LOCK,
         run_agent_streaming_fn=_run_agent_streaming,
+    )
+
+
+def _handle_background_status(handler, parsed):
+    return _background_routes.handle_background_status(
+        handler,
+        parsed,
+        bad_response_fn=bad,
+        json_response_fn=j,
     )
 
 

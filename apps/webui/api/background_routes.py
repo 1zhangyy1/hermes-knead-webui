@@ -4,6 +4,16 @@ from __future__ import annotations
 
 import threading
 import uuid
+from urllib.parse import parse_qs
+
+
+def handle_background_status(handler, parsed, *, bad_response_fn, json_response_fn):
+    sid = parse_qs(parsed.query).get("session_id", [""])[0]
+    if not sid:
+        return bad_response_fn(handler, "Missing session_id")
+    from api.background import get_results
+
+    return json_response_fn(handler, {"results": get_results(sid)})
 
 
 def handle_btw(
