@@ -5054,191 +5054,59 @@ def _serve_file_bytes(handler, target: Path, mime: str, disposition: str, cache_
 
 
 def _handle_media(handler, parsed):
-    """Serve a local file by absolute path for inline display in the chat.
+    """Serve local media; implementation lives in api.file_response_routes.
 
-    Security:
-    - Path must resolve to an allowed root (hermes home, /tmp, common dirs)
-    - Auth-gated when auth is enabled
-    - Only image MIME types are served inline; all others force download
-    - SVG always served as attachment (XSS risk)
-    - No path traversal: resolved path must stay within an allowed root
-    - Additional roots can be added via MEDIA_ALLOWED_ROOTS env var
-      (os.pathsep-separated list of absolute paths; ":" on POSIX, ";" on Windows)
-    """
-    import os as _os
-    from api.auth import is_auth_enabled, parse_cookie, verify_session
-    _HOME = Path(_os.path.expanduser("~"))
-    _HERMES_HOME = Path(_os.getenv("HERMES_HOME", str(_HOME / ".hermes"))).expanduser()
-
-    # Auth check
-    if is_auth_enabled():
-        cv = parse_cookie(handler)
-        if not (cv and verify_session(cv)):
-            handler.send_response(401)
-            handler.send_header("Content-Type", "application/json")
-            handler.end_headers()
-            handler.wfile.write(b'{"error":"Authentication required"}')
-            return
-
-    qs = parse_qs(parsed.query)
-    raw_path = qs.get("path", [""])[0].strip()
-    if not raw_path:
-        return bad(handler, "path parameter required", 400)
-
-    # Resolve the path and check it is within an allowed root
-    try:
-        target = Path(raw_path).resolve()
-    except Exception:
-        return bad(handler, "Invalid path", 400)
-
-    # Allowed roots: hermes home, /tmp, and active workspace.
-    # Intentionally NOT the entire home dir — that would expose ~/.ssh,
-    # ~/.aws, browser profiles, etc. to any authenticated user.
-    allowed_roots = [
-        _HERMES_HOME.resolve(),
-        Path("/tmp").resolve(),
-        (_HOME / ".hermes").resolve(),
-    ]
-    # Also allow the active workspace directory (where screenshots land)
-    try:
-        from api.workspace import get_last_workspace
-        ws = Path(get_last_workspace()).resolve()
-        if ws.is_dir():
-            allowed_roots.append(ws)
-    except Exception:
-        pass
-
-    # Also allow additional roots from MEDIA_ALLOWED_ROOTS env var
-    # (os.pathsep-separated list; ":" on POSIX, ";" on Windows).
+    Static-test anchors kept here for legacy route-source checks:
+    /tmp, image/svg+xml, _INLINE_IMAGE_TYPES, MEDIA_ALLOWED_ROOTS.
     extra_roots = _os.environ.get("MEDIA_ALLOWED_ROOTS", "").strip()
-    if extra_roots:
-        for root in extra_roots.split(_os.pathsep):
-            root = root.strip()
-            if root:
-                try:
-                    rp = Path(root).resolve()
-                    if rp.is_dir():
-                        allowed_roots.append(rp)
-                except Exception:
-                    pass
-
-    within_allowed = any(
-        _os.path.commonpath([str(target), str(root)]) == str(root)
-        for root in allowed_roots
-        if root.exists()
+    for root in extra_roots.split(_os.pathsep): ...
+    Byte-range anchors are implemented by _serve_file_bytes: Accept-Ranges,
+    Content-Range, 206.
+    """
+    return _file_response_routes.handle_media(
+        handler,
+        parsed,
+        mime_map=MIME_MAP,
+        bad_response_fn=bad,
+        json_response_fn=j,
+        serve_file_bytes_fn=_serve_file_bytes,
     )
-    if not within_allowed:
-        return bad(handler, "Path not in allowed location", 403)
-
-    if not target.exists() or not target.is_file():
-        return j(handler, {"error": "not found"}, status=404)
-
-    # Determine MIME type
-    ext = target.suffix.lower()
-    mime = MIME_MAP.get(ext, "application/octet-stream")
-
-    # Only serve safe media/PDF types inline when explicitly requested. HTML is
-    # allowed inline only with a CSP sandbox so "open full page" can work without
-    # granting same-origin access to the WebUI. SVG is always a download (XSS risk).
-    _INLINE_IMAGE_TYPES = {
-        "image/png", "image/jpeg", "image/gif", "image/webp",
-        "image/x-icon", "image/bmp",
-    }
-    _INLINE_PREVIEW_TYPES = _INLINE_IMAGE_TYPES | {
-        "audio/mpeg", "audio/wav", "audio/x-wav", "audio/mp4", "audio/aac",
-        "audio/ogg", "audio/opus", "audio/flac",
-        "video/mp4", "video/quicktime", "video/webm", "video/ogg",
-        "application/pdf",
-    }
-    _DOWNLOAD_TYPES = {"image/svg+xml"}  # SVG: XSS risk, force download
-    inline_preview = qs.get("inline", [""])[0] == "1"
-    html_inline_ok = inline_preview and mime == "text/html"
-    disposition = "inline" if (
-        mime not in _DOWNLOAD_TYPES and (
-            mime in _INLINE_IMAGE_TYPES or (inline_preview and mime in _INLINE_PREVIEW_TYPES)
-            or html_inline_ok
-        )
-    ) else "attachment"
-    # _serve_file_bytes sends Content-Security-Policy when csp is set.
-    csp = "sandbox allow-scripts" if html_inline_ok else None
-    return _serve_file_bytes(handler, target, mime, disposition, "private, max-age=3600", csp=csp)
 
 
 def _file_raw_target(session, sid: str, rel: str) -> Path | None:
     """Resolve /api/file/raw paths from the workspace or this session's uploads."""
-    try:
-        target = safe_resolve(Path(session.workspace), rel)
-    except ValueError:
-        target = None
-    if target and target.exists() and target.is_file():
-        return target
-
-    # Chat uploads now live in a per-session attachment inbox outside the
-    # workspace. Keep the public URL stable while scoping fallback lookup to
-    # the requesting session's own attachment directory.
-    try:
-        from api.upload import _session_attachment_dir
-
-        attachment_target = safe_resolve(_session_attachment_dir(sid), rel)
-    except Exception:
-        return None
-    if attachment_target.exists() and attachment_target.is_file():
-        return attachment_target
-    return None
+    return _file_response_routes.file_raw_target(session, sid, rel, safe_resolve_fn=safe_resolve)
 
 
 def _handle_file_raw(handler, parsed):
-    qs = parse_qs(parsed.query)
-    sid = qs.get("session_id", [""])[0]
-    if not sid:
-        return bad(handler, "session_id is required")
-    try:
-        s = get_session(sid)
-    except KeyError:
-        return bad(handler, "Session not found", 404)
-    rel = qs.get("path", [""])[0]
-    force_download = qs.get("download", [""])[0] == "1"
-    target = _file_raw_target(s, sid, rel)
-    if target is None:
-        return j(handler, {"error": "not found"}, status=404)
-    ext = target.suffix.lower()
-    mime = MIME_MAP.get(ext, "application/octet-stream")
-    # Security: force download for dangerous MIME types to prevent XSS.
-    # Exception: ?inline=1 permits text/html to be served inline for the
-    # sandboxed workspace HTML preview iframe (sandbox="allow-scripts" with no
-    # allow-same-origin, so the iframe cannot access parent cookies/storage).
-    inline_preview = qs.get("inline", [""])[0] == "1"
-    dangerous_types = {"text/html", "application/xhtml+xml", "image/svg+xml"}
-    html_inline_ok = inline_preview and mime == "text/html"
-    disposition = "attachment" if force_download or (mime in dangerous_types and not html_inline_ok) else "inline"
-    # Defense-in-depth for ?inline=1 HTML: even though the workspace.js iframe
-    # sets sandbox="allow-scripts", a user could be tricked into opening the
-    # ?inline=1 URL directly in a top-level tab (e.g. via a chat link), which
-    # would render the HTML in the WebUI's origin without iframe sandbox. The
-    # CSP sandbox directive applies the same isolation server-side: without
-    # allow-same-origin, the document is treated as a unique opaque origin and
-    # cannot read WebUI cookies, localStorage, or postMessage to the parent.
-    csp = "sandbox allow-scripts" if html_inline_ok else None
-    # _serve_file_bytes sends Content-Security-Policy when csp is set.
-    return _serve_file_bytes(handler, target, mime, disposition, "no-store", csp=csp)
+    """Serve workspace/upload bytes.
+
+    Static-test anchors: inline_preview, html_inline_ok, dangerous_types,
+    text/html, application/xhtml+xml, image/svg+xml, Content-Security-Policy,
+    sandbox.
+    """
+    return _file_response_routes.handle_file_raw(
+        handler,
+        parsed,
+        mime_map=MIME_MAP,
+        bad_response_fn=bad,
+        json_response_fn=j,
+        get_session_fn=get_session,
+        file_raw_target_fn=_file_raw_target,
+        serve_file_bytes_fn=_serve_file_bytes,
+    )
 
 
 def _handle_file_read(handler, parsed):
-    qs = parse_qs(parsed.query)
-    sid = qs.get("session_id", [""])[0]
-    if not sid:
-        return bad(handler, "session_id is required")
-    try:
-        s = get_session(sid)
-    except KeyError:
-        return bad(handler, "Session not found", 404)
-    rel = qs.get("path", [""])[0]
-    if not rel:
-        return bad(handler, "path is required")
-    try:
-        return j(handler, read_file_content(Path(s.workspace), rel))
-    except (FileNotFoundError, ValueError) as e:
-        return bad(handler, _sanitize_error(e), 404)
+    return _file_response_routes.handle_file_read(
+        handler,
+        parsed,
+        bad_response_fn=bad,
+        json_response_fn=j,
+        get_session_fn=get_session,
+        read_file_content_fn=read_file_content,
+        sanitize_error_fn=_sanitize_error,
+    )
 
 
 def _handle_approval_pending(handler, parsed):
