@@ -91,6 +91,7 @@ _CSP_REPORT_MAX_BODY_BYTES = 64 * 1024
 # Re-exported here so existing `_profiles_match(...)` call sites in this
 # module keep resolving without per-call-site refactors.
 from api.profiles import _profiles_match  # noqa: F401, E402  (re-export)
+from api import compression_routes as _compression_routes
 from api import file_response_routes as _file_response_routes
 from api import gateway_routes as _gateway_routes
 from api import gateway_sse_routes as _gateway_sse_routes
@@ -7357,191 +7358,61 @@ def _handle_clarify_respond(handler, body):
     return j(handler, {"ok": ok, "response": response})
 
 
-class _ManualCompressionMemoryHandler:
-    def __init__(self):
-        self.wfile = io.BytesIO()
-        self.status = None
-        self.sent_headers = {}
-
-    def send_response(self, status):
-        self.status = status
-
-    def send_header(self, key, value):
-        self.sent_headers[key] = value
-
-    def end_headers(self):
-        pass
-
-    def payload(self):
-        raw = self.wfile.getvalue().decode("utf-8")
-        return json.loads(raw) if raw else {}
+_ManualCompressionMemoryHandler = _compression_routes.ManualCompressionMemoryHandler
 
 
 def _manual_compression_cleanup_locked(now=None):
-    now = time.time() if now is None else now
-    for sid, job in list(_MANUAL_COMPRESSION_JOBS.items()):
-        if job.get("status") == "running":
-            continue
-        updated_at = float(job.get("updated_at") or job.get("started_at") or now)
-        if now - updated_at > _MANUAL_COMPRESSION_JOB_TTL_SECONDS:
-            _MANUAL_COMPRESSION_JOBS.pop(sid, None)
+    return _compression_routes.manual_compression_cleanup_locked(
+        _MANUAL_COMPRESSION_JOBS,
+        _MANUAL_COMPRESSION_JOB_TTL_SECONDS,
+        now,
+    )
 
 
 def _manual_compression_status_payload(job):
-    status = job.get("status") or "running"
-    payload = {
-        "ok": status not in {"error", "cancelled"},
-        "status": status,
-        "session_id": job.get("session_id"),
-        "focus_topic": job.get("focus_topic"),
-        "started_at": job.get("started_at"),
-        "updated_at": job.get("updated_at"),
-    }
-    if status == "done":
-        result = job.get("result")
-        if isinstance(result, dict):
-            payload.update(result)
-        payload["status"] = "done"
-        payload["ok"] = True
-    elif status == "error":
-        payload["ok"] = False
-        payload["error"] = job.get("error") or "Compression failed"
-        payload["error_status"] = int(job.get("error_status") or 400)
-    elif status == "cancelled":
-        payload["ok"] = False
-        payload["error"] = job.get("error") or "Compression cancelled"
-        payload["error_status"] = int(job.get("error_status") or 409)
-    return payload
+    return _compression_routes.manual_compression_status_payload(job)
 
 
 def _run_manual_compression_job(sid, body):
-    memory_handler = _ManualCompressionMemoryHandler()
-    try:
-        try:
-            session = get_session(sid)
-        except KeyError:
-            session = None
-        if session is not None:
-            from api import profiles as profiles_api
-
-            with profiles_api.profile_env_for_background_worker(session, "manual compression", logger_override=logger):
-                _handle_session_compress(memory_handler, body)
-        else:
-            _handle_session_compress(memory_handler, body)
-        status = int(memory_handler.status or 500)
-        payload = memory_handler.payload()
-        with _MANUAL_COMPRESSION_JOBS_LOCK:
-            job = _MANUAL_COMPRESSION_JOBS.get(sid)
-            if not job:
-                return
-            now = time.time()
-            if status >= 400 or not isinstance(payload, dict) or payload.get("error"):
-                job.update(
-                    {
-                        "status": "error",
-                        "error": str((payload or {}).get("error") or "Compression failed"),
-                        "error_status": status,
-                        "updated_at": now,
-                    }
-                )
-            else:
-                job.update(
-                    {
-                        "status": "done",
-                        "result": payload,
-                        "updated_at": now,
-                    }
-                )
-    except Exception as exc:
-        logger.warning("Manual compression worker failed for session %s: %s", sid, exc)
-        with _MANUAL_COMPRESSION_JOBS_LOCK:
-            job = _MANUAL_COMPRESSION_JOBS.get(sid)
-            if job:
-                job.update(
-                    {
-                        "status": "error",
-                        "error": f"Compression failed: {_sanitize_error(exc)}",
-                        "error_status": 500,
-                        "updated_at": time.time(),
-                    }
-                )
+    return _compression_routes.run_manual_compression_job(
+        sid,
+        body,
+        get_session_fn=get_session,
+        handle_session_compress_fn=_handle_session_compress,
+        jobs=_MANUAL_COMPRESSION_JOBS,
+        jobs_lock=_MANUAL_COMPRESSION_JOBS_LOCK,
+        sanitize_error_fn=_sanitize_error,
+        logger=logger,
+    )
 
 
 def _handle_session_compress_start(handler, body):
-    try:
-        require(body, "session_id")
-    except ValueError as e:
-        return bad(handler, str(e))
-
-    sid = str(body.get("session_id") or "").strip()
-    if not sid:
-        return bad(handler, "session_id is required")
-    try:
-        s = get_session(sid)
-    except KeyError:
-        return bad(handler, "Session not found", 404)
-    if getattr(s, "active_stream_id", None):
-        return bad(handler, "Session is still streaming; wait for the current turn to finish.", 409)
-
-    focus_topic = str(body.get("focus_topic") or body.get("topic") or "").strip()[:500] or None
-    job_body = {"session_id": sid}
-    if focus_topic:
-        job_body["focus_topic"] = focus_topic
-
-    now = time.time()
-    with _MANUAL_COMPRESSION_JOBS_LOCK:
-        _manual_compression_cleanup_locked(now)
-        existing = _MANUAL_COMPRESSION_JOBS.get(sid)
-        if existing:
-            existing_payload = _manual_compression_status_payload(existing)
-            if existing_payload.get("status") == "running":
-                return j(handler, existing_payload)
-            # Stage-344 Opus SHOULD-FIX (#2128): always start fresh on re-invoke.
-            # The prior implementation short-circuited and returned a stale `done`
-            # payload for the full 10-minute TTL window when /compress/start was
-            # re-invoked, so a user closing the tab mid-compress and re-running
-            # /compress on a fresh open would get the previous result back rather
-            # than a new compression. Drop the entry and fall through to the
-            # fresh-worker path below.
-            _MANUAL_COMPRESSION_JOBS.pop(sid, None)
-        job = {
-            "session_id": sid,
-            "focus_topic": focus_topic,
-            "status": "running",
-            "started_at": now,
-            "updated_at": now,
-        }
-        _MANUAL_COMPRESSION_JOBS[sid] = job
-
-    worker = threading.Thread(
-        target=_run_manual_compression_job,
-        args=(sid, job_body),
-        name=f"manual-compress-{sid[:8]}",
-        daemon=True,
+    return _compression_routes.handle_session_compress_start(
+        handler,
+        body,
+        require_fn=require,
+        bad_fn=bad,
+        json_response_fn=j,
+        get_session_fn=get_session,
+        jobs=_MANUAL_COMPRESSION_JOBS,
+        jobs_lock=_MANUAL_COMPRESSION_JOBS_LOCK,
+        cleanup_locked_fn=_manual_compression_cleanup_locked,
+        status_payload_fn=_manual_compression_status_payload,
+        run_job_fn=_run_manual_compression_job,
     )
-    worker.start()
-
-    with _MANUAL_COMPRESSION_JOBS_LOCK:
-        return j(handler, _manual_compression_status_payload(_MANUAL_COMPRESSION_JOBS.get(sid, job)))
 
 
 def _handle_session_compress_status(handler, sid):
-    sid = str(sid or "").strip()
-    if not sid:
-        return bad(handler, "session_id is required")
-    with _MANUAL_COMPRESSION_JOBS_LOCK:
-        _manual_compression_cleanup_locked()
-        job = _MANUAL_COMPRESSION_JOBS.get(sid)
-        if not job:
-            return j(handler, {"ok": True, "status": "idle", "session_id": sid})
-        payload = _manual_compression_status_payload(job)
-        # Stage-344 Opus SHOULD-FIX (#2128): do not pop the job on first
-        # read of a `done` payload. The session may be open in multiple
-        # tabs, and the first tab's poll would otherwise leave the second
-        # tab with `idle` and a "Compression job is no longer available"
-        # toast. Let the 10-minute TTL handle eviction so all open tabs
-        # see the same terminal payload.
-        return j(handler, payload)
+    return _compression_routes.handle_session_compress_status(
+        handler,
+        sid,
+        bad_fn=bad,
+        json_response_fn=j,
+        jobs=_MANUAL_COMPRESSION_JOBS,
+        jobs_lock=_MANUAL_COMPRESSION_JOBS_LOCK,
+        cleanup_locked_fn=_manual_compression_cleanup_locked,
+        status_payload_fn=_manual_compression_status_payload,
+    )
 
 
 def _handle_session_compress(handler, body):
@@ -7845,31 +7716,13 @@ def _handle_conversation_rounds(handler, body):
 
         { "ok": true, "rounds": 12, "threshold": 10, "should_show": true }
     """
-    try:
-        require(body, "session_id")
-    except ValueError as e:
-        return bad(handler, str(e))
-
-    sid = str(body.get("session_id") or "").strip()
-    if not sid:
-        return bad(handler, "session_id is required")
-
-    since = body.get("since")
-    if since is not None:
-        try:
-            since = float(since)
-        except (TypeError, ValueError):
-            return bad(handler, "since must be a unix timestamp (number)")
-
-    from api.models import count_conversation_rounds, CONVERSATION_ROUND_THRESHOLD
-
-    rounds = count_conversation_rounds(sid, since=since)
-    return j(handler, {
-        "ok": True,
-        "rounds": rounds,
-        "threshold": CONVERSATION_ROUND_THRESHOLD,
-        "should_show": rounds >= CONVERSATION_ROUND_THRESHOLD,
-    })
+    return _compression_routes.handle_conversation_rounds(
+        handler,
+        body,
+        require_fn=require,
+        bad_fn=bad,
+        json_response_fn=j,
+    )
 
 
 def _build_handoff_summary_tool_message(
