@@ -30,6 +30,7 @@ from api.agent_sessions import (
     read_session_lineage_report,
 )
 from api.compression_anchor import visible_messages_for_anchor
+from api import security_routes as _security_routes
 
 logger = logging.getLogger(__name__)
 
@@ -910,29 +911,10 @@ def _reconcile_stale_stream_state_for_session_rows(session_rows) -> bool:
         changed = _clear_stale_stream_state(session) or changed
     return changed
 
-# ── CSRF: validate Origin/Referer on POST ────────────────────────────────────
-import re as _re
-
-
 def _normalize_host_port(value: str) -> tuple[str, str | None]:
     """Split a host or host:port string into (hostname, port|None).
     Handles IPv6 bracket notation, e.g. [::1]:8080."""
-    value = value.strip().lower()
-    if not value:
-        return '', None
-    if value.startswith('['):
-        end = value.find(']')
-        if end != -1:
-            host = value[1:end]
-            rest = value[end + 1 :]
-            if rest.startswith(':') and rest[1:].isdigit():
-                return host, rest[1:]
-            return host, None
-    if value.count(':') == 1:
-        host, port = value.rsplit(':', 1)
-        if port.isdigit():
-            return host, port
-    return value, None
+    return _security_routes.normalize_host_port(value)
 
 
 def _ports_match(origin_scheme: str, origin_port: str | None, allowed_port: str | None) -> bool:
@@ -941,15 +923,7 @@ def _ports_match(origin_scheme: str, origin_port: str | None, allowed_port: str 
     Treats an absent port as the scheme default: port 80 for http, port 443 for https.
     Port 80 is NOT treated as equivalent to 443 (different protocols = different origins).
     """
-    if origin_port == allowed_port:
-        return True
-    # Determine the default port for the origin's scheme
-    default = '443' if origin_scheme == 'https' else '80'
-    if not origin_port and allowed_port == default:
-        return True
-    if not allowed_port and origin_port == default:
-        return True
-    return False
+    return _security_routes.ports_match(origin_scheme, origin_port, allowed_port)
 
 
 def _allowed_public_origins() -> set[str]:
@@ -958,22 +932,7 @@ def _allowed_public_origins() -> set[str]:
     Each entry must include the scheme, e.g. https://myapp.example.com:8000.
     Entries without a scheme are silently skipped and a warning is printed.
     """
-    raw = os.getenv('HERMES_WEBUI_ALLOWED_ORIGINS', '')
-    result = set()
-    for value in raw.split(','):
-        value = value.strip().rstrip('/').lower()
-        if not value:
-            continue
-        if not (value.startswith('http://') or value.startswith('https://')):
-            import sys
-            print(
-                f"[webui] WARNING: HERMES_WEBUI_ALLOWED_ORIGINS entry {value!r} is missing "
-                f"the scheme (expected https://hostname or http://hostname). Entry ignored.",
-                flush=True, file=sys.stderr,
-            )
-            continue
-        result.add(value)
-    return result
+    return _security_routes.allowed_public_origins()
 
 
 def _is_browser_unsafe_request(handler) -> bool:
@@ -984,125 +943,62 @@ def _is_browser_unsafe_request(handler) -> bool:
     same-machine API contract. Browsers send Origin for unsafe fetch/form POSTs;
     Referer is retained for older paths and proxies.
     """
-    return bool(handler.headers.get("Origin") or handler.headers.get("Referer"))
+    return _security_routes.is_browser_unsafe_request(handler)
 
 
 def _csrf_exempt_path(path: str) -> bool:
     """Paths that cannot or must not carry a session CSRF token."""
-    return path in {"/api/auth/login", "/api/csp-report"}
+    return _security_routes.csrf_exempt_path(path)
 
 
 def _check_csrf(handler) -> bool:
     """Reject cross-origin or tokenless authenticated browser unsafe requests."""
-    origin = handler.headers.get("Origin", "")
-    referer = handler.headers.get("Referer", "")
-    host = handler.headers.get("Host", "")
-    if not _is_browser_unsafe_request(handler):
-        return True  # non-browser clients (curl, MCP, agent) have no Origin
-    target = origin or referer
-    # Extract host:port from origin/referer
-    m = _re.match(r"^https?://([^/]+)", target)
-    if not m:
-        return False
-    origin_host = m.group(1)
-    origin_scheme = m.group(0).split('://')[0].lower()  # 'http' or 'https'
-    origin_name, origin_port = _normalize_host_port(origin_host)
-    origin_allowed = False
-    # Check against explicitly allowed public origins (env var)
-    origin_value = m.group(0).rstrip('/').lower()
-    if origin_value in _allowed_public_origins():
-        origin_allowed = True
-    if not origin_allowed:
-        # Allow same-origin: check Host, X-Forwarded-Host (reverse proxy), and
-        # X-Real-Host against the origin. Reverse proxies (Caddy, nginx) set
-        # X-Forwarded-Host to the client's original Host header.
-        allowed_hosts = [
-            h.strip()
-            for h in [
-                host,
-                handler.headers.get("X-Forwarded-Host", ""),
-                handler.headers.get("X-Real-Host", ""),
-            ]
-            if h.strip()
-        ]
-        for allowed in allowed_hosts:
-            allowed_name, allowed_port = _normalize_host_port(allowed)
-            if origin_name == allowed_name and _ports_match(origin_scheme, origin_port, allowed_port):
-                origin_allowed = True
-                break
-    if not origin_allowed:
-        return False
-
-    from api.auth import CSRF_HEADER_NAME, is_auth_enabled, parse_cookie, verify_csrf_token
-
-    if not is_auth_enabled():
-        return True
-    cookie_val = parse_cookie(handler)
-    submitted = handler.headers.get(CSRF_HEADER_NAME) or handler.headers.get("X-CSRF-Token")
-    return verify_csrf_token(cookie_val or "", submitted or "")
+    return _security_routes.check_csrf(
+        handler,
+        is_browser_unsafe_request_fn=_is_browser_unsafe_request,
+        allowed_public_origins_fn=_allowed_public_origins,
+        normalize_host_port_fn=_normalize_host_port,
+        ports_match_fn=_ports_match,
+    )
 
 
 def _client_ip_for_rate_limit(handler) -> str:
-    try:
-        address = getattr(handler, "client_address", None)
-        if address:
-            return str(address[0])
-    except Exception:
-        pass
-    return "unknown"
+    return _security_routes.client_ip_for_rate_limit(handler)
 
 
 def _csp_report_rate_limited(handler, *, now: float | None = None) -> bool:
-    now = time.time() if now is None else now
-    key = _client_ip_for_rate_limit(handler)
-    cutoff = now - _CSP_REPORT_RATE_LIMIT_WINDOW_SECONDS
-    with _CSP_REPORT_RATE_LIMIT_LOCK:
-        timestamps = [ts for ts in _CSP_REPORT_RATE_LIMIT.get(key, []) if ts >= cutoff]
-        if len(timestamps) >= _CSP_REPORT_RATE_LIMIT_MAX:
-            _CSP_REPORT_RATE_LIMIT[key] = timestamps
-            return True
-        timestamps.append(now)
-        _CSP_REPORT_RATE_LIMIT[key] = timestamps
-    return False
+    return _security_routes.csp_report_rate_limited(
+        handler,
+        rate_limit=_CSP_REPORT_RATE_LIMIT,
+        rate_limit_lock=_CSP_REPORT_RATE_LIMIT_LOCK,
+        window_seconds=_CSP_REPORT_RATE_LIMIT_WINDOW_SECONDS,
+        max_reports=_CSP_REPORT_RATE_LIMIT_MAX,
+        client_ip_fn=_client_ip_for_rate_limit,
+        now=now,
+    )
 
 
 def _send_no_content(handler, status: int = 204) -> bool:
-    handler.send_response(status)
-    handler.send_header("Content-Length", "0")
-    handler.end_headers()
-    return True
+    return _security_routes.send_no_content(handler, status)
 
 
 def _read_csp_report_payload(handler):
-    try:
-        length = int(handler.headers.get("Content-Length", 0))
-    except Exception:
-        length = 0
-    if length > _CSP_REPORT_MAX_BODY_BYTES:
-        try:
-            handler.rfile.read(_CSP_REPORT_MAX_BODY_BYTES)
-        except Exception:
-            pass
-        return {"discarded": "body_too_large", "bytes": length}
-    raw = handler.rfile.read(length) if length else b"{}"
-    try:
-        return json.loads(raw.decode("utf-8"))
-    except Exception:
-        return {"invalid": True, "bytes": len(raw)}
+    return _security_routes.read_csp_report_payload(
+        handler,
+        max_body_bytes=_CSP_REPORT_MAX_BODY_BYTES,
+    )
 
 
 def _handle_csp_report(handler) -> bool:
     """Collect browser CSP report-only violations without requiring auth."""
-    if _csp_report_rate_limited(handler):
-        _CSP_REPORT_LOGGER.warning(
-            "Dropped CSP report from %s: rate limit exceeded",
-            _client_ip_for_rate_limit(handler),
-        )
-        return _send_no_content(handler)
-
-    payload = _read_csp_report_payload(handler)
-    _CSP_REPORT_LOGGER.info("CSP report from %s: %s", _client_ip_for_rate_limit(handler), payload)
-    return _send_no_content(handler)
+    return _security_routes.handle_csp_report(
+        handler,
+        rate_limited_fn=_csp_report_rate_limited,
+        read_payload_fn=_read_csp_report_payload,
+        send_no_content_fn=_send_no_content,
+        client_ip_fn=_client_ip_for_rate_limit,
+        logger=_CSP_REPORT_LOGGER,
+    )
 
 
 def _normalize_provider_id(value: str | None) -> str:
