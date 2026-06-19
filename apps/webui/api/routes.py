@@ -3920,51 +3920,10 @@ def handle_post(handler, parsed) -> bool:
 
     # ── Auth endpoints (POST) ──
     if parsed.path == "/api/auth/login":
-        from api.auth import (
-            verify_password,
-            create_session,
-            set_auth_cookie,
-            is_auth_enabled,
-        )
-        from api.auth import _check_login_rate, _record_login_attempt
-
-        if not is_auth_enabled():
-            return j(handler, {"ok": True, "message": "Auth not enabled"})
-        client_ip = handler.client_address[0]
-        if not _check_login_rate(client_ip):
-            return j(
-                handler,
-                {"error": "Too many attempts. Try again in a minute."},
-                status=429,
-            )
-        password = body.get("password", "")
-        if not verify_password(password):
-            _record_login_attempt(client_ip)
-            return bad(handler, "Invalid password", 401)
-        cookie_val = create_session()
-        handler.send_response(200)
-        handler.send_header("Content-Type", "application/json")
-        handler.send_header("Cache-Control", "no-store")
-        _security_headers(handler)
-        set_auth_cookie(handler, cookie_val)
-        handler.end_headers()
-        handler.wfile.write(json.dumps({"ok": True}).encode())
-        return True
+        return _handle_auth_login(handler, body)
 
     if parsed.path == "/api/auth/logout":
-        from api.auth import clear_auth_cookie, invalidate_session, parse_cookie
-
-        cookie_val = parse_cookie(handler)
-        if cookie_val:
-            invalidate_session(cookie_val)
-        handler.send_response(200)
-        handler.send_header("Content-Type", "application/json")
-        handler.send_header("Cache-Control", "no-store")
-        _security_headers(handler)
-        clear_auth_cookie(handler)
-        handler.end_headers()
-        handler.wfile.write(json.dumps({"ok": True}).encode())
-        return True
+        return _handle_auth_logout(handler)
 
     # ── Checkpoints / Rollback (POST) ──
     if parsed.path == "/api/rollback/restore":
@@ -7100,6 +7059,43 @@ def _handle_session_import_cli(handler, body):
             },
             "imported": True,
         },
+    )
+
+
+def _handle_auth_login(handler, body):
+    from api.auth import (
+        _check_login_rate,
+        _record_login_attempt,
+        create_session,
+        is_auth_enabled,
+        set_auth_cookie,
+        verify_password,
+    )
+
+    return _login_routes.handle_auth_login(
+        handler,
+        body,
+        verify_password_fn=verify_password,
+        create_session_fn=create_session,
+        set_auth_cookie_fn=set_auth_cookie,
+        is_auth_enabled_fn=is_auth_enabled,
+        check_login_rate_fn=_check_login_rate,
+        record_login_attempt_fn=_record_login_attempt,
+        security_headers_fn=_security_headers,
+        json_response_fn=j,
+        bad_response_fn=bad,
+    )
+
+
+def _handle_auth_logout(handler):
+    from api.auth import clear_auth_cookie, invalidate_session, parse_cookie
+
+    return _login_routes.handle_auth_logout(
+        handler,
+        clear_auth_cookie_fn=clear_auth_cookie,
+        invalidate_session_fn=invalidate_session,
+        parse_cookie_fn=parse_cookie,
+        security_headers_fn=_security_headers,
     )
 
 
