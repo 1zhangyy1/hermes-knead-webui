@@ -16,7 +16,9 @@ CSS = (REPO_ROOT / "static" / "style.css").read_text()
 HTML = (REPO_ROOT / "static" / "index.html").read_text()
 MESSAGES_JS = (REPO_ROOT / "static" / "messages.js").read_text()
 STREAMING_PY = (REPO_ROOT / "api" / "streaming.py").read_text()
+STREAMING_TITLE_GENERATION = (REPO_ROOT / "api" / "streaming_title_generation.py").read_text()
 STREAMING_TITLE_REFRESH = (REPO_ROOT / "api" / "streaming_title_refresh.py").read_text()
+STREAMING_TITLES = (REPO_ROOT / "api" / "streaming_titles.py").read_text()
 STREAMING_TITLE_WRITEBACK = (REPO_ROOT / "api" / "streaming_title_writeback.py").read_text()
 
 
@@ -65,25 +67,25 @@ class TestIssue495TitleStreaming(unittest.TestCase):
     def test_streaming_has_llm_title_helper(self):
         self.assertIn(
             "def _generate_llm_session_title_for_agent(",
-            STREAMING_PY,
-            "streaming.py should define an agent-backed LLM title helper for session titles",
+            STREAMING_TITLE_GENERATION,
+            "streaming_title_generation.py should define an agent-backed LLM title helper for session titles",
         )
 
     def test_streaming_rejects_generic_completion_titles(self):
         self.assertIn(
             "all set",
-            STREAMING_PY,
-            "streaming.py should reject generic English completion phrases as session titles",
+            STREAMING_TITLES,
+            "streaming_titles.py should reject generic English completion phrases as session titles",
         )
         self.assertIn(
             "completed",
-            STREAMING_PY,
-            "streaming.py should reject completion-status titles as session titles",
+            STREAMING_TITLES,
+            "streaming_titles.py should reject completion-status titles as session titles",
         )
         self.assertNotIn(
             "测试完成",
-            STREAMING_PY,
-            "streaming.py title generation should stay English-only",
+            STREAMING_TITLES,
+            "streaming title generation should stay English-only",
         )
 
     def test_streaming_uses_reasoning_split_for_minimax_titles(self):
