@@ -30,6 +30,7 @@ from api.agent_sessions import (
     read_session_lineage_report,
 )
 from api.compression_anchor import visible_messages_for_anchor
+from api import chat_routes as _chat_routes
 from api import security_routes as _security_routes
 from api import cron_routes as _cron_routes
 
@@ -6149,36 +6150,27 @@ def _checkpoint_user_message_for_eager_session_save(s, msg: str, attachments, st
 
 
 def _is_default_or_empty_session_title(title) -> bool:
-    return str(title or "").strip() in ("", "Untitled", "New Chat")
+    return _chat_routes.is_default_or_empty_session_title(title)
 
 
 def _provisional_title_from_prompt(prompt: str, fallback: str = "Untitled") -> str:
-    text = str(prompt or "").strip()
-    if not text:
-        return fallback
-    return title_from([{"role": "user", "content": text}], fallback) or fallback
+    return _chat_routes.provisional_title_from_prompt(
+        prompt,
+        fallback,
+        title_from_fn=title_from,
+    )
 
 
 def _product_task_title_from_request(body: dict) -> str:
-    raw = body.get("product_task_title") or body.get("productTaskTitle") or ""
-    title = " ".join(str(raw or "").split()).strip()
-    if not title:
-        return ""
-    return title[:80]
+    return _chat_routes.product_task_title_from_request(body)
 
 
 def _session_toolsets_from_request(body: dict) -> list[str] | None:
-    raw = body.get("enabled_toolsets")
-    if raw is None:
-        raw = body.get("enabledToolsets")
-    if raw is None:
-        raw = body.get("toolsets")
-    if raw is None:
-        return None
-    if not isinstance(raw, list) or not raw:
-        return None
-    available = set(_resolve_cli_toolsets())
-    return [name for name in normalize_product_toolsets(raw) if name in available]
+    return _chat_routes.session_toolsets_from_request(
+        body,
+        resolve_cli_toolsets_fn=_resolve_cli_toolsets,
+        normalize_product_toolsets_fn=normalize_product_toolsets,
+    )
 
 
 def _prepare_chat_start_session_for_stream(
@@ -6638,27 +6630,7 @@ def _normalize_chat_attachments(raw_attachments):
     objects containing name/path/mime/size so image attachments can be supplied
     to Hermes as native multimodal inputs for the current turn.
     """
-    normalized = []
-    if not isinstance(raw_attachments, list):
-        return normalized
-    for item in raw_attachments:
-        if isinstance(item, dict):
-            name = str(item.get("name") or item.get("filename") or "").strip()
-            path = str(item.get("path") or "").strip()
-            mime = str(item.get("mime") or "").strip()
-            att = {"name": name or path, "path": path, "mime": mime}
-            size = item.get("size")
-            if isinstance(size, int):
-                att["size"] = size
-            is_image = item.get("is_image")
-            if isinstance(is_image, bool):
-                att["is_image"] = is_image
-            normalized.append(att)
-        else:
-            value = str(item).strip()
-            if value:
-                normalized.append({"name": value, "path": "", "mime": ""})
-    return normalized
+    return _chat_routes.normalize_chat_attachments(raw_attachments)
 
 
 def _handle_chat_sync(handler, body):
