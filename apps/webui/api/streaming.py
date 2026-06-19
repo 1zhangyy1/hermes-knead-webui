@@ -259,7 +259,7 @@ def _run_agent_streaming(
     _finalize_product_turn = _worker_context.finalize_product_turn
     _put_cancel = _worker_context.put_cancel
     s = None
-    _output_bridge = None
+    _self_healed = False
     old_profile_env = {}
     old_runtime_env = {}
 
@@ -307,7 +307,6 @@ def _run_agent_streaming(
             return
 
         try:
-            _self_healed = False  # (#1401) prevents infinite self-heal retries
             _agent_setup = _prepare_streaming_agent_turn_setup(
                 stream_id=stream_id,
                 session_id=session_id,
@@ -383,7 +382,7 @@ def _run_agent_streaming(
         _exception_result = _handle_streaming_exception(
             e,
             runtime_vars=_exception_runtime_vars,
-            self_healed=locals().get('_self_healed', False),
+            self_healed=_self_healed,
             session=s,
             stream_id=stream_id,
             session_id=session_id,
