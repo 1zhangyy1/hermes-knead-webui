@@ -91,6 +91,7 @@ _CSP_REPORT_MAX_BODY_BYTES = 64 * 1024
 # module keep resolving without per-call-site refactors.
 from api.profiles import _profiles_match  # noqa: F401, E402  (re-export)
 from api import gateway_routes as _gateway_routes
+from api import gateway_sse_routes as _gateway_sse_routes
 from api import health_routes as _health_routes
 from api import login_routes as _login_routes
 from api import logs_routes as _logs_routes
@@ -5409,31 +5410,7 @@ def _handle_terminal_output(handler, parsed):
 
 
 def _gateway_sse_probe_payload(settings, watcher):
-    enabled = bool(settings.get('show_cli_sessions'))
-    # Use the public is_alive() accessor where available (current GatewayWatcher);
-    # fall back to the private _thread check for any older in-memory instance
-    # that might still be hanging around mid-upgrade, and for test doubles that
-    # don't implement the full public API.
-    if watcher is None:
-        watcher_alive = False
-    elif hasattr(watcher, 'is_alive') and callable(getattr(watcher, 'is_alive')):
-        watcher_alive = bool(watcher.is_alive())
-    else:
-        _t = getattr(watcher, '_thread', None)
-        watcher_alive = _t is not None and _t.is_alive()
-    payload = {
-        'enabled': enabled,
-        'fallback_poll_ms': 30000,
-        'ok': enabled and watcher_alive,
-        'watcher_running': watcher_alive,
-    }
-    if not enabled:
-        payload['error'] = 'agent sessions not enabled'
-        return payload, 404
-    if not watcher_alive:
-        payload['error'] = 'watcher not started'
-        return payload, 503
-    return payload, 200
+    return _gateway_sse_routes.gateway_sse_probe_payload(settings, watcher)
 
 
 def _handle_gateway_sse_stream(handler, parsed):
@@ -5441,55 +5418,22 @@ def _handle_gateway_sse_stream(handler, parsed):
     Streams change events from the gateway watcher background thread.
     Only active when show_cli_sessions (show_agent_sessions) setting is enabled.
     """
-    settings = load_settings()
-
     from api.gateway_watcher import get_watcher
-    watcher = get_watcher()
+    from api.models import get_cli_sessions
 
-    probe = parse_qs(parsed.query).get('probe', [''])[0].lower() in {'1', 'true', 'yes'}
-    if probe:
-        payload, status = _gateway_sse_probe_payload(settings, watcher)
-        return j(handler, payload, status=status)
-
-    # Check if the feature is enabled
-    if not settings.get('show_cli_sessions'):
-        return j(handler, {'error': 'agent sessions not enabled'}, status=404)
-
-    # Same watcher_alive semantics as the probe path — centralised via
-    # the helper so both branches stay in sync.
-    _probe_body, _probe_status = _gateway_sse_probe_payload(settings, watcher)
-    if not _probe_body['watcher_running']:
-        return j(handler, {'error': 'watcher not started'}, status=503)
-
-    handler.send_response(200)
-    handler.send_header('Content-Type', 'text/event-stream; charset=utf-8')
-    handler.send_header('Cache-Control', 'no-cache')
-    handler.send_header('X-Accel-Buffering', 'no')
-    handler.send_header('Connection', 'keep-alive')
-    handler.end_headers()
-
-    q = watcher.subscribe()
-    try:
-        # Send initial snapshot immediately
-        from api.models import get_cli_sessions
-        initial = get_cli_sessions()
-        _sse(handler, 'sessions_changed', {'sessions': initial})
-
-        while True:
-            try:
-                event_data = q.get(timeout=_SSE_HEARTBEAT_INTERVAL_SECONDS)
-            except queue.Empty:
-                handler.wfile.write(b': keepalive\n\n')
-                handler.wfile.flush()
-                continue
-            if event_data is None:
-                break  # watcher is stopping
-            _sse(handler, event_data.get('type', 'sessions_changed'), event_data)
-    except _CLIENT_DISCONNECT_ERRORS:
-        pass
-    finally:
-        watcher.unsubscribe(q)
-    return True
+    return _gateway_sse_routes.handle_gateway_sse_stream(
+        handler,
+        parsed,
+        load_settings_fn=load_settings,
+        get_watcher_fn=get_watcher,
+        json_response_fn=j,
+        sse_fn=_sse,
+        get_cli_sessions_fn=get_cli_sessions,
+        heartbeat_interval_seconds=_SSE_HEARTBEAT_INTERVAL_SECONDS,
+        queue_empty_error=queue.Empty,
+        client_disconnect_errors=_CLIENT_DISCONNECT_ERRORS,
+        probe_payload_fn=_gateway_sse_probe_payload,
+    )
 
 
 def _content_disposition_value(disposition: str, filename: str) -> str:
