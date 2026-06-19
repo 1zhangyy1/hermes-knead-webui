@@ -100,6 +100,7 @@ from api import messaging_routes as _messaging_routes
 from api import mcp_routes as _mcp_routes
 from api import plugin_routes as _plugin_routes
 from api import rollback_routes as _rollback_routes
+from api import session_routes as _session_routes
 from api import skills_routes as _skills_routes
 from api import terminal_routes as _terminal_routes
 
@@ -5090,103 +5091,37 @@ def _serve_file_response(handler, target: Path):
 
 
 def _handle_session_export(handler, parsed):
-    sid = parse_qs(parsed.query).get("session_id", [""])[0]
-    if not sid:
-        return bad(handler, "session_id is required")
-    try:
-        s = get_session(sid)
-    except KeyError:
-        return bad(handler, "Session not found", 404)
-    safe = redact_session_data(s.__dict__)
-    payload = json.dumps(safe, ensure_ascii=False, indent=2)
-    handler.send_response(200)
-    handler.send_header("Content-Type", "application/json; charset=utf-8")
-    handler.send_header(
-        "Content-Disposition", f'attachment; filename="hermes-{sid}.json"'
+    return _session_routes.handle_session_export(
+        handler,
+        parsed,
+        get_session_fn=get_session,
+        redact_session_data_fn=redact_session_data,
+        bad_response_fn=bad,
     )
-    handler.send_header("Content-Length", str(len(payload.encode("utf-8"))))
-    handler.send_header("Cache-Control", "no-store")
-    handler.end_headers()
-    handler.wfile.write(payload.encode("utf-8"))
-    return True
 
 
 def _handle_sessions_search(handler, parsed):
-    qs = parse_qs(parsed.query)
-    q = qs.get("q", [""])[0].lower().strip()
-    content_search = qs.get("content", ["1"])[0] == "1"
-    depth = int(qs.get("depth", ["5"])[0])
-    if not q:
-        safe_sessions = []
-        for s in all_sessions():
-            item = dict(s)
-            if isinstance(item.get("title"), str):
-                item["title"] = _redact_text(item["title"])
-            safe_sessions.append(item)
-        return j(handler, {"sessions": safe_sessions})
-    results = []
-    for s in all_sessions():
-        title_match = q in (s.get("title") or "").lower()
-        if title_match:
-            item = dict(s, match_type="title")
-            if isinstance(item.get("title"), str):
-                item["title"] = _redact_text(item["title"])
-            results.append(item)
-            continue
-        if content_search:
-            try:
-                sess = get_session(s["session_id"])
-                msgs = sess.messages[:depth] if depth else sess.messages
-                for m in msgs:
-                    c = m.get("content") or ""
-                    if isinstance(c, list):
-                        c = " ".join(
-                            p.get("text", "")
-                            for p in c
-                            if isinstance(p, dict) and p.get("type") == "text"
-                        )
-                    if q in str(c).lower():
-                        item = dict(s, match_type="content")
-                        if isinstance(item.get("title"), str):
-                            item["title"] = _redact_text(item["title"])
-                        results.append(item)
-                        break
-            except (KeyError, Exception):
-                pass
-    return j(handler, {"sessions": results, "query": q, "count": len(results)})
+    return _session_routes.handle_sessions_search(
+        handler,
+        parsed,
+        all_sessions_fn=all_sessions,
+        get_session_fn=get_session,
+        redact_text_fn=_redact_text,
+        json_response_fn=j,
+    )
 
 
 def _handle_list_dir(handler, parsed):
-    qs = parse_qs(parsed.query)
-    sid = qs.get("session_id", [""])[0]
-    if not sid:
-        return bad(handler, "session_id is required")
-    try:
-        s = get_session(sid)
-        workspace = s.workspace
-    except KeyError:
-        # Fallback for CLI sessions not loaded in WebUI memory
-        try:
-            cli_meta = None
-            for cs in get_cli_sessions():
-                if cs["session_id"] == sid:
-                    cli_meta = cs
-                    break
-            if not cli_meta:
-                return bad(handler, "Session not found", 404)
-            workspace = cli_meta.get("workspace", "")
-        except Exception:
-            return bad(handler, "Session not found", 404)
-    try:
-        return j(
-            handler,
-            {
-                "entries": list_dir(Path(workspace), qs.get("path", ["."])[0]),
-                "path": qs.get("path", ["."])[0],
-            },
-        )
-    except (FileNotFoundError, ValueError) as e:
-        return bad(handler, _sanitize_error(e), 404)
+    return _session_routes.handle_list_dir(
+        handler,
+        parsed,
+        get_session_fn=get_session,
+        get_cli_sessions_fn=get_cli_sessions,
+        list_dir_fn=list_dir,
+        json_response_fn=j,
+        bad_response_fn=bad,
+        sanitize_error_fn=_sanitize_error,
+    )
 
 
 def _sse_with_id(handler, event, data, event_id=None):
