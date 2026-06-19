@@ -104,6 +104,7 @@ from api import file_workspace_routes as _file_workspace_routes
 from api import file_response_routes as _file_response_routes
 from api import gateway_routes as _gateway_routes
 from api import gateway_sse_routes as _gateway_sse_routes
+from api import goal_routes as _goal_routes
 from api import health_routes as _health_routes
 from api import handoff_routes as _handoff_routes
 from api import interaction_routes as _interaction_routes
@@ -5264,122 +5265,25 @@ def _start_chat_stream_for_session(
 
 def _handle_goal_command(handler, body):
     """Handle WebUI /goal command controls and optional kickoff stream."""
-    try:
-        require(body, "session_id")
-    except ValueError as e:
-        return bad(handler, str(e))
-    try:
-        s = get_session(body["session_id"])
-    except KeyError:
-        return bad(handler, "Session not found", 404)
-
-    requested_profile = str(body.get("profile") or "").strip()
-    if requested_profile:
-        try:
-            from api.profiles import _PROFILE_ID_RE
-
-            if requested_profile != "default" and not _PROFILE_ID_RE.fullmatch(requested_profile):
-                return bad(handler, "invalid profile", 400)
-        except ImportError:
-            requested_profile = ""
-    if requested_profile and not _profiles_match(getattr(s, "profile", None), requested_profile):
-        has_persisted_turns = bool(
-            getattr(s, "messages", None)
-            or getattr(s, "context_messages", None)
-            or getattr(s, "pending_user_message", None)
-        )
-        if not has_persisted_turns:
-            s.profile = requested_profile
-
-    current_stream_id = getattr(s, "active_stream_id", None)
-    stream_running = False
-    if current_stream_id:
-        with STREAMS_LOCK:
-            stream_running = current_stream_id in STREAMS
-        if not stream_running:
-            _clear_stale_stream_state(s)
-
-    try:
-        from api.profiles import get_hermes_home_for_profile
-
-        profile_home = get_hermes_home_for_profile(getattr(s, "profile", None))
-    except Exception:
-        profile_home = None
-
-    from api.goals import goal_command_payload, goal_state_snapshot, restore_goal_state
-
-    goal_args = str(body.get("args", "") or body.get("text", "") or "")
-    goal_action = goal_args.strip().lower()
-    will_kickoff = bool(
-        goal_args.strip()
-        and goal_action not in ("status", "pause", "resume", "clear", "stop", "done")
-        and not stream_running
+    # Static compatibility anchor: goal_routes calls goal_command_payload and
+    # goal_state_snapshot before reading kickoff_prompt, then calls
+    # _start_chat_stream_for_session(..., goal_related=True) so STREAM_GOAL_RELATED
+    # is marked for the kickoff stream; restore_goal_state runs if registration fails.
+    return _goal_routes.handle_goal_command(
+        handler,
+        body,
+        require_fn=require,
+        bad_response_fn=bad,
+        json_response_fn=j,
+        get_session_fn=get_session,
+        profiles_match_fn=_profiles_match,
+        streams=STREAMS,
+        streams_lock=STREAMS_LOCK,
+        clear_stale_stream_state_fn=_clear_stale_stream_state,
+        resolve_trusted_workspace_fn=resolve_trusted_workspace,
+        resolve_session_model_state_fn=_resolve_compatible_session_model_state,
+        start_chat_stream_fn=_start_chat_stream_for_session,
     )
-    workspace = model = model_provider = normalized_model = None
-    previous_goal_state = None
-    if will_kickoff:
-        try:
-            workspace = str(resolve_trusted_workspace(body.get("workspace") or s.workspace))
-        except ValueError as e:
-            return bad(handler, str(e))
-        requested_model = body.get("model") or s.model
-        requested_provider = (
-            body.get("model_provider")
-            if "model_provider" in body
-            else getattr(s, "model_provider", None)
-        )
-        model, model_provider, normalized_model = _resolve_compatible_session_model_state(
-            requested_model,
-            requested_provider,
-        )
-        previous_goal_state = goal_state_snapshot(s.session_id, profile_home=profile_home)
-
-    payload = goal_command_payload(
-        s.session_id,
-        goal_args,
-        stream_running=stream_running,
-        profile_home=profile_home,
-    )
-    if not payload.get("ok", True):
-        status = 409 if payload.get("error") == "agent_running" else 400
-        return j(handler, payload, status=status)
-
-    kickoff_prompt = str(payload.get("kickoff_prompt") or "").strip()
-    if kickoff_prompt:
-        if workspace is None:
-            try:
-                workspace = str(resolve_trusted_workspace(body.get("workspace") or s.workspace))
-            except ValueError as e:
-                return bad(handler, str(e))
-        if model is None:
-            requested_model = body.get("model") or s.model
-            requested_provider = (
-                body.get("model_provider")
-                if "model_provider" in body
-                else getattr(s, "model_provider", None)
-            )
-            model, model_provider, normalized_model = _resolve_compatible_session_model_state(
-                requested_model,
-                requested_provider,
-            )
-        stream_response = _start_chat_stream_for_session(
-            s,
-            msg=kickoff_prompt,
-            attachments=[],
-            workspace=workspace,
-            model=model,
-            model_provider=model_provider,
-            normalized_model=normalized_model,
-            goal_related=True,
-        )
-        status = int(stream_response.pop("_status", 200) or 200)
-        payload.update(stream_response)
-        if status >= 400:
-            restore_goal_state(s.session_id, previous_goal_state, profile_home=profile_home)
-            payload["ok"] = False
-            return j(handler, payload, status=status)
-
-    return j(handler, payload)
 
 
 def _handle_chat_start(handler, body, diag=None):
