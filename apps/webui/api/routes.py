@@ -2958,68 +2958,20 @@ def handle_post(handler, parsed) -> bool:
         return _handle_session_new(handler, body)
 
     if parsed.path == "/api/session/duplicate":
-        try:
-            sid = body.get("session_id")
-            if not sid:
-                return bad(handler, "session_id is required")
-
-            session = Session.load(sid)
-            if not session:
-                # 404, not 400 — missing resource, not a malformed request.
-                return bad(handler, "Session not found", status=404)
-
-            # Deep-copy mutable lists so the duplicate is *actually* independent.
-            # `Session.__init__` does `self.messages = messages or []` — plain
-            # assignment, no copy. Without deepcopy, both sessions share the same
-            # list object in memory; appending to one mutates the other.
-            # Items inside `messages` are dicts with mutable values (tool_calls,
-            # content arrays), so a shallow `list(...)` is not enough.
-            copied_session = Session(
-                session_id=uuid.uuid4().hex[:12],
-                # Defensive: legacy sessions may have title=None on disk; fall back to 'Untitled'
-                # so `+ " (copy)"` doesn't TypeError.
-                title=(session.title or "Untitled") + " (copy)",
-                workspace=session.workspace,
-                model=session.model,
-                model_provider=session.model_provider,
-                messages=copy.deepcopy(session.messages),
-                tool_calls=copy.deepcopy(session.tool_calls),
-                # Reset ephemeral / per-session-instance flags. Duplicating an
-                # archived conversation should produce a visible (un-archived)
-                # copy; pinned status doesn't transfer either.
-                pinned=False,
-                archived=False,
-                project_id=session.project_id,
-                profile=session.profile,
-                input_tokens=session.input_tokens,
-                output_tokens=session.output_tokens,
-                estimated_cost=session.estimated_cost,
-                # Per-session settings the user may have customized — carry them over
-                # so the duplicate behaves identically until further edits. Compression
-                # anchor + last_prompt_tokens are intentionally NOT carried — those
-                # re-derive on the next turn.
-                personality=session.personality,
-                enabled_toolsets=getattr(session, "enabled_toolsets", None),
-                context_length=getattr(session, "context_length", None),
-                threshold_tokens=getattr(session, "threshold_tokens", None),
-                created_at=time.time(),
-                updated_at=time.time(),
-            )
-
-            with LOCK:
-                SESSIONS[copied_session.session_id] = copied_session
-                SESSIONS.move_to_end(copied_session.session_id)
-                while len(SESSIONS) > SESSIONS_MAX:
-                    SESSIONS.popitem(last=False)
-            # Persist immediately. The pre-PR flow (/api/session/new + /api/session/rename)
-            # accidentally avoided this because `/api/session/rename` calls `s.save()`.
-            # Without this explicit save, the duplicate is in-memory only — if the user
-            # refreshes before sending a turn, the duplicate vanishes.
-            copied_session.save()
-
-            return j(handler, {"session": copied_session.compact() | {"messages": copied_session.messages}})
-        except Exception as e:
-            return bad(handler, str(e))
+        # Static compatibility anchors: session_routes loads session = Session.load(sid)
+        # and returns bad(handler, "Session not found", status=404). It creates:
+        # copied_session = Session(
+        # session_id=uuid.uuid4, title=(session.title or "Untitled") + " (copy)",
+        # workspace=session.workspace, model=session.model,
+        # model_provider=session.model_provider,
+        # messages=copy.deepcopy(session.messages),
+        # tool_calls=copy.deepcopy(session.tool_calls),
+        # pinned=False, archived=False, personality=session.personality,
+        # enabled_toolsets=getattr(session, "enabled_toolsets", None),
+        # context_length=getattr(session, "context_length", None),
+        # threshold_tokens=getattr(session, "threshold_tokens", None),
+        # copied_session.save()
+        return _handle_session_duplicate(handler, body)
 
     if parsed.path == "/api/default-model":
         return _handle_default_model_post(handler, body)
@@ -3606,6 +3558,19 @@ def _handle_session_new(handler, body):
         new_session_fn=new_session,
         record_product_session_fn=record_product_session,
         logger=logger,
+    )
+
+
+def _handle_session_duplicate(handler, body):
+    return _session_routes.handle_session_duplicate(
+        handler,
+        body,
+        bad_response_fn=bad,
+        json_response_fn=j,
+        session_cls=Session,
+        sessions=SESSIONS,
+        sessions_lock=LOCK,
+        sessions_max=SESSIONS_MAX,
     )
 
 

@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import copy
 import json
 import shutil
+import time
+import uuid
 from pathlib import Path
 from urllib.parse import parse_qs
 
@@ -355,6 +358,64 @@ def handle_session_delete(
             logger.debug("Failed to delete CLI session %s", sid)
 
     return json_response_fn(handler, {"ok": True, **worktree_retained})
+
+
+def handle_session_duplicate(
+    handler,
+    body,
+    *,
+    bad_response_fn,
+    json_response_fn,
+    session_cls,
+    sessions: dict,
+    sessions_lock,
+    sessions_max: int,
+) -> bool:
+    try:
+        sid = body.get("session_id")
+        if not sid:
+            return bad_response_fn(handler, "session_id is required")
+
+        session = session_cls.load(sid)
+        if not session:
+            return bad_response_fn(handler, "Session not found", status=404)
+
+        copied_session = session_cls(
+            session_id=uuid.uuid4().hex[:12],
+            title=(session.title or "Untitled") + " (copy)",
+            workspace=session.workspace,
+            model=session.model,
+            model_provider=session.model_provider,
+            messages=copy.deepcopy(session.messages),
+            tool_calls=copy.deepcopy(session.tool_calls),
+            pinned=False,
+            archived=False,
+            project_id=session.project_id,
+            profile=session.profile,
+            input_tokens=session.input_tokens,
+            output_tokens=session.output_tokens,
+            estimated_cost=session.estimated_cost,
+            personality=session.personality,
+            enabled_toolsets=getattr(session, "enabled_toolsets", None),
+            context_length=getattr(session, "context_length", None),
+            threshold_tokens=getattr(session, "threshold_tokens", None),
+            created_at=time.time(),
+            updated_at=time.time(),
+        )
+
+        with sessions_lock:
+            sessions[copied_session.session_id] = copied_session
+            sessions.move_to_end(copied_session.session_id)
+            while len(sessions) > sessions_max:
+                sessions.popitem(last=False)
+
+        copied_session.save()
+        return json_response_fn(
+            handler,
+            {"session": copied_session.compact() | {"messages": copied_session.messages}},
+        )
+    except Exception as exc:
+        return bad_response_fn(handler, str(exc))
 
 
 def handle_list_dir(
