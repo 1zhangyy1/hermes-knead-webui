@@ -52,3 +52,17 @@ def test_attempt_credential_self_heal_uses_streaming_logger(monkeypatch):
         "provider": "anthropic"
     }
     assert calls == [("anthropic", "sid-1", "lock", streaming.logger)]
+
+
+def test_materialize_pending_user_turn_before_error_delegates(monkeypatch):
+    calls = []
+    session = object()
+
+    def fake_materialize(value):
+        calls.append(value)
+        return True
+
+    monkeypatch.setattr(facade, "materialize_pending_user_turn_before_error", fake_materialize)
+
+    assert facade.materialize_pending_user_turn_before_error_from_facade(session) is True
+    assert calls == [session]

@@ -175,12 +175,10 @@ from api.streaming_title_facade import (
 )
 # Source-guard anchor: MiniMax title calls set reasoning_split in
 # streaming_title_generation while streaming.py keeps the public wrappers.
-from api.streaming_recovery import (
-    materialize_pending_user_turn_before_error as _materialize_pending_user_turn_before_error_impl,
-)
 from api.streaming_recovery_facade import (
     attempt_credential_self_heal_from_facade as _attempt_credential_self_heal,
     last_resort_sync_from_core_from_facade as _last_resort_sync_from_core,
+    materialize_pending_user_turn_before_error_from_facade as _materialize_pending_user_turn_before_error,
 )
 from api.streaming_runtime_helpers import (
     WEBUI_VISIBLE_PROGRESS_PROMPT as _WEBUI_VISIBLE_PROGRESS_PROMPT_IMPL,
@@ -369,10 +367,6 @@ def _sse(handler, event, data):
     payload = f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
     handler.wfile.write(payload.encode('utf-8'))
     handler.wfile.flush()
-
-
-def _materialize_pending_user_turn_before_error(session) -> bool:
-    return _materialize_pending_user_turn_before_error_impl(session)
 
 
 def _run_agent_streaming(
