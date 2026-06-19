@@ -418,3 +418,65 @@ def handle_session_update(
             logger.debug("Failed to close workspace terminal after workspace update")
     set_last_workspace_fn(new_ws)
     return json_response_fn(handler, {"session": session.compact() | {"messages": session.messages}})
+
+
+def handle_session_worktree_status(
+    handler,
+    parsed,
+    *,
+    get_session_fn,
+    bad_response_fn,
+    json_response_fn,
+    sanitize_error_fn,
+    logger,
+) -> bool:
+    query = parse_qs(parsed.query)
+    sid = query.get("session_id", [""])[0]
+    if not sid:
+        return bad_response_fn(handler, "session_id is required", status=400)
+    try:
+        session = get_session_fn(sid, metadata_only=True)
+    except KeyError:
+        return bad_response_fn(handler, "Session not found", status=404)
+    try:
+        from api.worktrees import worktree_status_for_session
+
+        return json_response_fn(handler, {"status": worktree_status_for_session(session)})
+    except ValueError as exc:
+        return bad_response_fn(handler, str(exc), status=400)
+    except Exception as exc:
+        logger.exception("failed to read worktree status for session %s", sid)
+        return bad_response_fn(handler, sanitize_error_fn(exc), status=500)
+
+
+def handle_session_worktree_remove(
+    handler,
+    body,
+    *,
+    bad_response_fn,
+    json_response_fn,
+    get_session_fn,
+    sanitize_error_fn,
+    logger,
+) -> bool:
+    sid = body.get("session_id", "")
+    if not sid or not isinstance(sid, str) or not sid.strip():
+        return bad_response_fn(handler, "session_id must be a non-empty string", status=400)
+    sid = sid.strip()
+    if not all(char in "0123456789abcdefghijklmnopqrstuvwxyz_" for char in sid):
+        return bad_response_fn(handler, "Invalid session_id", 400)
+    try:
+        session = get_session_fn(sid, metadata_only=True)
+    except KeyError:
+        return bad_response_fn(handler, "Session not found", status=404)
+    force = bool(body.get("force", False))
+    try:
+        from api.worktrees import remove_worktree_for_session
+
+        result = remove_worktree_for_session(session, force=force)
+        return json_response_fn(handler, result)
+    except ValueError as exc:
+        return bad_response_fn(handler, str(exc), status=400)
+    except Exception as exc:
+        logger.exception("failed to remove worktree for session %s", sid)
+        return bad_response_fn(handler, sanitize_error_fn(exc), status=500)
