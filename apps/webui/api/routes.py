@@ -92,6 +92,7 @@ from api.profiles import _profiles_match  # noqa: F401, E402  (re-export)
 from api import logs_routes as _logs_routes
 from api import mcp_routes as _mcp_routes
 from api import plugin_routes as _plugin_routes
+from api import rollback_routes as _rollback_routes
 from api import skills_routes as _skills_routes
 
 
@@ -3830,33 +3831,10 @@ def handle_get(handler, parsed) -> bool:
 
     # ── Checkpoints / Rollback (GET) ──
     if parsed.path == "/api/rollback/list":
-        qs = parse_qs(parsed.query)
-        workspace = qs.get("workspace", [""])[0]
-        if not workspace:
-            return bad(handler, "workspace query parameter is required")
-        try:
-            from api.rollback import list_checkpoints
-            return j(handler, list_checkpoints(workspace))
-        except ValueError as e:
-            return bad(handler, str(e))
-        except Exception as e:
-            logger.exception("rollback/list failed")
-            return bad(handler, str(e), status=500)
+        return _rollback_routes.handle_rollback_list(handler, parsed, responder=j, error_responder=bad)
 
     if parsed.path == "/api/rollback/diff":
-        qs = parse_qs(parsed.query)
-        workspace = qs.get("workspace", [""])[0]
-        checkpoint = qs.get("checkpoint", [""])[0]
-        if not workspace or not checkpoint:
-            return bad(handler, "workspace and checkpoint query parameters are required")
-        try:
-            from api.rollback import get_checkpoint_diff
-            return j(handler, get_checkpoint_diff(workspace, checkpoint))
-        except ValueError as e:
-            return bad(handler, str(e))
-        except Exception as e:
-            logger.exception("rollback/diff failed")
-            return bad(handler, str(e), status=500)
+        return _rollback_routes.handle_rollback_diff(handler, parsed, responder=j, error_responder=bad)
 
     return False  # 404
 
@@ -5457,20 +5435,7 @@ def handle_post(handler, parsed) -> bool:
 
     # ── Checkpoints / Rollback (POST) ──
     if parsed.path == "/api/rollback/restore":
-        if not body:
-            return bad(handler, "request body is required")
-        workspace = body.get("workspace", "")
-        checkpoint = body.get("checkpoint", "")
-        if not workspace or not checkpoint:
-            return bad(handler, "workspace and checkpoint are required")
-        try:
-            from api.rollback import restore_checkpoint
-            return j(handler, restore_checkpoint(workspace, checkpoint))
-        except ValueError as e:
-            return bad(handler, str(e))
-        except Exception as e:
-            logger.exception("rollback/restore failed")
-            return bad(handler, str(e), status=500)
+        return _rollback_routes.handle_rollback_restore(handler, body, responder=j, error_responder=bad)
 
     return False  # 404
 
