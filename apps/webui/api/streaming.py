@@ -40,11 +40,11 @@ from api.streaming_error_facade import (
     provider_error_payload_from_facade as _provider_error_payload,
 )
 from api.streaming_cancellation import (
-    cancel_stream_request as _cancel_stream_request,
     handle_post_run_cancel as _handle_post_run_cancel,
     handle_preflight_cancel as _handle_preflight_cancel,
     session_has_cancel_marker as _session_has_cancel_marker_impl,
 )
+from api.streaming_cancel_facade import cancel_stream_from_facade
 from api.streaming_chat_steer import (
     drain_pending_steer_leftover as _drain_pending_steer_leftover,
 )
@@ -586,21 +586,4 @@ def cancel_stream(stream_id: str) -> bool:
     a safe no-op. Session cleanup runs outside STREAMS_LOCK to preserve lock
     ordering (streaming thread does LOCK → STREAMS_LOCK; inverting would deadlock).
     """
-    from api import config as _live_config
-
-    return _cancel_stream_request(
-        stream_id,
-        live_config=_live_config,
-        streams=STREAMS,
-        cancel_flags=CANCEL_FLAGS,
-        agent_instances=AGENT_INSTANCES,
-        partial_texts=STREAM_PARTIAL_TEXT,
-        reasoning_texts=STREAM_REASONING_TEXT,
-        live_tool_calls=STREAM_LIVE_TOOL_CALLS,
-        streams_lock=STREAMS_LOCK,
-        get_session=get_session,
-        get_session_agent_lock=_get_session_agent_lock,
-        stream_writeback_is_current=_stream_writeback_is_current,
-        cancelled_turn_content_fn=_cancelled_turn_content,
-        logger=logger,
-    )
+    return cancel_stream_from_facade(stream_id)
