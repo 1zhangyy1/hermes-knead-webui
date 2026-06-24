@@ -1,12 +1,28 @@
 # Knead
 
-Knead is an AI product shelf. Users choose or create an AI, start from chat, and let that AI grow a small workspace only when the work needs more structure.
+Knead is a Hermes-native AI product shelf. Users choose or create an AI, start from chat, and let that AI grow a small workspace only when the work needs more structure.
+
+You can think of this repository as **Hermes Knead**: the official Hermes Agent runtime plus a product layer for creating, using, and shaping small AI products.
 
 The current MVP centers on three built-in AI products:
 
 - `General AI`: a `chat_only` product. Its own product UI is the base chat surface.
 - `PPT Designer`: a workspace product. It can grow a PPT task surface with outline, pages, notes, style, and generation state.
 - `AI Otome`: a workspace example that shows how an AI-first interactive product can own its own interface.
+
+## Screenshots
+
+![Knead AI shelf](docs/brand/screenshots/knead-shelf.png)
+
+_The AI shelf: choose General AI, a workspace product, or knead a new AI._
+
+![PPT Designer workspace](docs/brand/screenshots/knead-ppt-workspace.png)
+
+_PPT Designer: a product workspace with outline, slide planning, generation steps, and export._
+
+![AI Otome workspace](docs/brand/screenshots/knead-ai-otome-workspace.png)
+
+_AI Otome: an AI-first interactive product with its own interface, memory, choices, and character state._
 
 ## Product Boundary
 
@@ -37,6 +53,23 @@ Root `.gitattributes` marks this bundled runtime as vendored for GitHub language
 The root `package.json` is marked `private: true` on purpose. Knead is released
 as a source repository today, not as a publishable npm package; the flag prevents
 accidental registry publishes while keeping the repository public and reusable.
+
+## Built On Hermes Agent
+
+Knead does not replace Hermes Agent. The native agent loop, model routing, tool execution, skills, checkpoints, files, and runtime events come from the official [Hermes Agent](https://github.com/NousResearch/hermes-agent) runtime vendored under `runtimes/hermes-agent`.
+
+Knead adds the product shelf, product manifests, product workspaces, and UI evolution layer on top. That separation is intentional: Hermes remains the agent runtime; Knead is the product experience around it.
+
+## References
+
+Knead was shaped by several public projects and product references:
+
+- [Hermes Agent](https://github.com/NousResearch/hermes-agent): native agent runtime, tool execution, skills, checkpoints, and WebUI foundation.
+- [PilotDeck](https://github.com/OpenBMB/PilotDeck): focused chat-plus-workspace interaction model.
+- [LobeHub / Lobe Chat](https://github.com/lobehub/lobe-chat): assistant creation, selection, and approachable AI object management.
+- [PinMe](https://github.com/glitternetwork/pinme): lightweight pinned workspace and object organization ideas.
+
+These are references, not mixed production source. The only first-class vendored runtime is the official Hermes Agent checkout described in [docs/architecture/HERMES_VENDORING.md](docs/architecture/HERMES_VENDORING.md).
 
 ## Run
 
@@ -142,6 +175,7 @@ KNEAD_RELEASE_AGENT_SMOKE=1 pnpm release:check
 - [docs/PRODUCT_MODEL_CONTRACT.md](docs/PRODUCT_MODEL_CONTRACT.md): product runtime model and invariants
 - [docs/architecture/PRODUCTION_REPOSITORY_PLAN.md](docs/architecture/PRODUCTION_REPOSITORY_PLAN.md): production repository plan
 - [docs/references/REFERENCE_PROJECTS.md](docs/references/REFERENCE_PROJECTS.md): reference projects and what we learned from them
+- [docs/brand/screenshots/README.md](docs/brand/screenshots/README.md): release-facing screenshot policy
 
 ## Contributing
 

@@ -2,20 +2,26 @@
 
 These projects are useful references, but they are not production source for Knead. Keep local checkouts under `vendor/`; Git ignores that directory.
 
-## LobeHub
+Reference projects should influence product judgment, information architecture, and interaction patterns. Do not copy source from them into Knead unless a file is explicitly vendored, licensed, and attributed.
+
+## Hermes Agent
+
+Source: [NousResearch/hermes-agent](https://github.com/NousResearch/hermes-agent)
 
 Reference value:
 
-- Clear assistant creation and selection flow.
-- Useful mental model for a personalized AI object.
-- Good examples of simple first-screen information hierarchy.
+- Native agent loop, model routing, tools, skills, checkpoints, files, and runtime events.
+- Existing WebUI foundation for chat, sessions, model selection, tool calls, and workspace files.
 
-Knead upgrade:
+Knead usage:
 
-- We do not stop at assistants.
-- Each AI object can become an AI product with its own generated or evolved interface.
+- The official runtime is vendored as `runtimes/hermes-agent`.
+- Product turns should route writes to the selected product workspace.
+- Product-specific skills and tools should be represented in `product.json`.
 
 ## PilotDeck
+
+Source: [OpenBMB/PilotDeck](https://github.com/OpenBMB/PilotDeck)
 
 Reference value:
 
@@ -28,25 +34,32 @@ Knead upgrade:
 - The workspace is owned by the selected AI product.
 - The product can evolve its task interface over time.
 
-## Hermes WebUI
+## LobeHub / Lobe Chat
+
+Source: [lobehub/lobe-chat](https://github.com/lobehub/lobe-chat)
 
 Reference value:
 
-- Existing chat, sessions, files, model selection, tools, and agent execution.
+- Clear assistant creation and selection flow.
+- Useful mental model for a personalized AI object.
+- Good examples of simple first-screen information hierarchy.
 
-Knead usage:
+Knead upgrade:
 
-- Forked into `apps/webui` as the production app shell.
-- Product runtime and product workspace APIs are added on top.
+- Knead does not stop at assistants.
+- Each AI object can become an AI product with its own generated or evolved interface.
 
-## Hermes Agent
+## PinMe
+
+Source: [glitternetwork/pinme](https://github.com/glitternetwork/pinme)
 
 Reference value:
 
-- Agent execution runtime.
-- Tool and skill integration.
+- Lightweight object organization.
+- Pinned, durable context as a product surface rather than a loose chat transcript.
+- Useful contrast for how Knead should make generated products feel stable and reusable.
 
-Knead usage:
+Knead upgrade:
 
-- Product turns should route agent writes to the selected product workspace.
-- Product-specific skills and tools should be represented in `product.json`.
+- Knead product objects own chat, files, prompts, tools, and optional workspace UI.
+- The product can keep evolving after creation instead of being a static pinned artifact.

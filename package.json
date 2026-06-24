@@ -1,7 +1,7 @@
 {
   "name": "knead",
   "version": "0.1.0",
-  "description": "An AI product shelf where users can create, use, and shape small AI products from chat.",
+  "description": "Hermes-native AI product shelf where users create, use, and shape small AI products from chat.",
   "private": true,
   "license": "MIT",
   "type": "module",

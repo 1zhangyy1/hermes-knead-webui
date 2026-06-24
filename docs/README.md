@@ -10,6 +10,7 @@ This directory separates current product truth from historical design exploratio
 - [`PRODUCT_MODEL_CONTRACT.md`](PRODUCT_MODEL_CONTRACT.md): implementation contract for product data, lifecycle, scopes, bridge, and release invariants.
 - [`architecture/PRODUCTION_REPOSITORY_PLAN.md`](architecture/PRODUCTION_REPOSITORY_PLAN.md): repository shape, source boundaries, local runtime state, and done criteria.
 - [`architecture/HERMES_VENDORING.md`](architecture/HERMES_VENDORING.md): Hermes runtime vendoring and update policy.
+- [`brand/screenshots/README.md`](brand/screenshots/README.md): release-facing screenshot policy.
 
 ## Reference Docs
 
