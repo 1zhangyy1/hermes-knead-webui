@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  A Hermes-native AI product shelf built on the official Hermes Agent runtime.
+  A Hermes WebUI-based product shell built on the official Hermes Agent runtime.
 </p>
 
 <p align="center">
@@ -17,13 +17,14 @@
   <a href="#how-it-works">How it works</a> ·
   <a href="#screenshots">Screenshots</a> ·
   <a href="#quick-start">Quick start</a> ·
-  <a href="#built-on-hermes-agent">Hermes runtime</a>
+  <a href="#built-on-hermes-webui-and-hermes-agent">Hermes runtime</a>
 </p>
 
 <p align="center">
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-1A1A1A" /></a>
   <img alt="Node.js 22+" src="https://img.shields.io/badge/node-%3E%3D22-1A1A1A" />
   <img alt="pnpm 10.33+" src="https://img.shields.io/badge/pnpm-%3E%3D10.33-1A1A1A" />
+  <img alt="Package: hermes-knead-webui" src="https://img.shields.io/badge/package-hermes--knead--webui-1A1A1A" />
   <img alt="Runtime: Hermes Agent" src="https://img.shields.io/badge/runtime-Hermes%20Agent-1A1A1A" />
 </p>
 
@@ -32,6 +33,8 @@
 Most AI tools stop at chat. Most app builders make you leave the work and start building an app.
 
 Knead is the middle path: pick an AI, say what you need, and let that AI become a small product when the task needs more structure.
+
+The product is called **Knead**. The source package is named `hermes-knead-webui` because this repository is specifically the Knead product layer on top of Hermes WebUI and Hermes Agent.
 
 An AI product in Knead owns its role, prompt, avatar, skills, tools, task history, files, and optional workspace. It can stay as a normal chat product, or it can grow a focused surface for work like slides, research, data, writing, games, or repeatable personal workflows.
 
@@ -73,15 +76,18 @@ Choose an AI product, start a task, or knead a new AI from the shelf.
 
 `AI Otome` shows the same product model applied to a game-like AI companion with its own state and interaction loop.
 
-## Built On Hermes Agent
+## Built On Hermes WebUI And Hermes Agent
 
-Knead does not replace Hermes Agent. The native agent loop, model routing, tool execution, skills, checkpoints, files, and runtime events come from the official [Hermes Agent](https://github.com/NousResearch/hermes-agent) runtime vendored under `runtimes/hermes-agent`.
+Knead does not replace Hermes WebUI or Hermes Agent. It starts from the inherited Hermes WebUI browser foundation under `apps/webui`, then adds the Knead product shelf, product manifests, product workspaces, and product-shaping behavior.
 
-Knead adds the product shelf, product manifests, product workspaces, and UI evolution layer on top. In short:
+The native agent loop, model routing, tool execution, skills, checkpoints, files, and runtime events come from the official [Hermes Agent](https://github.com/NousResearch/hermes-agent) runtime vendored under `runtimes/hermes-agent`.
+
+In short:
 
 ```text
-Hermes Agent = native agent runtime
-Knead        = product experience around that runtime
+Hermes WebUI  = browser shell foundation
+Hermes Agent  = native agent runtime
+Knead         = AI product shelf and workspace layer
 ```
 
 The vendoring policy, upstream baseline, and patch rules live in [docs/architecture/HERMES_VENDORING.md](docs/architecture/HERMES_VENDORING.md).
@@ -134,10 +140,10 @@ cp products/ppt-designer/ppt-skill/.env.example products/ppt-designer/ppt-skill/
 # Edit products/ppt-designer/ppt-skill/.env and set FAL_KEY.
 ```
 
-## Project Map
+## Repository Shape
 
 ```text
-apps/webui/        Production WebUI shell and product runtime
+apps/webui/        Knead WebUI, inherited from Hermes WebUI and extended for products
 products/          Curated built-in AI products
 packages/          Shared TypeScript packages
 runtimes/          First-class runtime dependencies, including Hermes Agent
@@ -147,7 +153,19 @@ experiments/       Public boundary note for excluded historical prototypes
 vendor/            Local reference checkouts, ignored by Git
 ```
 
+The tracked root is intentionally small and mostly standard for an open-source project:
+
+| Root entry | Why it stays at the root |
+| --- | --- |
+| `README.md`, `LICENSE`, `NOTICE.md` | GitHub-facing project identity, license, and attribution. |
+| `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `SECURITY.md` | Standard open-source collaboration and security files. |
+| `CHANGELOG.md`, `RELEASE.md` | Release notes and release checklist. |
+| `PRODUCT.md`, `PRODUCT_UIUX.md`, `DESIGN.md` | Product context used by maintainers and local design tooling. |
+| `package.json`, `pnpm-lock.yaml`, `pnpm-workspace.yaml` | Workspace scripts, package metadata, and locked dependencies. |
+
 Generated or user-created products are runtime state, not source code. When launched through `pnpm dev`, they are written under `.hermes-home/webui/products/` so using Knead does not dirty the repository.
+
+Local directories like `.hermes-home/`, `node_modules/`, `tmp/`, and `vendor/` can make the checkout look busy, but they are ignored runtime or reference state, not published source.
 
 The root `package.json` is marked `private: true` on purpose. Knead is released as a source repository today, not as a publishable npm package; the flag prevents accidental registry publishes while keeping the repository public and reusable.
 
@@ -177,6 +195,7 @@ Use this only after a configured Hermes Gateway is running.
 Knead was shaped by several public projects:
 
 - [Hermes Agent](https://github.com/NousResearch/hermes-agent): native agent runtime, tool execution, skills, checkpoints, and WebUI foundation.
+- Hermes WebUI: inherited browser UI foundation under `apps/webui`, used as the starting point for Knead's product shell.
 - [PilotDeck](https://github.com/OpenBMB/PilotDeck): focused chat-plus-workspace interaction model.
 - [LobeHub / Lobe Chat](https://github.com/lobehub/lobe-chat): approachable assistant creation, selection, and management.
 - [PinMe](https://github.com/glitternetwork/pinme): lightweight object organization and durable workspace ideas.
