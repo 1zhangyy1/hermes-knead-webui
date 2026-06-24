@@ -1,77 +1,92 @@
-# Knead
+<p align="center">
+  <img src="apps/webui/static/knead-logo.svg" width="76" alt="Knead logo" />
+</p>
 
-Knead is a Hermes-native AI product shelf. Users choose or create an AI, start from chat, and let that AI grow a small workspace only when the work needs more structure.
+<h1 align="center">Knead</h1>
 
-You can think of this repository as **Hermes Knead**: the official Hermes Agent runtime plus a product layer for creating, using, and shaping small AI products.
+<p align="center">
+  <strong>One sentence. Shape an AI product you can actually use.</strong>
+</p>
 
-The current MVP centers on three built-in AI products:
+<p align="center">
+  A Hermes-native AI product shelf built on the official Hermes Agent runtime.
+</p>
 
-- `General AI`: a `chat_only` product. Its own product UI is the base chat surface.
-- `PPT Designer`: a workspace product. It can grow a PPT task surface with outline, pages, notes, style, and generation state.
-- `AI Otome`: a workspace example that shows how an AI-first interactive product can own its own interface.
+<p align="center">
+  <a href="#why-knead">Why Knead</a> ·
+  <a href="#how-it-works">How it works</a> ·
+  <a href="#screenshots">Screenshots</a> ·
+  <a href="#quick-start">Quick start</a> ·
+  <a href="#built-on-hermes-agent">Hermes runtime</a>
+</p>
+
+<p align="center">
+  <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-1A1A1A" /></a>
+  <img alt="Node.js 22+" src="https://img.shields.io/badge/node-%3E%3D22-1A1A1A" />
+  <img alt="pnpm 10.33+" src="https://img.shields.io/badge/pnpm-%3E%3D10.33-1A1A1A" />
+  <img alt="Runtime: Hermes Agent" src="https://img.shields.io/badge/runtime-Hermes%20Agent-1A1A1A" />
+</p>
+
+## Why Knead
+
+Most AI tools stop at chat. Most app builders make you leave the work and start building an app.
+
+Knead is the middle path: pick an AI, say what you need, and let that AI become a small product when the task needs more structure.
+
+An AI product in Knead owns its role, prompt, avatar, skills, tools, task history, files, and optional workspace. It can stay as a normal chat product, or it can grow a focused surface for work like slides, research, data, writing, games, or repeatable personal workflows.
+
+The current MVP is intentionally small:
+
+| Product | Shape | What it proves |
+| --- | --- | --- |
+| `General AI` | Chat only | The default chat surface is itself a product UI. |
+| `PPT Designer` | Chat plus workspace | A task can grow outline, slide, note, style, and export surfaces. |
+| `AI Otome` | Full product workspace | An AI-first interactive product can own its own interface, memory, choices, and character state. |
+
+## How It Works
+
+Knead has one user model:
+
+1. **Choose or create an AI.** Start from the shelf. Use `General AI`, a built-in product, or knead a new one.
+2. **Use it through chat.** The first interaction is natural language. The AI decides whether the base chat is enough.
+3. **Shape it when useful.** If the task needs structure, the AI can open or improve its product workspace without changing the global shell.
+
+The important boundary: product changes belong to the selected AI product. If `PPT Designer` improves its workspace, that does not mutate `General AI` or the rest of the app.
 
 ## Screenshots
 
+### AI shelf
+
 ![Knead AI shelf](docs/brand/screenshots/knead-shelf.png)
 
-_The AI shelf: choose General AI, a workspace product, or knead a new AI._
+Choose an AI product, start a task, or knead a new AI from the shelf.
+
+### PPT workspace
 
 ![PPT Designer workspace](docs/brand/screenshots/knead-ppt-workspace.png)
 
-_PPT Designer: a product workspace with outline, slide planning, generation steps, and export._
+`PPT Designer` can turn a chat request into a working surface for outlines, slide planning, generation steps, and export.
+
+### AI Otome workspace
 
 ![AI Otome workspace](docs/brand/screenshots/knead-ai-otome-workspace.png)
 
-_AI Otome: an AI-first interactive product with its own interface, memory, choices, and character state._
-
-## Product Boundary
-
-An AI product owns its role, prompt, avatar, skills, tools, task history, and product workspace. When a user asks a product to change itself, the change belongs to that product, not the global shell.
-
-This is the key product idea: Knead is stronger than an assistant list because every AI object can become a small AI product with its own evolving interface.
-
-## Repository Shape
-
-```text
-apps/webui/        Main production WebUI application
-products/          Built-in example AI products committed with the repository
-packages/          Shared TypeScript packages
-runtimes/          First-class runtime dependencies, including Hermes Agent
-scripts/           Local development and verification scripts
-docs/              Product, architecture, and historical design notes
-experiments/       Public boundary note for historical prototypes excluded from release
-vendor/            Local reference checkouts, ignored by Git
-```
-
-Production code should live in `apps/`, `products/`, `packages/`, `runtimes/`, `scripts/`, and current docs. Reference projects can stay locally under `vendor/`, but they are not part of the production repository.
-
-The `products/` directory is for curated built-in examples that ship with the repository. The official set is listed in `products/catalog.json` and allow-listed on purpose: generated or user-created products are runtime state and are written to the WebUI state directory (`.hermes-home/webui/products/` when launched through `pnpm dev`), so running Knead does not dirty the source tree. Use `KNEAD_PRODUCTS_DIR` only when you intentionally want to place user-created products somewhere else.
-
-`runtimes/hermes-agent` is the vendored official Hermes Agent runtime baseline. See [docs/architecture/HERMES_VENDORING.md](docs/architecture/HERMES_VENDORING.md) for the source, update, and patch policy.
-Root `.gitattributes` marks this bundled runtime as vendored for GitHub language statistics while keeping it as first-class source in the repository.
-
-The root `package.json` is marked `private: true` on purpose. Knead is released
-as a source repository today, not as a publishable npm package; the flag prevents
-accidental registry publishes while keeping the repository public and reusable.
+`AI Otome` shows the same product model applied to a game-like AI companion with its own state and interaction loop.
 
 ## Built On Hermes Agent
 
 Knead does not replace Hermes Agent. The native agent loop, model routing, tool execution, skills, checkpoints, files, and runtime events come from the official [Hermes Agent](https://github.com/NousResearch/hermes-agent) runtime vendored under `runtimes/hermes-agent`.
 
-Knead adds the product shelf, product manifests, product workspaces, and UI evolution layer on top. That separation is intentional: Hermes remains the agent runtime; Knead is the product experience around it.
+Knead adds the product shelf, product manifests, product workspaces, and UI evolution layer on top. In short:
 
-## References
+```text
+Hermes Agent = native agent runtime
+Knead        = product experience around that runtime
+```
 
-Knead was shaped by several public projects and product references:
+The vendoring policy, upstream baseline, and patch rules live in [docs/architecture/HERMES_VENDORING.md](docs/architecture/HERMES_VENDORING.md).
 
-- [Hermes Agent](https://github.com/NousResearch/hermes-agent): native agent runtime, tool execution, skills, checkpoints, and WebUI foundation.
-- [PilotDeck](https://github.com/OpenBMB/PilotDeck): focused chat-plus-workspace interaction model.
-- [LobeHub / Lobe Chat](https://github.com/lobehub/lobe-chat): assistant creation, selection, and approachable AI object management.
-- [PinMe](https://github.com/glitternetwork/pinme): lightweight pinned workspace and object organization ideas.
-
-These are references, not mixed production source. The only first-class vendored runtime is the official Hermes Agent checkout described in [docs/architecture/HERMES_VENDORING.md](docs/architecture/HERMES_VENDORING.md).
-
-## Run
+## Quick Start
 
 Requirements:
 
@@ -79,24 +94,27 @@ Requirements:
 - pnpm 10.33+
 - Python 3.11+ or 3.12
 
-First-time local setup:
-
 ```bash
 pnpm install
 pnpm setup:local
 
-# Edit .env and add at least one model provider key, for example OPENROUTER_API_KEY.
+# Add at least one provider key to .env, for example OPENROUTER_API_KEY.
 # Then configure the project-local Hermes model/provider state.
 pnpm hermes:model
 
 pnpm dev
 ```
 
-The dev script starts `apps/webui` on `http://localhost:8788` by default.
+The app starts at `http://localhost:8788`.
 
-`pnpm setup:local` prepares the project-local Python environment and copies `.env.example` to `.env` when needed. `pnpm hermes:model` runs the vendored Hermes CLI with that project-local environment and `HERMES_HOME=.hermes-home`. `pnpm dev` reads the root `.env`, uses the vendored Hermes runtime in `runtimes/hermes-agent`, and stores local runtime state under `.hermes-home/` by default. If the app says no LLM provider is configured, run `pnpm hermes:model` again.
+`pnpm dev` uses:
 
-Useful environment overrides:
+- the vendored Hermes runtime in `runtimes/hermes-agent`
+- project-local Hermes state in `.hermes-home/`
+- built-in products from `products/`
+- runtime-created products from `.hermes-home/webui/products/`
+
+Useful overrides:
 
 ```bash
 HERMES_WEBUI_PORT=8789 pnpm dev
@@ -105,83 +123,80 @@ KNEAD_BUILTIN_PRODUCTS_DIR=/path/to/builtin-products pnpm dev
 KNEAD_PRODUCTS_DIR=/path/to/runtime-products pnpm dev
 ```
 
-For PPT image generation, copy the PPT skill env template and add a FAL key:
+If the app says no LLM provider is configured, run `pnpm hermes:model` again.
+
+## PPT Image Generation
+
+`PPT Designer` can use the bundled PPT skill workflow. Add a FAL key before using image generation:
 
 ```bash
 cp products/ppt-designer/ppt-skill/.env.example products/ppt-designer/ppt-skill/.env
 # Edit products/ppt-designer/ppt-skill/.env and set FAL_KEY.
 ```
 
+## Project Map
+
+```text
+apps/webui/        Production WebUI shell and product runtime
+products/          Curated built-in AI products
+packages/          Shared TypeScript packages
+runtimes/          First-class runtime dependencies, including Hermes Agent
+scripts/           Development, verification, and release scripts
+docs/              Current product, architecture, brand, and reference docs
+experiments/       Public boundary note for excluded historical prototypes
+vendor/            Local reference checkouts, ignored by Git
+```
+
+Generated or user-created products are runtime state, not source code. When launched through `pnpm dev`, they are written under `.hermes-home/webui/products/` so using Knead does not dirty the repository.
+
+The root `package.json` is marked `private: true` on purpose. Knead is released as a source repository today, not as a publishable npm package; the flag prevents accidental registry publishes while keeping the repository public and reusable.
+
 ## Verify
 
-Use the smallest check that matches what you changed:
+Use the smallest check that matches the change:
 
-| Command | Use when | What it protects |
-| --- | --- | --- |
-| `pnpm docs:check` | Editing current docs, product READMEs, or release docs | Broken local Markdown links in release-owned documentation |
-| `pnpm product:check -- <product-dir>` | Reviewing or promoting one AI product | Product manifest, preview entry, README shape note, and source/runtime boundary |
-| `pnpm verify` | Touching WebUI, product runtime, products, scripts, or docs | Repository audit, source whitespace scan, secret scan, product checks, syntax checks, product tests, and WebUI smoke |
-| `pnpm check` | Opening a normal PR | Workspace TypeScript checks plus `pnpm verify` |
-| `pnpm release:batches` | Preparing a large release branch for review | Non-destructive grouping of dirty worktree files into review batches, with dependency notes |
-| `pnpm release:check` | Packaging or changing release-facing files | Diff whitespace checks, local artifact check, frozen lockfile install, full `pnpm check`, and optional live agent smoke |
-| `pnpm release:check:clean` | Final pre-tag release check | Everything in `release:check`, plus a clean Git worktree requirement |
+| Command | Use when |
+| --- | --- |
+| `pnpm docs:check` | Editing README or current docs. |
+| `pnpm product:check -- <product-dir>` | Reviewing or promoting one AI product. |
+| `pnpm verify` | Touching WebUI, product runtime, products, scripts, or docs. |
+| `pnpm check` | Opening a normal PR. |
+| `pnpm release:check` | Preparing release-facing files. |
+| `pnpm release:check:clean` | Final pre-tag check with a clean Git worktree. |
 
-```bash
-pnpm check
-```
-
-This runs workspace checks and the repository/product runtime verifier.
-The verifier also starts a temporary WebUI server without LLM credentials and
-checks the shell, static product runtime, and built-in product registry.
-It also validates that committed built-in products have clean manifests and
-existing preview entries.
-
-For just the WebUI/product checks:
-
-```bash
-pnpm verify
-```
-
-Before tagging or publishing a release:
-
-```bash
-pnpm release:check:clean
-```
-
-To inspect ignored local release artifacts before packaging or moving the checkout:
-
-```bash
-pnpm release:clean:local
-pnpm release:clean:local -- --apply
-```
-
-This covers root scratch files, generated product outputs, and ignored
-experiment build artifacts.
-
-If you have a configured Hermes Gateway running and want to verify a real model-backed agent turn too:
+Optional live model smoke:
 
 ```bash
 KNEAD_RELEASE_AGENT_SMOKE=1 pnpm release:check
 ```
 
-## Current Product Docs
+Use this only after a configured Hermes Gateway is running.
 
-- [docs/README.md](docs/README.md): map of current, historical, and reference documentation
+## References
+
+Knead was shaped by several public projects:
+
+- [Hermes Agent](https://github.com/NousResearch/hermes-agent): native agent runtime, tool execution, skills, checkpoints, and WebUI foundation.
+- [PilotDeck](https://github.com/OpenBMB/PilotDeck): focused chat-plus-workspace interaction model.
+- [LobeHub / Lobe Chat](https://github.com/lobehub/lobe-chat): approachable assistant creation, selection, and management.
+- [PinMe](https://github.com/glitternetwork/pinme): lightweight object organization and durable workspace ideas.
+
+These are references, not mixed production source. The only first-class vendored runtime is the official Hermes Agent checkout described in [docs/architecture/HERMES_VENDORING.md](docs/architecture/HERMES_VENDORING.md).
+
+More notes live in [docs/references/REFERENCE_PROJECTS.md](docs/references/REFERENCE_PROJECTS.md).
+
+## Docs
+
 - [PRODUCT.md](PRODUCT.md): product definition and design principles
 - [PRODUCT_UIUX.md](PRODUCT_UIUX.md): current UI/UX model
-- [DESIGN.md](DESIGN.md): visual system, brand tone, and app-shell UI tokens
+- [DESIGN.md](DESIGN.md): visual system and brand tone
 - [CHANGELOG.md](CHANGELOG.md): release-facing change log
-- [RELEASE.md](RELEASE.md): release checklist, product promotion checks, and optional live smoke
+- [RELEASE.md](RELEASE.md): release checklist
 - [docs/PRODUCT_MODEL_CONTRACT.md](docs/PRODUCT_MODEL_CONTRACT.md): product runtime model and invariants
 - [docs/architecture/PRODUCTION_REPOSITORY_PLAN.md](docs/architecture/PRODUCTION_REPOSITORY_PLAN.md): production repository plan
-- [docs/references/REFERENCE_PROJECTS.md](docs/references/REFERENCE_PROJECTS.md): reference projects and what we learned from them
 - [docs/brand/screenshots/README.md](docs/brand/screenshots/README.md): release-facing screenshot policy
 
-## Contributing
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for setup, source boundaries, and PR checks. See [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) for collaboration norms, [SECURITY.md](SECURITY.md) for private vulnerability reporting and local secret handling, and [NOTICE.md](NOTICE.md) for bundled runtime attribution.
-
-## MVP Acceptance
+## Release Bar
 
 The MVP is healthy when:
 
@@ -190,3 +205,11 @@ The MVP is healthy when:
 3. `PPT Designer` can open a PPT task surface when structure becomes useful.
 4. A product can update its own identity, skills, tools, and runtime product workspace without mutating the global shell.
 5. Product interface evolution is previewable, applicable, and recoverable.
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for setup, source boundaries, and PR checks. See [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) for collaboration norms, [SECURITY.md](SECURITY.md) for private vulnerability reporting and local secret handling, and [NOTICE.md](NOTICE.md) for bundled runtime attribution.
+
+## License
+
+Knead is released under the [MIT License](LICENSE).
