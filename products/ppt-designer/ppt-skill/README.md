@@ -1,117 +1,127 @@
 # GPT Image 2 PPT Skill
 
-基于 fal.ai 上的 **GPT Image 2** 生成 PPT 图片，主打字体排版质量。Deck 驱动的 CLI，干净优雅。
+This support skill generates presentation slide images with GPT Image 2 through
+fal.ai, then packages the result as a `.pptx` deck and an HTML viewer. It is a
+deck-oriented CLI for the built-in `PPT Designer` product.
 
-## 设计哲学
+## Design Philosophy
 
-**给原子命令，AI 自己决定怎么组合。**
+Give the agent small atomic commands and let it decide how to compose them.
 
-- `gen` / `edit` — 调 fal.ai 生成 / 编辑图片
-- `pack` — 本地把图片合成 `.pptx` 和 `index.html`
+- `gen` / `edit`: generate or edit slide images through fal.ai
+- `pack`: compose local slide images into `.pptx` and `index.html`
 
-没有 "mode A / B / C" 这种写死的流程，Claude 根据上下文自己判断每一页用哪个。
+There are no hard-coded "mode A / mode B / mode C" flows. The agent should read
+the task, inspect the deck state, and choose the right operation for each slide.
 
-## 核心概念：deck
+## Core Concept: Deck
 
-**一个 deck = `outputs/` 下的一个目录**。
-- slides 按 `slide-01.png`, `slide-02.png` 自动编号
-- `deck.json` 记录 size / quality / style 默认值 + 操作历史
-- `pack` 命令产出可分享的 `.pptx` 和 `index.html`
+A deck is one directory under `outputs/`.
 
-## 快速开始
+- Slides are auto-numbered as `slide-01.png`, `slide-02.png`, and so on.
+- `deck.json` stores size, quality, default style, and operation history.
+- `pack` writes a shareable `deck.pptx` and `index.html`.
+
+`outputs/` is runtime output and must not be committed.
+
+## Quick Start
 
 ```bash
-# 1. 装依赖
+# 1. Install dependencies.
 python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
 
-# 2. 配置 key（复制 .env.example 到 .env，填入 FAL_KEY）
+# 2. Configure the local key.
 cp .env.example .env
+# Edit .env and set FAL_KEY.
 
-# 3. 生成第一页（设好 deck 默认值）
-#    风格不是 CLI 参数——AI 根据内容自己判断，直接写进 prompt
+# 3. Generate the first slide and deck defaults.
+#    Style is not a CLI enum; describe the visual direction in the prompt.
 .venv/bin/python ppt.py gen q1-demo \
-  "Editorial magazine cover, huge serif title '产品复盘 Q1', off-white bg, thin hairline divider, small sans-serif subtitle '2026 · 产品团队'. Crisp exact typography." \
+  "Editorial magazine cover, huge serif title 'Q1 Product Review', off-white background, thin hairline divider, small sans-serif subtitle '2026 · Product Team'. Crisp exact typography." \
   --size 2048x1152 --quality high
 
-# 4. 后续页引用第 1 页做母版（size/quality 自动继承）
+# 4. Generate later slides by referencing the first slide as the visual base.
 .venv/bin/python ppt.py edit q1-demo \
-  "Keep layout identical. REPLACE title WITH: '核心成果'. REPLACE subtitle WITH: '用户 +32% · 留存 78% · NPS 62'." \
+  "Keep layout identical. REPLACE title WITH: 'Core Wins'. REPLACE subtitle WITH: 'Users +32% · Retention 78% · NPS 62'." \
   --ref 1
 
 .venv/bin/python ppt.py edit q1-demo \
-  "Keep layout identical. REPLACE title WITH: 'Thank you'. REPLACE subtitle WITH: 'Q2 再见'." \
+  "Keep layout identical. REPLACE title WITH: 'Thank you'. REPLACE subtitle WITH: 'See you in Q2'." \
   --ref 1
 
-# 5. 看一眼状态
+# 5. Inspect deck state.
 .venv/bin/python ppt.py info q1-demo
 
-# 6. 一键打包
+# 6. Package the deck.
 .venv/bin/python ppt.py pack q1-demo
-# → outputs/q1-demo/deck.pptx     （可在 Keynote/PowerPoint 打开）
-# → outputs/q1-demo/index.html    （键盘 ← → 导航的播放器）
+# -> outputs/q1-demo/deck.pptx
+# -> outputs/q1-demo/index.html
 open outputs/q1-demo/index.html
 ```
 
-## 四个命令
+## Commands
 
-| 命令 | 作用 | 示例 |
-|------|------|------|
-| `gen <deck> <prompt>` | 文生图，自动编号 | `ppt gen my "..."` |
-| `edit <deck> <prompt> --ref N` | 图生图，引用 slot N | `ppt edit my "..." --ref 1` |
-| `pack <deck>` | 打包成 .pptx + .html | `ppt pack my` |
-| `info <deck>` | 查看 deck 状态 | `ppt info my` |
+| Command | Purpose | Example |
+| --- | --- | --- |
+| `gen <deck> <prompt>` | Generate a new slide image and auto-assign the next slot. | `ppt gen my "..."` |
+| `edit <deck> <prompt> --ref N` | Edit from one or more references. | `ppt edit my "..." --ref 1` |
+| `pack <deck>` | Package slide images as `.pptx` and `.html`. | `ppt pack my` |
+| `info <deck>` | Show deck state. | `ppt info my` |
 
-### edit 的 --ref
+### `edit --ref`
 
-支持三种格式：
-- `--ref 1` — 引用同 deck 的 slot 1
-- `--ref /path/to/brand.png` — 本地文件
-- `--ref https://...png` — URL
-- 可传多个：`--ref 1 --ref brand.png`
+Supported reference forms:
 
-### 精修某一页
+- `--ref 1`: reference slot 1 from the same deck
+- `--ref /path/to/brand.png`: reference a local file
+- `--ref https://...png`: reference an image URL
+- multiple references: `--ref 1 --ref brand.png`
 
-```bash
-ppt edit mydeck "Change title to 'XX'." --ref 3 --slot 3   # 覆盖第 3 页
-ppt pack mydeck                                             # 重新打包
-```
-
-## 作为 Claude Code Skill 使用
+### Refine One Slide
 
 ```bash
-ln -s "$(pwd)/GPTImage2-PPT-Skills" ~/.claude/skills/gpt-image-2-ppt
+ppt edit mydeck "Change title to 'Roadmap'." --ref 3 --slot 3
+ppt pack mydeck
 ```
 
-然后让 Claude 按 `SKILL.md` 规划并调 CLI 生成。
+## Agent Skill Usage
 
-## 项目结构
+This directory is support code for the built-in `PPT Designer` product. It can
+also be used as a standalone agent skill: have the agent read `SKILL.md`, then
+call `ppt.py` to generate, edit, inspect, and package a deck.
 
-```
-GPTImage2-PPT-Skills/
-├── ppt.py                    # CLI 入口
-├── ppt_skill/                # 核心包
-│   ├── env.py                #   加载 .env
-│   ├── deck.py               #   Deck 类
-│   ├── api.py                #   gen_image / edit_image
-│   └── pack.py               #   to_pptx / to_html
-├── templates/viewer.html     # HTML 播放器
-├── style_refs/               # 风格参考样本（仅供借鉴，非必选菜单）
+## Project Structure
+
+```text
+ppt-skill/
+├── ppt.py                    # CLI entry point
+├── ppt_skill/                # Core package
+│   ├── env.py                # Loads .env
+│   ├── deck.py               # Deck model
+│   ├── api.py                # gen_image / edit_image
+│   └── pack.py               # to_pptx / to_html
+├── templates/viewer.html     # HTML viewer
+├── style_refs/               # Writing samples for style prompts
 ├── .env.example
 ├── requirements.txt
-└── outputs/<deck>/           # 每个 deck 一个目录
+└── outputs/<deck>/           # Runtime output, ignored by Git
 ```
 
-## 关于尺寸
+## Image Size
 
-GPT Image 2 要求：**两边都是 16 的倍数**、最大边 ≤ 3840、总像素 655,360–8,294,400。
+GPT Image 2 requires both sides to be multiples of 16. The largest side must be
+at most 3840 px, and total pixels must be between 655,360 and 8,294,400.
 
-- 标清：`1280x720`
-- **高清（默认）：`2048x1152`** ⭐
-- 4K：`3840x2160`
+- Standard: `1280x720`
+- High definition, default: `2048x1152`
+- 4K: `3840x2160`
 
-⚠️ `1920x1080` 不行（1080 不是 16 的倍数）。
+`1920x1080` is not valid because 1080 is not divisible by 16.
 
-## 计费参考
+## Cost Note
 
-按 token 算：图片 $8/M input · $30/M output。`quality=high` 是默认（也最贵），可改 `medium`/`low` 省钱。
+Pricing is token-based: image input is `$8/M` input tokens and output is
+`$30/M` output tokens at the time this support code was written. `quality=high`
+is the default and most expensive setting; use `medium` or `low` when cost
+matters more than detail.

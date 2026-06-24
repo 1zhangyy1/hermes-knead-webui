@@ -1,0 +1,20 @@
+{
+  "$schema": "https://knead.dev/schemas/product-catalog.schema.json",
+  "builtins": [
+    {
+      "id": "general",
+      "title": "General AI",
+      "summary": "Default chat product proving that the base chat surface is itself a product UI."
+    },
+    {
+      "id": "ppt-designer",
+      "title": "PPT Designer",
+      "summary": "Workspace product proving chat plus a dedicated PPT task surface."
+    },
+    {
+      "id": "ai-otome",
+      "title": "AI Otome",
+      "summary": "Interactive product proving a game-like AI interface can live inside the product boundary."
+    }
+  ]
+}

@@ -1,10 +1,28 @@
 {
+  "$schema": "https://knead.dev/schemas/product.schema.json",
   "id": "ai-otome",
   "kind": "ai-otome",
   "title": "AI Otome",
   "avatar": "♡",
   "desc": "A single-character AI romance game. Chat with Mira, grow the bond, unlock story beats, and let AI move the scene forward.",
+  "placeholder": "Say something to Mira...",
+  "suggestions": [
+    [
+      "Tell Mira you came to see her and let her choose the next scene.",
+      "Start with Mira"
+    ],
+    [
+      "Ask Mira what she remembers about you.",
+      "Check memory"
+    ],
+    [
+      "Make the mood warmer and more romantic.",
+      "Shape the mood"
+    ]
+  ],
   "source_prompt": "Built-in AI product: AI Otome. It is a single-character AI romance game, not a static visual novel. The product UI owns the use flow. AI drives dialogue, mood, affection, memories, story beats, choices, and scene changes.",
+  "system_prompt": "",
+  "instructions": "",
   "product_type": "interactive",
   "ui_mode": "workspace",
   "product_layout": "canvas_full",
@@ -18,5 +36,5 @@
     "skills",
     "image_gen"
   ],
-  "updated_at": "2026-06-08T09:10:00Z"
+  "updated_at": "2026-06-11T03:16:17Z"
 }

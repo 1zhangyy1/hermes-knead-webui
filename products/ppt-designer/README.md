@@ -1,5 +1,21 @@
-# PPT 设计师
+# PPT Designer
 
-把想法、资料和要求变成清晰好看的演示文稿。Chat 始终在场，产品画布会按 PPT 任务逐步长出大纲、页面和讲稿区。
+PPT Designer turns ideas, source material, and audience goals into presentation structure.
 
-和这个 AI 产品聊天时，Agent 会在这里创建和修改产品画布文件。
+Chat stays present. When structure helps, the product workspace can show outline, slides, speaker notes, style, and generation state.
+
+## Product Shape
+
+PPT Designer demonstrates `chat_left_canvas_right`: the user still talks to the
+AI, but the work benefits from a persistent task surface. The workspace should
+make deck structure visible without replacing the conversation.
+
+This product is the canonical example for structured creation tasks:
+
+- collect intent through chat
+- keep outline, pages, notes, style, and generation state visible
+- let the product use specialized skills/tools when needed
+- keep generated decks, images, and exports out of source control
+
+The committed files are the maintained product source. Runtime outputs belong in
+ignored output/state directories.

@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -9,7 +9,7 @@
 <body data-stage="brief">
   <div class="app" id="app">
 
-    <!-- 顶栏:品牌 + 阶段步骤器 + 导出 -->
+    <!-- Top bar: brand, stage stepper, and export -->
     <header class="topbar">
       <div class="topbar-left">
         <div class="brand-mark">P</div>
@@ -28,7 +28,7 @@
       </div>
     </header>
 
-    <!-- 阶段宿主:同一时刻只显示一个 stage -->
+    <!-- Stage host: only one stage is visible at a time -->
     <main class="stage-host">
 
       <!-- ① BRIEF & STYLE -->
@@ -109,7 +109,7 @@
 
     </main>
 
-    <!-- 图片服务状态(仅 brief/slides 阶段需要时露出) -->
+    <!-- Image service status; shown only when brief/slides stages need it -->
     <div class="fal-bar" id="falBar" hidden>
       <span class="fal-dot" id="falDot"></span>
       <span id="falText">Image service not set</span>

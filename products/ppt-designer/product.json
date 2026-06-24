@@ -1,10 +1,28 @@
 {
+  "$schema": "https://knead.dev/schemas/product.schema.json",
   "id": "ppt-designer",
   "kind": "ppt",
   "title": "PPT Designer",
   "avatar": "P",
   "desc": "Tell me the topic, audience, and goal. I will shape the outline, slides, and speaker notes.",
+  "placeholder": "Describe this deck, or upload material...",
+  "suggestions": [
+    [
+      "Help me create a product intro deck. First confirm the topic, audience, and outline.",
+      "Start from topic"
+    ],
+    [
+      "I have source material. Turn it into a presentation structure.",
+      "Use source material"
+    ],
+    [
+      "Help me improve an existing deck structure. First tell me what should change.",
+      "Improve structure"
+    ]
+  ],
   "source_prompt": "Built-in AI product: PPT Designer. It helps users create and refine presentations through chat, then opens a PPT workspace when structure is useful.",
+  "system_prompt": "",
+  "instructions": "",
   "product_type": "ppt",
   "ui_mode": "workspace",
   "product_layout": "chat_left_canvas_right",
@@ -21,5 +39,5 @@
     "terminal",
     "code_execution"
   ],
-  "updated_at": "2026-06-08T09:17:31Z"
+  "updated_at": "2026-06-09T13:16:56Z"
 }

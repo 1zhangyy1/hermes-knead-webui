@@ -1,59 +1,66 @@
 # Style References
 
-**不是菜单，是参考样本。**
+These files are writing samples, not a style menu.
 
-这里的 `.md` 文件展示"怎么描述一种风格"的**写法示例**——如何用文字把视觉语言（配色、字体气质、版式、材质）说清楚，让 GPT Image 2 理解。
+Each Markdown file shows one way to describe a visual language in words: color,
+typographic feel, layout, texture, and constraints that GPT Image 2 can use.
+The agent may read them for phrasing and level of detail, but it should still
+design the visual direction from the user's task.
 
-## ⚠️ 字体描述规则
+## Font Description Rule
 
-**描述外观，不写字体名。**
+Describe appearance, not font names.
 
-| 错误 ❌ | 正确 ✅ |
-|---------|---------|
+| Avoid | Prefer |
+| --- | --- |
 | "Bebas Neue" | "bold condensed geometric sans-serif with tight tracking" |
 | "Playfair Display" | "high-contrast display serif with hairline horizontals and thick verticals" |
 | "Inter" | "clean geometric sans-serif with consistent stroke widths and moderate letter-spacing" |
-| "思源宋体" | "high-contrast serif with elegant horizontal strokes and precise vertical strokes" |
+| "Source Han Serif" | "high-contrast serif with elegant horizontal strokes and precise vertical strokes" |
 
-GPT Image 2 是图像模型，不认字体名；视觉描述才真正影响输出。
+GPT Image 2 is an image model. Visual descriptions usually matter more than
+specific font-family names.
 
-## 怎么用
+## How To Use These References
 
-AI 规划 PPT 时应该：
+When planning a deck, the agent should:
 
-1. **先分析内容**——基调、受众、媒介
-2. **独立构造视觉语言**——写在心里或直接写进 prompt
-3. **需要的话再看这里**——借鉴写法、抄句式、学描述颗粒度
-4. **也可以完全忽略**——这里没有的风格完全可以自己造
+1. Analyze the content, audience, mood, and medium.
+2. Construct a visual language independently, either mentally or directly in the prompt.
+3. Read these references only when it needs examples of good visual phrasing.
+4. Ignore them when the task calls for a style that is not represented here.
 
-## 不应该怎么用
+## How Not To Use Them
 
-- ❌ "从里面挑一个塞进去"（这不是菜单）
-- ❌ 每次都必须用这里的文件
-- ❌ 把这 12 种当成"全部可能性"
+- Do not force the user to pick one of these files.
+- Do not treat these files as required inputs for every deck.
+- Do not assume the current set is the complete universe of possible styles.
 
-## 现有样本（12 种）
+## Current Samples
 
-| 文件 | 适合场景 |
-|------|---------|
-| `minimal.md` | 极简 keynote / 高管汇报 |
-| `blueprint.md` | 技术架构 / 工程文档 |
-| `notion.md` | SaaS 产品 / 功能演示 |
-| `sketch-notes.md` | 教育内容 / 知识分享 |
-| `corporate.md` | 投资人 / 商务提案 |
-| `dark-atmospheric.md` | 科技发布 / 创意品牌 |
-| `bold-editorial.md` | 产品发布 / 高影响演讲 |
-| `editorial-infographic.md` | 研究报告 / 数据叙事 |
-| `scientific.md` | 学术 / 技术流程图 |
-| `watercolor.md` | 生活方式 / 温暖内容 |
-| `chinese-elegance.md` | 中式文化 / 传统品牌 |
-| `glassmorphism.md` | 消费科技 / UI 展示 |
-| `editorial.md` | 杂志排版 / 文字主导 |
-| `minimalist.md` | 极简商务 / 咨询报告 |
+| File | Good for |
+| --- | --- |
+| `minimal.md` | Minimal keynote decks, executive updates |
+| `blueprint.md` | Technical architecture, engineering documentation |
+| `notion.md` | SaaS products, feature walkthroughs |
+| `sketch-notes.md` | Education, knowledge sharing |
+| `corporate.md` | Investor decks, business proposals |
+| `dark-atmospheric.md` | Tech launches, creative brands |
+| `bold-editorial.md` | Product launches, high-impact talks |
+| `editorial-infographic.md` | Research reports, data storytelling |
+| `scientific.md` | Academic work, technical diagrams |
+| `watercolor.md` | Lifestyle and warm editorial content |
+| `chinese-elegance.md` | Chinese cultural themes, traditional brands |
+| `glassmorphism.md` | Consumer tech, UI presentation |
+| `editorial.md` | Magazine layouts, text-led narratives |
+| `minimalist.md` | Minimal business and consulting decks |
 
-## 要加新样本？
+## Adding A New Sample
 
-随时加。好的样本应该：
-- 具体到色号（hex）、字体气质描述（视觉外观，非名称）、版式类型
-- 写出 "Do" 和 "Don't"
-- 说明适用场景
+A good sample should include:
+
+- exact colors with hex values
+- typographic feel described by visual appearance, not font names
+- layout and material language
+- clear "Do" and "Don't" guidance
+- scenarios where the style fits

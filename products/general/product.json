@@ -1,10 +1,28 @@
 {
+  "$schema": "https://knead.dev/schemas/product.schema.json",
   "id": "general",
   "kind": "general",
   "title": "General AI",
   "avatar": "G",
   "desc": "Open-ended chat for quick questions, writing, analysis, and files.",
+  "placeholder": "Say what you want to do...",
+  "suggestions": [
+    [
+      "Help me organize today’s work into clear next steps.",
+      "Plan my day"
+    ],
+    [
+      "Rewrite this copy so it is clearer and more professional.",
+      "Polish copy"
+    ],
+    [
+      "Analyze this problem and give me a few possible paths.",
+      "Analyze a problem"
+    ]
+  ],
   "source_prompt": "Built-in AI product: General AI. It stays as normal chat by default. Its identity, flow, skills, and tools belong to itself.",
+  "system_prompt": "",
+  "instructions": "",
   "product_type": "general",
   "ui_mode": "chat_only",
   "product_layout": "chat_only",
@@ -18,5 +36,5 @@
     "terminal",
     "code_execution"
   ],
-  "updated_at": "2026-06-08T07:32:59Z"
+  "updated_at": "2026-06-16T12:54:02Z"
 }

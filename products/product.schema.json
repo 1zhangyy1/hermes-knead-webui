@@ -1,0 +1,216 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://knead.dev/schemas/product.schema.json",
+  "title": "Knead AI Product",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "$schema",
+    "id",
+    "kind",
+    "title",
+    "avatar",
+    "desc",
+    "placeholder",
+    "suggestions",
+    "source_prompt",
+    "product_type",
+    "ui_mode",
+    "product_layout",
+    "preview_entry",
+    "ui_status",
+    "skills",
+    "tools",
+    "updated_at"
+  ],
+  "properties": {
+    "$schema": {
+      "const": "https://knead.dev/schemas/product.schema.json"
+    },
+    "id": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[a-z0-9][a-z0-9-]*$"
+    },
+    "kind": {
+      "type": "string",
+      "minLength": 1
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1
+    },
+    "avatar": {
+      "type": "string",
+      "minLength": 1
+    },
+    "desc": {
+      "type": "string",
+      "minLength": 1
+    },
+    "placeholder": {
+      "type": "string",
+      "minLength": 1
+    },
+    "suggestions": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "array",
+        "prefixItems": [
+          {
+            "type": "string",
+            "minLength": 1
+          },
+          {
+            "type": "string",
+            "minLength": 1
+          }
+        ],
+        "items": false,
+        "minItems": 2,
+        "maxItems": 2
+      }
+    },
+    "source_prompt": {
+      "type": "string",
+      "minLength": 1
+    },
+    "system_prompt": {
+      "type": "string"
+    },
+    "instructions": {
+      "type": "string"
+    },
+    "product_type": {
+      "type": "string",
+      "minLength": 1
+    },
+    "ui_mode": {
+      "enum": ["chat_only", "workspace"]
+    },
+    "product_layout": {
+      "enum": ["chat_only", "chat_center", "chat_left_canvas_right", "canvas_full"]
+    },
+    "canvas_label": {
+      "type": "string"
+    },
+    "draft": {
+      "description": "Runtime draft marker. Curated product source must not set this field."
+    },
+    "draft_status": {
+      "description": "Runtime draft marker. Curated product source must not set this field."
+    },
+    "draftStatus": {
+      "description": "Runtime draft marker. Curated product source must not set this field."
+    },
+    "preview_entry": {
+      "type": "string",
+      "minLength": 1
+    },
+    "ui_status": {
+      "type": "string",
+      "minLength": 1
+    },
+    "skills": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "tools": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "metadata": {
+      "description": "Product-owned metadata for curated examples. Do not store runtime state, local paths, credentials, or generated task outputs here.",
+      "type": "object",
+      "additionalProperties": true
+    },
+    "config": {
+      "description": "Product-owned configuration for the runtime UI. Do not store runtime state, local paths, credentials, or generated task outputs here.",
+      "type": "object",
+      "additionalProperties": true
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "ui_mode": {
+            "const": "chat_only"
+          }
+        },
+        "required": ["ui_mode"]
+      },
+      "then": {
+        "properties": {
+          "product_layout": {
+            "const": "chat_only"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "product_layout": {
+            "const": "chat_only"
+          }
+        },
+        "required": ["product_layout"]
+      },
+      "then": {
+        "properties": {
+          "ui_mode": {
+            "const": "chat_only"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "product_layout": {
+            "not": {
+              "const": "chat_only"
+            }
+          }
+        },
+        "required": ["product_layout"]
+      },
+      "then": {
+        "required": ["canvas_label"],
+        "properties": {
+          "canvas_label": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    {
+      "not": {
+        "anyOf": [
+          {
+            "required": ["draft"]
+          },
+          {
+            "required": ["draft_status"]
+          },
+          {
+            "required": ["draftStatus"]
+          }
+        ]
+      }
+    }
+  ]
+}
