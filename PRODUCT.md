@@ -6,13 +6,13 @@ product
 
 ## Users
 
-Next AI is for people who use AI to finish real work, not to configure agents for its own sake. They may be making decks, researching a topic, analyzing data, writing, planning, or building a repeatable personal workflow. They arrive with a task in mind, often uncertain about the exact structure, and need an AI product that can turn a first sentence into a usable task surface.
+Knead is for people who use AI to finish real work, not to configure agents for its own sake. They may be making decks, researching a topic, analyzing data, writing, planning, or building a repeatable personal workflow. They arrive with a task in mind, often uncertain about the exact structure, and need an AI product that can turn a first sentence into a usable task surface.
 
 The first target user for the MVP is someone using `PPT Designer`: they want to describe a presentation, upload or reference material, discuss the direction with AI, and see a product canvas grow into the parts that make PPT work easier: topic, audience, outline, pages, speaker notes, and style decisions.
 
 ## Product Purpose
 
-Next AI is an AI product library. Users choose, create, and evolve AI products. An AI product is a long-lived work object with its own role, task history, skills, tools, and product canvas. It starts from chat, but when a task needs more structure, it can grow a product canvas for the current task.
+Knead is an AI product shelf. Users choose, create, and evolve AI products. An AI product is a long-lived work object with its own role, task history, skills, tools, and product canvas. It starts from chat, but when a task needs more structure, it can grow a product canvas for the current task.
 
 Success means users understand the product in the first screen: choose an AI product, say what they want, and keep working. They should not need to understand manifests, sandboxes, version directories, plugin systems, or app builders. The interface should make the AI product feel increasingly useful over time because it can adapt its task flow and product canvas through preview, apply, and recovery.
 

@@ -1,6 +1,7 @@
-# 捏 / Knead — Design System (aura)
+# Knead Design System
 
-The visual system for the Knead app shell. Direction confirmed from `docs/brand/app-aura.html`.
+The visual system for the Knead app shell. Direction confirmed from
+[docs/brand/app-aura.html](docs/brand/app-aura.html).
 This document is the source of truth; landing it = overriding CSS variables in
 `apps/webui/static/style.css` and a few targeted surface rules. Components don't change — they read tokens.
 

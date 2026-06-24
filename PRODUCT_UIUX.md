@@ -1,14 +1,14 @@
-# Next AI UIUX
+# Knead UI/UX
 
 ## Core Shape
 
-Next AI is an AI product library. The user does not manage workspaces first. They choose an AI product, start a task with one message, and keep working as the task grows structure.
+Knead is an AI product shelf. The user does not manage workspaces first. They choose an AI product, start a task with one message, and keep working as the task grows structure.
 
 ## First Screen
 
 The first screen should be quiet and direct:
 
-- Left: `Next AI`, new task, AI product list, recent tasks for the selected product.
+- Left: `Knead`, new task, AI product list, recent tasks for the selected product.
 - Center: selected AI product name, one-line description, input, a few starter tasks.
 - Hidden by default: skills, tools, connectors, workbench management, versions, file trees, and product configuration.
 
@@ -60,7 +60,19 @@ This means:
 
 - `General AI` does not show "input to expand" or "generate product canvas"; its product page is already complete as Chat.
 - `PPT Designer` is not "default Chat plus an add-on". It is a PPT product page whose Chat core can move left while the PPT canvas appears on the right.
-- Custom products start as Chat unless their type clearly benefits from a canvas (PPT, image, research, data, interactive products). When a product creates a visible UI, it should write `product.json` to request `chat_left_canvas_right` for side-by-side work or `canvas_full` when the UI itself is the main product experience.
+- Custom products start from the smallest useful shape. If normal Chat is enough, Creator configures identity, behavior, skills, tools, suggestions, and keeps `product_layout: "chat_only"`. If a visible UI would make the product easier to use, Creator writes the product files and requests `chat_left_canvas_right` or `canvas_full` in `product.json`. The shell should not guess product categories from keywords.
+
+## Creation Flow
+
+Creation is a dedicated Creator flow, similar in spirit to shaping a product but scoped to a draft:
+
+1. The user clicks `Knead one` and says what they want.
+2. Creator opens a draft workspace in runtime state.
+3. Creator chats normally, asks only useful clarifying questions, and edits the draft product files when needed.
+4. Creator explicitly marks the draft ready with a short user-centered reason.
+5. The user adds it to the shelf. Only then does it become a normal AI product.
+
+A draft is not a broken product. It should not appear in the AI shelf until it is published.
 
 ## Interface Evolution
 

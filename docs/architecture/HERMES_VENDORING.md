@@ -2,7 +2,7 @@
 
 ## Decision
 
-Next AI Chat vendors the official Hermes Agent runtime under `runtimes/hermes-agent`.
+Knead vendors the official Hermes Agent runtime under `runtimes/hermes-agent`.
 
 This is intentional. The product is built on Hermes Agent as its core runtime: model calls, the agent loop, tools, skills, memory, checkpoints, and runtime events all come from Hermes. Keeping the runtime inside the repository gives the project one coherent source tree while still preserving a clean boundary between product code and runtime code.
 
@@ -11,6 +11,7 @@ This is intentional. The product is built on Hermes Agent as its core runtime: m
 `vendor/` remains ignored local reference material. It is useful for experiments, comparisons, and scratch checkouts.
 
 `runtimes/hermes-agent` is different: it is production source and part of the repository.
+The root `.gitattributes` marks it as `linguist-vendored` so GitHub language statistics emphasize Knead-maintained code, not the bundled upstream runtime.
 
 ## Upstream
 
@@ -26,7 +27,7 @@ Prefer this order:
 
 1. Product behavior in `products/<id>` when the change belongs to one AI product.
 2. WebUI/API code in `apps/webui` when the change is presentation, routing, product registry, or browser interaction.
-3. Adapter/shared package code in `packages` when the change is a Next AI Chat abstraction over Hermes.
+3. Adapter/shared package code in `packages` when the change is a Knead abstraction over Hermes.
 4. Hermes runtime code in `runtimes/hermes-agent` when the change must affect the agent loop, tool execution, runtime policy, or tool/skill capability loading.
 
 Runtime changes must be recorded in `runtimes/hermes-agent/PATCHES.md`.
@@ -65,4 +66,4 @@ The current WebUI still imports `run_agent.AIAgent` directly in places inherited
 
 ## Fork Policy
 
-Start from official Hermes. If Next AI Chat accumulates runtime patches that cannot be upstreamed quickly, create a dedicated Hermes fork and update `UPSTREAM.md` to point to that fork. The main repository can continue to consume the fork through the same subtree path.
+Start from official Hermes. If Knead accumulates runtime patches that cannot be upstreamed quickly, create a dedicated Hermes fork and update `UPSTREAM.md` to point to that fork. The main repository can continue to consume the fork through the same subtree path.
