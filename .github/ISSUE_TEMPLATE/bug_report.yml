@@ -1,0 +1,63 @@
+name: Bug report
+description: Report something that is broken or confusing in Knead.
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What happened?
+      description: Describe the behavior you saw and what you expected instead.
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Product shelf
+        - General AI
+        - PPT Designer
+        - AI Otome
+        - Creator / Shape it
+        - Product workspace
+        - Hermes runtime
+        - Repository / release
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Include the product, prompt, files, and clicks needed to reproduce the issue.
+      placeholder: |
+        1. Open ...
+        2. Select ...
+        3. Send ...
+        4. See ...
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence
+      description: Screenshots, logs, console output, or relevant product/session details.
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      placeholder: |
+        OS:
+        Node:
+        pnpm:
+        Python:
+        Browser:
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Safety check
+      options:
+        - label: I removed provider keys, local file contents, and private user data from this report.
+          required: true
