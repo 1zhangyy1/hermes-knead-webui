@@ -61,6 +61,7 @@ def configure_agent_runtime_prompt(
     config: dict | None,
     personality_name: str | None,
     product_context=None,
+    agent_instruction: str | None = None,
     product_ephemeral_prompt_fn=None,
     webui_ephemeral_system_prompt,
     logger=None,
@@ -71,6 +72,10 @@ def configure_agent_runtime_prompt(
         product_ephemeral_prompt_fn=product_ephemeral_prompt_fn,
         logger=logger,
     )
-    prompt = webui_ephemeral_system_prompt(personality_prompt, product_prompt)
+    runtime_parts = [product_prompt]
+    if agent_instruction:
+        runtime_parts.append(str(agent_instruction).strip())
+    runtime_prompt = "\n\n".join(part for part in runtime_parts if part)
+    prompt = webui_ephemeral_system_prompt(personality_prompt, runtime_prompt)
     agent.ephemeral_system_prompt = prompt
     return prompt

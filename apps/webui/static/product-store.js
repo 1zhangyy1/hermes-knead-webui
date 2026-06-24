@@ -54,33 +54,6 @@ function _assistantProductBacked(item) {
   return !!(item && (item.backendProduct || item.productId || item.product_id));
 }
 
-function _assistantDefaultCapabilities(productType = '', seedText = '') {
-  const seed = `${productType || ''} ${seedText || ''}`;
-  const lower = seed.toLowerCase();
-  const skills = [];
-  const tools = [];
-  const add = (nextSkills, nextTools) => {
-    skills.push(...nextSkills);
-    tools.push(...nextTools);
-  };
-  if (productType === 'ppt' || /ppt|powerpoint|slide|slides|deck|演示|幻灯|路演|汇报/i.test(seed)) {
-    add(['presentations', 'office'], ['skills', 'file', 'terminal', 'code_execution']);
-  }
-  if (productType === 'image' || /图片|图像|生图|绘图|文生图|画图|生成图|海报|封面|插画|头像|视觉|image|photo|poster|visual/i.test(seed)) {
-    add(['imagegen'], ['skills', 'file', 'image_gen']);
-  }
-  if (productType === 'research' || /研究|调研|资料|报告|竞品|行业|research|browser|web/i.test(lower)) {
-    add(['browser'], ['skills', 'browser', 'web', 'file']);
-  }
-  if (productType === 'data' || /数据|运营|指标|表格|看板|报表|data|sheet|spreadsheet|table/i.test(lower)) {
-    add(['spreadsheets'], ['skills', 'file', 'terminal', 'code_execution']);
-  }
-  return {
-    skills: _assistantUniqueCapabilityList(skills),
-    tools: _assistantNormalizeToolsets(tools)
-  };
-}
-
 function _assistantNormalizeProductLayout(value = '', productType = '', uiMode = '') {
   const raw = String(value || '').trim();
   if (String(uiMode || '').trim() === 'chat_only') return 'chat_only';
@@ -152,15 +125,14 @@ function _assistantCanvasLabel(object) {
 function _normalizeBuiltinProductCopy(product) {
   const id = String(product && (product.id || product.productId) || '').trim();
   const kind = String(product && product.kind || '').trim();
-  const productType = String(product && (product.product_type || product.productType) || '').trim();
-  if (id === 'ppt-designer' || kind === 'ppt' || productType === 'ppt') {
+  if (id === 'ppt-designer' || kind === 'ppt') {
     return {
       title: 'PPT Designer',
       desc: 'Tell me the topic, audience, and goal. I will shape the outline, slides, and speaker notes.',
       canvasLabel: 'PPT workspace'
     };
   }
-  if (id === 'general' || kind === 'general' || productType === 'general') {
+  if (id === 'general' || kind === 'general') {
     return {
       title: 'General AI',
       desc: 'Use chat for one-off work. Repeated workflows can become their own AI.',
@@ -390,9 +362,14 @@ async function hydrateProductsFromBackend() {
     _customAssistantsWrite(merged);
     for (const assistant of merged) _registerCustomAssistant(assistant);
     renderAssistantList();
-    const current = _assistantKey();
-    if (AI_OBJECTS[current]) selectAiObject(current);
-    else selectAiObject('general');
+    const sessionProductKind = typeof syncAssistantSelectionToSessionProduct === 'function'
+      ? syncAssistantSelectionToSessionProduct()
+      : '';
+    if (!sessionProductKind) {
+      const current = _assistantKey();
+      if (AI_OBJECTS[current]) selectAiObject(current);
+      else selectAiObject('general');
+    }
     return merged;
   } catch (err) {
     console.debug('hydrateProductsFromBackend failed', err);

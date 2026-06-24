@@ -55,6 +55,7 @@ async function _savedSessionShouldStaySidebarOnly(sid){
 
 // ── Mobile navigation ──────────────────────────────────────────────────────
 let _workspacePanelMode='closed'; // 'closed' | 'browse' | 'preview'
+let _workspacePanelUserClosed=false;
 
 function _isCompactWorkspaceViewport(){
   return window.matchMedia('(max-width: 900px)').matches;
@@ -92,6 +93,14 @@ function _hasWorkspacePreviewVisible(){
   return !!(preview&&preview.classList.contains('visible'));
 }
 
+function _shouldDefaultOpenWorkspacePanel(){
+  if(_workspacePanelUserClosed||_isCompactWorkspaceViewport()) return false;
+  if(!(S.session&&S.session.workspace)) return false;
+  const body=document.body;
+  if(!body||!body.dataset) return false;
+  return body.dataset.nextAiProductLayout==='chat_only'&&body.dataset.nextAiCanvas!=='open';
+}
+
 function _setWorkspacePanelMode(mode){
   const {layout,panel}= _workspacePanelEls();
   if(!layout||!panel)return;
@@ -127,11 +136,16 @@ function syncWorkspacePanelState(){
     else syncWorkspacePanelUI();
     return;
   }
+  if(_shouldDefaultOpenWorkspacePanel()&&_workspacePanelMode==='closed'){
+    _setWorkspacePanelMode('browse');
+    return;
+  }
   _setWorkspacePanelMode(_workspacePanelMode==='preview'?'closed':_workspacePanelMode);
 }
 
 function openWorkspacePanel(mode='browse'){
   if(mode==='browse'&&!S.session&&!_hasWorkspacePreviewVisible()&&!S._profileDefaultWorkspace)return;
+  _workspacePanelUserClosed=false;
   if(mode==='preview'&&_workspacePanelMode==='browse'){
     syncWorkspacePanelUI();
     return;
@@ -140,6 +154,7 @@ function openWorkspacePanel(mode='browse'){
 }
 
 function closeWorkspacePanel(){
+  _workspacePanelUserClosed=true;
   _setWorkspacePanelMode('closed');
 }
 
@@ -149,10 +164,6 @@ function ensureWorkspacePreviewVisible(){
 }
 
 function handleWorkspaceClose(){
-  if(_hasWorkspacePreviewVisible()){
-    clearPreview();
-    return;
-  }
   closeWorkspacePanel();
 }
 
@@ -188,17 +199,17 @@ function syncWorkspacePanelUI(){
   if(toggleBtn){
     toggleBtn.classList.toggle('active',isOpen);
     toggleBtn.setAttribute('aria-pressed',isOpen?'true':'false');
-    _setButtonTooltip(toggleBtn, isOpen?'隐藏任务空间':'打开任务空间');
+    _setButtonTooltip(toggleBtn, isOpen?'Hide files':'Open files');
     toggleBtn.disabled=!canBrowse;
   }
   if(edgeToggleBtn){
     edgeToggleBtn.classList.toggle('active',isOpen);
     edgeToggleBtn.setAttribute('aria-expanded',isOpen?'true':'false');
-    _setButtonTooltip(edgeToggleBtn, isOpen?'隐藏任务空间':'打开任务空间');
+    _setButtonTooltip(edgeToggleBtn, isOpen?'Hide files':'Open files');
     edgeToggleBtn.disabled=!canBrowse;
   }
   if(collapseBtn){
-    _setButtonTooltip(collapseBtn, isCompact?'关闭任务空间':'隐藏任务空间');
+    _setButtonTooltip(collapseBtn, isCompact?'Close files':'Hide files');
   }
   const hasSession=!!S.session;
   ['btnUpDir','btnNewFile','btnNewFolder','btnRefreshPanel'].forEach(id=>{
@@ -208,7 +219,7 @@ function syncWorkspacePanelUI(){
   const clearBtn=$('btnClearPreview');
   if(clearBtn){
     clearBtn.disabled=!isOpen;
-    _setButtonTooltip(clearBtn, hasPreview?'关闭预览':'关闭');
+    _setButtonTooltip(clearBtn, 'Hide files');
     if(!isCompact) clearBtn.style.display='';
   }
 }
@@ -247,8 +258,11 @@ function _isSidebarCollapsed(){
 function _syncSidebarAria(){
   // Mirror open/collapsed state on the optional sidebar control.
   // Open=true, collapsed=false.
+  const expanded=!_isSidebarCollapsed();
   const control=document.getElementById('productCollapseBtn');
-  if(control)control.setAttribute('aria-expanded',!_isSidebarCollapsed());
+  if(control)control.setAttribute('aria-expanded',expanded?'true':'false');
+  const edge=document.getElementById('btnSidebarEdgeToggle');
+  if(edge)edge.setAttribute('aria-expanded',expanded?'true':'false');
 }
 
 function toggleSidebar(forceState){

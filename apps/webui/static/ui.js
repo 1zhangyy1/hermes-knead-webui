@@ -240,6 +240,10 @@ function handleStatusCardAction(btn){
   }
   if(action==='product-rollback'&&typeof rollbackCurrentProductUiVersion==='function'){
     rollbackCurrentProductUiVersion();
+    return;
+  }
+  if(action==='creator-publish-draft'&&typeof publishCreatorDraft==='function'){
+    publishCreatorDraft({silent:false});
   }
 }
 
@@ -1519,6 +1523,27 @@ document.addEventListener('click',function(e){
 
 // ── Session toolsets chip (#493) ───────────────────────────────────────────
 let _currentSessionToolsets = null; // null = global, array = custom list
+const ACCESS_PRESETS = {
+  workspace: ['skills', 'file'],
+  full: ['skills', 'file', 'terminal', 'code_execution']
+};
+
+function _sameToolsetList(a, b) {
+  const left = Array.isArray(a) ? a.slice().sort() : [];
+  const right = Array.isArray(b) ? b.slice().sort() : [];
+  return left.length === right.length && left.every((item, index) => item === right[index]);
+}
+
+function _accessPresetForToolsets(toolsets) {
+  if (_sameToolsetList(toolsets, ACCESS_PRESETS.full)) return 'full';
+  if (_sameToolsetList(toolsets, ACCESS_PRESETS.workspace)) return 'workspace';
+  return 'workspace';
+}
+
+function _accessLabelForToolsets(toolsets) {
+  if (!Array.isArray(toolsets) || !toolsets.length) return 'Default';
+  return _accessPresetForToolsets(toolsets) === 'full' ? 'Full Access' : 'Files';
+}
 
 function _applyToolsetsChip(toolsets) {
   _currentSessionToolsets = toolsets;
@@ -1535,15 +1560,10 @@ function _applyToolsetsChip(toolsets) {
   // callers regardless of UI visibility. (#1431)
   wrap.style.display = '';
   const hasCustom = Array.isArray(toolsets) && toolsets.length > 0;
-  if (hasCustom) {
-    label.textContent = toolsets.join(', ');
-    chip.classList.add('has-custom');
-    chip.title = t('session_toolsets') + ': ' + toolsets.join(', ');
-  } else {
-    label.textContent = t('session_toolsets_global');
-    chip.classList.remove('has-custom');
-    chip.title = t('session_toolsets');
-  }
+  const accessLabel = _accessLabelForToolsets(toolsets);
+  label.textContent = accessLabel;
+  chip.classList.toggle('has-custom', hasCustom);
+  chip.title = 'Access: ' + accessLabel;
 }
 
 function _syncToolsetsChip() {
@@ -1560,26 +1580,32 @@ function syncToolsetsChip() {
 
 function _populateToolsetsDropdown() {
   const desc = $('toolsetsDropdownDesc');
-  const state = $('toolsetsDropdownState');
-  const input = $('toolsetsInput');
-  const applyBtn = $('toolsetsApplyBtn');
-  const clearBtn = $('toolsetsClearBtn');
-  if (!desc || !state || !input) return;
-  desc.textContent = t('session_toolsets_desc');
-  if (applyBtn) applyBtn.textContent = t('session_toolsets_apply');
-  if (clearBtn) clearBtn.textContent = t('session_toolsets_clear');
-  input.placeholder = t('session_toolsets_placeholder');
-  // Escape key handler for toolsets input
-  input.onkeydown = function(e) { if(e.key === 'Escape') closeToolsetsDropdown(); };
-  const hasCustom = Array.isArray(_currentSessionToolsets) && _currentSessionToolsets.length > 0;
-  if (hasCustom) {
-    state.textContent = '🔧 ' + _currentSessionToolsets.join(', ');
-    input.value = _currentSessionToolsets.join(', ');
-  } else {
-    state.textContent = '🌍 ' + t('session_toolsets_global');
-    input.value = '';
-  }
+  if (desc) desc.textContent = 'Choose what this AI can access for this task.';
+  const currentPreset = Array.isArray(_currentSessionToolsets) && _currentSessionToolsets.length
+    ? _accessPresetForToolsets(_currentSessionToolsets)
+    : 'default';
+  document.querySelectorAll('[data-access-preset]').forEach(option => {
+    const preset = option.getAttribute('data-access-preset') || '';
+    option.classList.toggle('active', preset === currentPreset);
+    option.setAttribute('aria-selected', preset === currentPreset ? 'true' : 'false');
+  });
 }
+
+function _applyAccessPreset(preset) {
+  if (preset === 'default') {
+    _applySessionToolsets(null);
+    return;
+  }
+  const next = preset === 'full' ? ACCESS_PRESETS.full : ACCESS_PRESETS.workspace;
+  _applySessionToolsets(next);
+}
+
+function setSessionAccessPreset(preset) {
+  _applyAccessPreset(preset);
+  closeToolsetsDropdown();
+}
+
+window.setSessionAccessPreset = setSessionAccessPreset;
 
 function _positionToolsetsDropdown() {
   const dd = $('composerToolsetsDropdown');
@@ -1617,8 +1643,6 @@ function toggleToolsetsDropdown() {
   dd.classList.add('open');
   _positionToolsetsDropdown();
   chip.classList.add('active');
-  // Focus the input after a tick so the layout has settled
-  setTimeout(() => { const inp = $('toolsetsInput'); if (inp) inp.focus(); }, 50);
 }
 
 function closeToolsetsDropdown() {
@@ -1639,11 +1663,7 @@ function _applySessionToolsets(toolsets) {
       if (r && r.ok) {
         S.session.enabled_toolsets = r.enabled_toolsets || null;
         _applyToolsetsChip(r.enabled_toolsets || null);
-        if (r.enabled_toolsets && r.enabled_toolsets.length) {
-          showToast('🔧 ' + t('session_toolsets_applied') + ': ' + r.enabled_toolsets.join(', '));
-        } else {
-          showToast('🌍 ' + t('session_toolsets_cleared'));
-        }
+        showToast('Access set to ' + _accessLabelForToolsets(r.enabled_toolsets || null));
       } else {
         showToast(t('session_toolsets_failed') + (r && r.error ? r.error : 'Unknown error'), 3000, 'error');
       }
@@ -1659,27 +1679,9 @@ document.addEventListener('click', function(e) {
     !e.target.closest('#composerToolsetsChip') &&
     !e.target.closest('#composerToolsetsDropdown')
   ) closeToolsetsDropdown();
-  // Apply button
-  if (e.target.closest('#toolsetsApplyBtn')) {
-    const input = $('toolsetsInput');
-    if (!input) return;
-    const raw = input.value.trim();
-    if (!raw) {
-      showToast(t('session_toolsets_desc'), 2000);
-      return;
-    }
-    const toolsets = raw.split(',').map(s => s.trim()).filter(Boolean);
-    if (toolsets.length === 0) {
-      showToast(t('session_toolsets_desc'), 2000);
-      return;
-    }
-    _applySessionToolsets(toolsets);
-    closeToolsetsDropdown();
-  }
-  // Clear button
-  if (e.target.closest('#toolsetsClearBtn')) {
-    _applySessionToolsets(null);
-    closeToolsetsDropdown();
+  const accessOption = e.target.closest('[data-access-preset]');
+  if (accessOption) {
+    setSessionAccessPreset(accessOption.getAttribute('data-access-preset'));
   }
 });
 
@@ -2336,24 +2338,25 @@ function _sanitizeThinkingDisplayText(text){
   return stripped.trim();
 }
 
-// 通用 AI(chat_only)在用态可在回答末尾附一个升格 marker:
-//   [[NEXT_AI_SUGGEST_PRODUCT]]{"title":"...","prompt":"...","type":"..."}[[/NEXT_AI_SUGGEST_PRODUCT]]
-// 它由宿主消费成一个「做成专属产品」按钮,绝不能原样渲染给用户。
+// A chat-only product can append an upgrade marker at the end of a reply:
+//   [[KNEAD_SUGGEST_PRODUCT]]{"title":"...","prompt":"...","type":"..."}[[/KNEAD_SUGGEST_PRODUCT]]
+// The host consumes it into a "Knead this" action and must never render it raw.
 function _stripProductSuggestMarker(s){
   if(!s) return s;
   s=String(s);
-  if(s.indexOf('NEXT_AI_SUGGEST_PRODUCT')===-1) return s;
-  // 完整闭合的 marker,以及流式中尚未闭合的尾巴,都从可见文本里抹掉。
-  return s.replace(/\n*\[\[NEXT_AI_SUGGEST_PRODUCT\]\][\s\S]*?\[\[\/NEXT_AI_SUGGEST_PRODUCT\]\]/g,'')
-          .replace(/\n*\[\[NEXT_AI_SUGGEST_PRODUCT\]\][\s\S]*$/,'')
+  if(s.indexOf('KNEAD_SUGGEST_PRODUCT')===-1&&s.indexOf('NEXT_AI_SUGGEST_PRODUCT')===-1) return s;
+  return s.replace(/\n*\[\[((?:KNEAD|NEXT_AI)_SUGGEST_PRODUCT)\]\][\s\S]*?\[\[\/\1\]\]/g,'')
+          .replace(/\n*\[\[(?:KNEAD|NEXT_AI)_SUGGEST_PRODUCT\]\][\s\S]*$/,'')
           .trimEnd();
 }
 function _parseProductSuggestMarker(s){
-  if(!s||String(s).indexOf('NEXT_AI_SUGGEST_PRODUCT')===-1) return null;
-  const m=String(s).match(/\[\[NEXT_AI_SUGGEST_PRODUCT\]\]\s*([\s\S]*?)\s*\[\[\/NEXT_AI_SUGGEST_PRODUCT\]\]/);
+  if(!s) return null;
+  s=String(s);
+  if(s.indexOf('KNEAD_SUGGEST_PRODUCT')===-1&&s.indexOf('NEXT_AI_SUGGEST_PRODUCT')===-1) return null;
+  const m=s.match(/\[\[((?:KNEAD|NEXT_AI)_SUGGEST_PRODUCT)\]\]\s*([\s\S]*?)\s*\[\[\/\1\]\]/);
   if(!m) return null;
   try{
-    const data=JSON.parse(m[1]);
+    const data=JSON.parse(m[2]);
     const prompt=String(data&&data.prompt||'').trim();
     if(!prompt) return null;
     const title=String(data&&data.title||'').trim()||prompt.slice(0,20);
@@ -3127,6 +3130,9 @@ function setBusy(v){
         }
         if(next.product_intent||next.productIntent){
           window._nextAiPendingProductIntent=String(next.product_intent||next.productIntent||'').trim();
+        }
+        if(next.agent_instruction||next.agentInstruction){
+          window._nextAiPendingAgentInstruction=String(next.agent_instruction||next.agentInstruction||'').trim();
         }
         S.pendingFiles=Array.isArray(next.files)?[...next.files]:[];
         // Restore model from queued item (sent in /api/chat/start payload)
@@ -4661,6 +4667,7 @@ function syncTopbar(){
 function stripProductHiddenContext(text){
   return String(text||'')
     .replace(/\n*\[\[NEXT_AI_HIDDEN_CONTEXT\]\][\s\S]*?\[\[\/NEXT_AI_HIDDEN_CONTEXT\]\]\s*/g, '')
+    .replace(/\n*\[\[KNEAD_HIDDEN_CONTEXT\]\][\s\S]*?\[\[\/KNEAD_HIDDEN_CONTEXT\]\]\s*/g, '')
     .trim();
 }
 
@@ -5136,7 +5143,7 @@ function _compressionReferenceCardHtml(text, open=false){
         </div>
         </div>
       </div>
-      
+
     </div>`;
 }
 function _preservedCompressionTaskListCardHtml(m, open=false){

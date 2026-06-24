@@ -29,6 +29,16 @@ def product_task_title_from_request(body: dict) -> str:
     return title[:80]
 
 
+def agent_instruction_from_request(body: dict) -> str:
+    raw = body.get("agent_instruction")
+    if raw is None:
+        raw = body.get("agentInstruction")
+    text = str(raw or "").strip()
+    if not text:
+        return ""
+    return text[:8000]
+
+
 def session_toolsets_from_request(
     body: dict,
     *,
@@ -367,6 +377,11 @@ def handle_chat_start(
                     )
                 except Exception:
                     logger.debug("Failed to update product session link", exc_info=True)
+        agent_instruction = agent_instruction_from_request(body)
+        if agent_instruction:
+            is_creator_draft = bool(getattr(s, "creator_draft", None))
+            if not (is_creator_draft or product_context):
+                agent_instruction = ""
         requested_model = body.get("model") or s.model
         requested_provider = (
             body.get("model_provider")
@@ -396,6 +411,7 @@ def handle_chat_start(
                     normalized_model=normalized_model,
                     diag=diag,
                     product_context=product_context,
+                    agent_instruction=agent_instruction,
                 )
 
             adapter = LegacyJournalRuntimeAdapter(start_run_delegate=_legacy_start_run)
@@ -426,6 +442,7 @@ def handle_chat_start(
                 normalized_model=normalized_model,
                 diag=diag,
                 product_context=product_context,
+                agent_instruction=agent_instruction,
             )
         status = int(response.pop("_status", 200) or 200)
         diag.stage("response_write") if diag else None
@@ -447,6 +464,7 @@ def start_chat_stream_for_session(
     diag=None,
     goal_related: bool = False,
     product_context=None,
+    agent_instruction: str | None = None,
     streams: dict,
     streams_lock,
     stream_goal_related: dict,
@@ -552,7 +570,12 @@ def start_chat_stream_for_session(
     thr = thread_factory(
         target=run_agent_streaming_fn,
         args=(s.session_id, msg, model, workspace, stream_id, attachments),
-        kwargs={"model_provider": model_provider, "goal_related": goal_related, "product_context": product_context},
+        kwargs={
+            "model_provider": model_provider,
+            "goal_related": goal_related,
+            "product_context": product_context,
+            "agent_instruction": agent_instruction,
+        },
         daemon=True,
     )
     thr.start()

@@ -28,6 +28,7 @@ def run_streaming_turn_pipeline_from_facade(
     put,
     finalize_product_turn,
     put_cancel,
+    agent_instruction: str | None = None,
     runtime_state: dict[str, Any] | None = None,
     checkpoint_state: dict[str, Any] | None = None,
 ):
@@ -48,6 +49,7 @@ def run_streaming_turn_pipeline_from_facade(
         attachments=attachments,
         workspace=workspace,
         product_context=product_context,
+        agent_instruction=agent_instruction,
         model=model,
         profile_home=profile_home,
         resolved_profile_name=resolved_profile_name,

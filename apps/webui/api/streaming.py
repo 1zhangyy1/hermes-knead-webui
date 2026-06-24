@@ -232,6 +232,7 @@ def _run_agent_streaming(
     model_provider=None,
     goal_related=False,
     product_context=None,
+    agent_instruction=None,
 ):
     """Run agent in background thread, writing SSE events to STREAMS[stream_id].
 
@@ -347,6 +348,7 @@ def _run_agent_streaming(
                 attachments=attachments,
                 workspace=workspace,
                 product_context=product_context,
+                agent_instruction=agent_instruction,
                 model=model,
                 profile_home=_profile_home,
                 resolved_profile_name=_resolved_profile_name,

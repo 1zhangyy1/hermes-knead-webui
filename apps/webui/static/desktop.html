@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Knead Computer</title>
+  <link rel="stylesheet" href="/static/desktop.css">
+</head>
+<body>
+  <main class="computer" data-state="loading">
+    <header class="menu-bar" aria-label="System bar">
+      <div class="menu-left">
+        <button class="menu-logo" type="button" data-open-library aria-label="Open AI Computer">N</button>
+        <button class="menu-item is-strong" type="button" data-open-library>Computer</button>
+        <button class="menu-item" type="button" data-open-library>Apps</button>
+        <button class="menu-item" type="button" data-open-app>Open</button>
+        <button class="menu-item" type="button" data-adjust-app disabled>Adjust</button>
+      </div>
+      <div class="menu-right">
+        <span data-selected-name>Starting</span>
+        <span data-clock>--:--</span>
+      </div>
+    </header>
+
+    <section class="desktop" aria-label="AI Computer desktop">
+      <div class="desktop-icons" data-desktop-icons></div>
+
+      <section class="welcome-note" data-welcome-note>
+        <p class="welcome-kicker">AI Computer</p>
+        <h1>Products you make become apps you can return to.</h1>
+        <p>Open one, adjust it, or start a new one from the computer.</p>
+      </section>
+
+      <div class="product-core" aria-hidden="true">
+        <div class="core-grid"></div>
+        <div class="core-ring one"></div>
+        <div class="core-ring two"></div>
+        <div class="core-node">+</div>
+        <div class="core-label">New AI App</div>
+      </div>
+    </section>
+
+    <section class="window-layer" data-window-layer aria-live="polite">
+      <article class="app-window" data-window="library" style="--window-x: 9vw; --window-y: 76px; --window-w: min(1040px, 82vw); --window-h: min(650px, calc(100vh - 170px));">
+        <header class="window-titlebar" data-drag-handle>
+          <div class="window-title" data-window-title>AI Computer</div>
+          <div class="window-status" data-window-status>Loading apps</div>
+          <button class="window-close" type="button" data-close-window>Close</button>
+        </header>
+        <div class="window-content">
+          <aside class="library-sidebar" aria-label="Places">
+            <button class="place is-active" type="button" data-open-library>
+              <span aria-hidden="true">▦</span>
+              <span>Apps</span>
+            </button>
+            <button class="place" type="button" data-open-create disabled>
+              <span aria-hidden="true">+</span>
+              <span>New App</span>
+            </button>
+            <button class="place" type="button" data-adjust-app disabled>
+              <span aria-hidden="true">↻</span>
+              <span>Adjust</span>
+            </button>
+          </aside>
+
+          <section class="library-main">
+            <div class="library-toolbar">
+              <div>
+                <h2 data-current-title>Apps</h2>
+                <p data-current-desc>Your AI products live here.</p>
+              </div>
+              <a class="primary-button" data-open-link href="/" aria-disabled="true">Open app</a>
+            </div>
+
+            <div class="app-grid" data-app-grid></div>
+          </section>
+
+          <aside class="preview-pane" aria-label="Selected app">
+            <div class="preview-icon" data-current-avatar aria-hidden="true">N</div>
+            <h2 data-preview-title>Loading</h2>
+            <p data-preview-desc>Reading your apps.</p>
+            <dl class="preview-meta">
+              <div>
+                <dt>Kind</dt>
+                <dd data-meta-layout>...</dd>
+              </div>
+              <div>
+                <dt>Status</dt>
+                <dd data-meta-status>...</dd>
+              </div>
+            </dl>
+            <div class="suggestion-list" data-suggestions></div>
+          </aside>
+        </div>
+      </article>
+    </section>
+
+    <nav class="dock" data-dock aria-label="Dock"></nav>
+  </main>
+
+  <script src="/static/desktop-shell.js"></script>
+</body>
+</html>

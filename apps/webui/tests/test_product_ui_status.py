@@ -61,6 +61,16 @@ def test_promotion_only_from_chat_center_default():
     ) == {"product_layout": "chat_left_canvas_right", "canvas_label": "Workspace"}
 
 
+def test_promotion_heals_chat_only_when_real_entry_exists():
+    assert _layout_promotion_patch(
+        ui_mode="chat_only", product_layout="chat_only", entry_generated=True, current_canvas_label=""
+    ) == {
+        "ui_mode": "workspace",
+        "product_layout": "chat_left_canvas_right",
+        "canvas_label": "Workspace",
+    }
+
+
 def test_promotion_never_overrides_explicit_layout():
     # canvas_full was the agent's/user's explicit choice — promotion must not touch it.
     assert _layout_promotion_patch(
@@ -138,6 +148,46 @@ def test_reconcile_promotes_layout_when_entry_appears(fake_state):
     stored = json.loads(state_file.read_text(encoding="utf-8"))["products"][0]
     assert stored["product_layout"] == "chat_left_canvas_right"
     assert stored["canvas_label"] == "Workspace"
+
+
+def test_reconcile_promotes_chat_only_when_real_entry_appears(fake_state):
+    state_file, workspace = fake_state
+    state = json.loads(state_file.read_text(encoding="utf-8"))
+    state["products"][0]["ui_mode"] = "chat_only"
+    state["products"][0]["product_layout"] = "chat_only"
+    state_file.write_text(json.dumps(state), encoding="utf-8")
+    (workspace / "index.html").write_text("<html><body>real generated UI</body></html>", encoding="utf-8")
+
+    updated = products.reconcile_product_status("demo")
+
+    assert updated["ui_status"] == "ready"
+    stored = json.loads(state_file.read_text(encoding="utf-8"))["products"][0]
+    assert stored["ui_mode"] == "workspace"
+    assert stored["product_layout"] == "chat_left_canvas_right"
+    assert stored["canvas_label"] == "Workspace"
+
+
+def test_finalize_honors_chat_only_manifest_without_generated_entry(fake_state):
+    state_file, workspace = fake_state
+    (workspace / "product.json").write_text(
+        json.dumps(
+            {
+                "title": "Writing Coach",
+                "desc": "A chat-first writing coach.",
+                "source_prompt": "Help me write better in a simple chat box.",
+                "ui_mode": "chat_only",
+                "product_layout": "chat_only",
+                "skills": ["skills"],
+                "tools": ["skills"],
+            }
+        ),
+        encoding="utf-8",
+    )
+    updated = products.finalize_product_generation("demo")
+    assert updated["ui_status"] == "ready"
+    assert updated["ui_mode"] == "chat_only"
+    assert updated["product_layout"] == "chat_only"
+    assert _stored_status(state_file) == "ready"
 
 
 def test_reconcile_is_idempotent(fake_state):

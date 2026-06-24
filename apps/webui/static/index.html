@@ -327,7 +327,7 @@
         class="active-product-frame"
         id="activeProductFrame"
         title="Current workspace preview"
-        sandbox="allow-scripts allow-forms"
+        sandbox="allow-scripts allow-forms allow-same-origin"
       ></iframe>
       <div class="product-preview-state" id="productPreviewState" hidden>
         <div class="product-preview-state-card">
@@ -524,11 +524,11 @@
               </button>
             </div>
             <div class="composer-ws-wrap">
-              <div class="composer-workspace-group ws-chip" id="composerWorkspaceGroup" role="group" aria-label="任务空间">
-                <button class="composer-workspace-files-btn" id="btnWorkspacePanelToggle" type="button" onclick="toggleWorkspacePanel()" title="打开任务空间" aria-pressed="false" aria-label="打开任务空间">
+              <div class="composer-workspace-group ws-chip" id="composerWorkspaceGroup" role="group" aria-label="Files">
+                <button class="composer-workspace-files-btn" id="btnWorkspacePanelToggle" type="button" onclick="toggleWorkspacePanel()" title="Open files" aria-pressed="false" aria-label="Open files">
                   <span class="composer-workspace-icon" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></span>
                 </button>
-                <button class="composer-workspace-chip" id="composerWorkspaceChip" type="button" onclick="toggleComposerWsDropdown()" title="切换任务空间" disabled>
+                <button class="composer-workspace-chip" id="composerWorkspaceChip" type="button" onclick="toggleComposerWsDropdown()" title="Switch workspace" disabled>
                   <span class="composer-workspace-label" id="composerWorkspaceLabel"></span>
                   <span class="composer-workspace-chevron" aria-hidden="true"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></span>
                 </button>
@@ -578,9 +578,9 @@
               </button>
             </div>
             <div class="composer-toolsets-wrap" id="composerToolsetsWrap">
-              <button class="composer-toolsets-chip" id="composerToolsetsChip" type="button" onclick="toggleToolsetsDropdown()" title="任务工具">
-                <span class="composer-toolsets-icon" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg></span>
-                <span class="composer-toolsets-label" id="composerToolsetsLabel">Global</span>
+              <button class="composer-toolsets-chip" id="composerToolsetsChip" type="button" onclick="toggleToolsetsDropdown()" title="Access">
+                <span class="composer-toolsets-icon" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/></svg></span>
+                <span class="composer-toolsets-label" id="composerToolsetsLabel">Access</span>
                 <span class="composer-toolsets-chevron" aria-hidden="true"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></span>
               </button>
             </div>
@@ -614,9 +614,9 @@
             </button>
           </div>
           <div class="composer-mobile-config-panel" id="composerMobileConfigPanel" aria-label="任务设置">
-            <button class="composer-mobile-config-action" id="composerMobileWorkspaceAction" type="button" onclick="toggleComposerWsDropdown()" title="切换任务空间">
+            <button class="composer-mobile-config-action" id="composerMobileWorkspaceAction" type="button" onclick="toggleComposerWsDropdown()" title="Switch workspace">
               <span class="composer-workspace-icon" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></span>
-              <span class="composer-mobile-config-copy"><span class="composer-mobile-config-kicker" data-i18n="composer_mobile_workspace">任务空间</span><span class="composer-mobile-config-value" id="composerMobileWorkspaceLabel"></span></span>
+              <span class="composer-mobile-config-copy"><span class="composer-mobile-config-kicker" data-i18n="composer_mobile_workspace">Files</span><span class="composer-mobile-config-value" id="composerMobileWorkspaceLabel"></span></span>
             </button>
             <button class="composer-mobile-config-action" id="composerMobileModelAction" type="button" onclick="toggleModelDropdown()" title="模型">
               <span class="composer-model-icon" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M15 2v2"/><path d="M15 20v2"/><path d="M2 15h2"/><path d="M2 9h2"/><path d="M20 15h2"/><path d="M20 9h2"/><path d="M9 2v2"/><path d="M9 20v2"/></svg></span>
@@ -647,15 +647,19 @@
             <div class="reasoning-option" data-effort="high">高</div>
             <div class="reasoning-option" data-effort="xhigh">极高</div>
           </div>
-          <div class="composer-toolsets-dropdown" id="composerToolsetsDropdown">
-            <div class="toolsets-dropdown-desc" id="toolsetsDropdownDesc"></div>
-            <div class="toolsets-dropdown-state" id="toolsetsDropdownState"></div>
-            <div class="toolsets-dropdown-input-row">
-              <input type="text" id="toolsetsInput" class="toolsets-input" placeholder="" autocomplete="off">
+          <div class="composer-toolsets-dropdown access-dropdown" id="composerToolsetsDropdown">
+            <div class="toolsets-dropdown-desc" id="toolsetsDropdownDesc">Choose what this AI can access for this task.</div>
+            <div class="access-option" data-access-preset="default">
+              <span class="access-option-dot" aria-hidden="true"></span>
+              <div><strong>Default</strong><small>Use this AI's configured tools.</small></div>
             </div>
-            <div class="toolsets-dropdown-actions">
-              <button type="button" class="toolsets-action-btn toolsets-apply-btn" id="toolsetsApplyBtn">Apply</button>
-              <button type="button" class="toolsets-action-btn toolsets-clear-btn" id="toolsetsClearBtn">Clear (global)</button>
+            <div class="access-option" data-access-preset="workspace">
+              <span class="access-option-dot" aria-hidden="true"></span>
+              <div><strong>Files</strong><small>Read and write task files, plus skills.</small></div>
+            </div>
+            <div class="access-option" data-access-preset="full">
+              <span class="access-option-dot" aria-hidden="true"></span>
+              <div><strong>Full Access</strong><small>Files, terminal, code execution, and skills.</small></div>
             </div>
           </div>
           <div class="model-dropdown" id="composerModelDropdown"></div>
@@ -751,7 +755,7 @@
             <div class="settings-field">
               <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
                 <input type="checkbox" id="settingsWorkspacePanelOpen" style="width:15px;height:15px;accent-color:var(--accent)">
-                <span data-i18n="settings_label_workspace_panel_open">默认展开任务空间</span>
+                <span data-i18n="settings_label_workspace_panel_open">默认展开 Files</span>
               </label>
               <div style="font-size:11px;color:var(--muted);margin-top:4px" data-i18n="settings_desc_workspace_panel_open">When enabled, new tasks open the workspace panel automatically. You can still hide it anytime.</div>
             </div>
@@ -1032,36 +1036,31 @@
       </div>
     </div>
   </main>
-  <button class="workspace-panel-edge-toggle has-tooltip has-tooltip--left" id="btnWorkspacePanelEdgeToggle" type="button" onclick="toggleWorkspacePanel(true)" data-tooltip="打开任务空间" aria-label="打开任务空间" aria-expanded="false">
+  <button class="workspace-panel-edge-toggle has-tooltip has-tooltip--left" id="btnWorkspacePanelEdgeToggle" type="button" onclick="toggleWorkspacePanel(true)" data-tooltip="Open files" aria-label="Open files" aria-expanded="false">
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
   </button>
   <aside class="rightpanel">
     <div class="resize-handle" id="rightpanelResize"></div>
     <div class="panel-header">
-      <div class="workspace-panel-title-group"><span id="workspacePanelHeading" class="workspace-panel-heading" title="任务空间">任务空间</span><span id="workspaceHiddenIndicator" class="workspace-hidden-indicator" data-i18n-title="workspace_hidden_files_visible_title" title="隐藏文件已显示，点击查看选项" hidden onclick="toggleWorkspacePrefsMenu(event)"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg><span data-i18n="workspace_hidden_files_visible">隐藏文件已显示</span></span></div>
+      <div class="workspace-panel-title-group"><span id="workspacePanelHeading" class="workspace-panel-heading" title="Files">Files</span><span id="workspaceHiddenIndicator" class="workspace-hidden-indicator" data-i18n-title="workspace_hidden_files_visible_title" title="Hidden files are visible" hidden onclick="toggleWorkspacePrefsMenu(event)"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg><span data-i18n="workspace_hidden_files_visible">hidden visible</span></span></div>
       <span class="git-badge" id="gitBadge" style="display:none"></span>
       <div class="panel-actions">
         <button class="panel-icon-btn has-tooltip has-tooltip--bottom" id="btnUpDir" data-tooltip="上一级" onclick="navigateUp()" style="display:none"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg></button>
         <button class="panel-icon-btn has-tooltip has-tooltip--bottom" id="btnNewFile" data-tooltip="新建文件" onclick="promptNewFile()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
         <button class="panel-icon-btn has-tooltip has-tooltip--bottom" id="btnNewFolder" data-tooltip="新建文件夹" onclick="promptNewFolder()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></button>
         <button class="panel-icon-btn has-tooltip has-tooltip--bottom" id="btnRefreshPanel" data-tooltip="刷新" onclick="if(S.session)loadDir(S.currentDir)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg></button>
-        <button class="panel-icon-btn has-tooltip has-tooltip--bottom" id="btnWorkspacePrefs" data-tooltip="任务空间选项" data-i18n-title="workspace_options" aria-haspopup="true" aria-expanded="false" onclick="toggleWorkspacePrefsMenu(event)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="5" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="19" r="1.5"/></svg><span class="workspace-prefs-dot" id="workspacePrefsDot" hidden></span></button>
+        <button class="panel-icon-btn has-tooltip has-tooltip--bottom" id="btnWorkspacePrefs" data-tooltip="File options" data-i18n-title="workspace_options" aria-haspopup="true" aria-expanded="false" onclick="toggleWorkspacePrefsMenu(event)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="5" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="19" r="1.5"/></svg><span class="workspace-prefs-dot" id="workspacePrefsDot" hidden></span></button>
         <button class="panel-icon-btn close-preview has-tooltip has-tooltip--bottom" id="btnClearPreview" data-tooltip="关闭预览"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
       </div>
     </div>
     <div class="product-context-strip">
-      <button class="product-context-tab active" type="button">上下文</button>
-      <button class="product-context-tab" type="button">产出</button>
-      <button class="product-context-tab" type="button">界面</button>
+      <button class="product-context-tab active" type="button">Current task</button>
+      <button class="product-context-tab" type="button">Outputs</button>
     </div>
     <div class="product-context-hint">
       <div class="product-context-card">
-        <strong>空任务</strong>
-        <span>先从一条消息开始；材料和产出会跟随任务出现。</span>
-      </div>
-      <div class="product-context-card">
-        <strong>按任务展开</strong>
-        <span>需要大纲、资料、页面或控件时再打开。</span>
+        <strong>Task files</strong>
+        <span>Uploads, drafts, and generated files appear here.</span>
       </div>
     </div>
     <div class="breadcrumb-bar" id="breadcrumbBar" style="display:none"></div>
@@ -1124,41 +1123,6 @@
     <div class="app-dialog-actions">
       <button class="app-dialog-btn" id="appDialogCancel" type="button" data-i18n="cancel">Cancel</button>
       <button class="app-dialog-btn confirm" id="appDialogConfirm" type="button">Confirm</button>
-    </div>
-  </div>
-</div>
-<div class="product-dialog-overlay" id="assistantCreateOverlay" hidden aria-hidden="true">
-  <div class="product-dialog-panel" role="dialog" aria-modal="true" aria-labelledby="assistantCreateTitle" aria-describedby="assistantCreateDesc">
-    <div class="product-dialog-header">
-      <div>
-        <div class="product-dialog-eyebrow">Knead one</div>
-        <h2 id="assistantCreateTitle">Create this AI?</h2>
-      </div>
-      <button class="product-dialog-close" id="assistantCreateClose" type="button" aria-label="Close create preview">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-      </button>
-    </div>
-    <p class="product-dialog-desc" id="assistantCreateDesc">It will appear in the AI shelf. Open it, keep chatting, and a workspace will appear when structure helps.</p>
-    <div class="assistant-create-source" id="assistantCreateSourceWrap">
-      <span>Request</span>
-      <strong id="assistantCreateSource">I want to create a new AI.</strong>
-    </div>
-    <div class="assistant-create-product">
-      <div class="assistant-create-product-avatar" id="assistantCreatePreviewAvatar" aria-hidden="true">AI</div>
-      <div class="assistant-create-product-main">
-        <span>AI</span>
-        <strong id="assistantCreateName">New AI</strong>
-        <p id="assistantCreateDuty">Owns a repeatable type of work</p>
-      </div>
-    </div>
-    <div class="assistant-create-tasks">
-      <span>Try asking</span>
-      <div class="product-dialog-chips" id="assistantCreateTasks"></div>
-    </div>
-    <div class="product-dialog-note">Chat is the entry point. A workspace appears only when the task needs inputs, previews, or outputs.</div>
-    <div class="product-dialog-actions">
-      <button class="product-dialog-btn" id="assistantCreateCancel" type="button" title="Cancel without creating this AI" aria-label="Cancel without creating this AI">Cancel</button>
-      <button class="product-dialog-btn primary" id="assistantCreateApply" type="button" title="Create and open this AI" aria-label="Create and open this AI">Create and open</button>
     </div>
   </div>
 </div>

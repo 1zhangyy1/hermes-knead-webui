@@ -110,7 +110,7 @@ def _discover_agent_dir() -> Path:
             Path(os.getenv("HERMES_WEBUI_AGENT_DIR")).expanduser().resolve()
         )
 
-    # 2. Next AI Chat production runtime
+    # 2. Knead production runtime
     candidates.append(PROJECT_ROOT / "runtimes" / "hermes-agent")
 
     # 3. HERMES_HOME / hermes-agent
@@ -162,7 +162,7 @@ def _discover_python(agent_dir: Path) -> str:
         venv_py = agent_dir / "venv" / "bin" / "python"
         if venv_py.exists():
             return str(venv_py)
-        
+
         venv_py = agent_dir / ".venv" / "bin" / "python"
         if venv_py.exists():
             return str(venv_py)
@@ -171,7 +171,7 @@ def _discover_python(agent_dir: Path) -> str:
         venv_py_win = agent_dir / "venv" / "Scripts" / "python.exe"
         if venv_py_win.exists():
             return str(venv_py_win)
-        
+
         venv_py_win = agent_dir / ".venv" / "Scripts" / "python.exe"
         if venv_py_win.exists():
             return str(venv_py_win)

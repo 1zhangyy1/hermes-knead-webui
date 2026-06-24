@@ -76,7 +76,7 @@
       const timer = setTimeout(() => {
         if (!pending.has(id)) return;
         pending.delete(id);
-        reject(new Error('Next AI bridge timed out'));
+        reject(new Error('Knead bridge timed out'));
       }, requestTimeoutMs);
       pending.set(id, {resolve, reject, timer});
       postToHost(payload);
@@ -188,7 +188,7 @@
       return true;
     }
     if (data.type === 'nextai:host:error') {
-      item.reject(new Error(String(data.error || 'Next AI bridge error')));
+      item.reject(new Error(String(data.error || 'Knead bridge error')));
       return true;
     }
     return false;

@@ -136,69 +136,8 @@ function _customAssistantIsProductBacked(item) {
   return !!(item && (item.backendProduct || item.productId || item.product_id));
 }
 
-function _assistantSlug(value) {
-  const base = String(value || 'assistant')
-    .toLowerCase()
-    .replace(/[^a-z0-9\u4e00-\u9fa5]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 32);
-  return base || 'assistant';
-}
-
 function _assistantTitleKey(value) {
   return String(value || '').replace(/\s+/g, '').toLowerCase();
-}
-
-function _assistantRolePhraseFromPrompt(prompt) {
-  let text = String(prompt || '').replace(/\s+/g, ' ').trim();
-  if (!text) return '';
-  text = text
-    .replace(/[。.!！?？]+$/g, '')
-    .replace(/[，,；;:：].*$/g, '')
-    .replace(/^(我想要?|我希望|我需要|请|麻烦)?\s*(可以|能不能|可不可以|帮我|帮忙|帮|给我|为我|替我)?\s*/g, '')
-    .replace(/^(创建一个|创建|新建一个|新建|做一个|做个|做|生成一个|生成|设计一个|设计|开发一个|开发)\s*/g, '')
-    .replace(/^(一个|一款|一套|一种)\s*/g, '')
-    .replace(/^(可以|能够|能|专门|主要)?\s*(帮我|帮助我|帮忙|帮|给我|为我|替我)?\s*/g, '')
-    .replace(/^(用来|用于|可以用来|能够用来)\s*/g, '')
-    .replace(/\s*(的)?\s*(AI\s*产品|AI产品|产品|助手|智能体|工具|应用|app)\s*$/i, '')
-    .replace(/\s*(的)?\s*(页面|界面|工作台|预览区|任务区).*/g, '')
-    .replace(/\s*(吧|好吗|可以吗)$/i, '')
-    .trim();
-  return text.slice(0, 24);
-}
-
-function _assistantNaturalTitleFromRolePhrase(phrase, sourcePrompt = '') {
-  const text = String(phrase || '').trim();
-  if (!text || text.length < 2) return '';
-  const seed = `${text} ${sourcePrompt || ''}`;
-  const directRules = [
-    [/logo|Logo|标志|品牌视觉|品牌设计/, 'Logo 设计师'],
-    [/旅行|旅游|行程|出游|攻略/, '旅行规划师'],
-    [/简历|求职|面试/, '简历优化师'],
-    [/小红书|公众号|朋友圈|短视频脚本|文案|营销内容/, '内容文案师'],
-    [/播客|访谈|会议纪要|逐字稿/, '内容整理师'],
-    [/论文|文献|学术/, '学术研究师'],
-    [/代码|编程|开发|bug|程序/, '代码工作台'],
-    [/客服|售后|工单/, '客服处理师'],
-    [/招聘|候选人|JD|岗位/, '招聘工作台'],
-    [/财务|报销|预算|账单/, '财务分析师']
-  ];
-  for (const [pattern, title] of directRules) {
-    if (pattern.test(seed)) return title;
-  }
-  let core = text
-    .replace(/^(自动|智能|AI|ai)\s*/g, '')
-    .replace(/\s*(系统|平台|能力)\s*$/g, '')
-    .trim();
-  if (!core) return '';
-  if (/(师|专家|顾问|生成器|分析师|设计师|工作台)$/i.test(core)) return core.slice(0, 18);
-  if (/生成|出图|绘图|画图|生图|图片|图像/.test(seed)) return `${core.replace(/(生成|制作|设计)$/g, '')}生成器`.slice(0, 18);
-  if (/设计|视觉|海报|封面|装修|排版/.test(seed)) return `${core.replace(/设计$/g, '')}设计师`.slice(0, 18);
-  if (/分析|数据|指标|报表|看板|复盘/.test(seed)) return `${core.replace(/分析$/g, '')}分析师`.slice(0, 18);
-  if (/研究|调研|报告|竞品|行业/.test(seed)) return `${core.replace(/研究$/g, '')}研究师`.slice(0, 18);
-  if (/规划|计划|路线|流程|项目/.test(seed)) return `${core.replace(/规划$/g, '')}规划师`.slice(0, 18);
-  if (/写|写作|改写|润色|编辑|整理|总结/.test(seed)) return `${core.replace(/写作?$/g, '')}写作师`.slice(0, 18);
-  return `${core} AI`.slice(0, 22);
 }
 
 function _registerCustomAssistant(assistant) {
@@ -207,8 +146,7 @@ function _registerCustomAssistant(assistant) {
   if (!_customAssistantIsProductBacked(assistant)) return;
   const title = assistant.title || 'Custom AI';
   const starterKit = _assistantStarterKit(title, assistant.sourcePrompt || assistant.desc || '');
-  const imageLike = /图片|图像|生图|绘图|文生图|画图|生成图|海报|封面|插画|头像|视觉|image/i.test(`${title} ${assistant.desc || ''} ${assistant.sourcePrompt || ''}`);
-  const productType = assistant.productType || (imageLike ? 'image' : '');
+  const productType = assistant.productType || assistant.product_type || '';
   const tools = typeof _assistantNormalizeToolsets === 'function'
     ? _assistantNormalizeToolsets(assistant.tools)
     : (Array.isArray(assistant.tools) ? assistant.tools : []);
@@ -239,7 +177,7 @@ function _registerCustomAssistant(assistant) {
       ? assistant.toolHints
       : tools.length
         ? tools
-      : imageLike ? ['image generation', 'image editing', 'visual prompt writing'] : []
+      : []
   };
 }
 
@@ -258,18 +196,6 @@ function _customAssistantByTitle(title) {
   const key = _assistantTitleKey(title);
   if (!key) return null;
   return _customAssistantsRead().find(item => item && _customAssistantIsProductBacked(item) && _assistantTitleKey(item.title) === key) || null;
-}
-
-function _assistantUniqueCustomTitle(title, fallback = 'Custom AI') {
-  const base = String(title || fallback || 'Custom AI').replace(/\s+/g, ' ').trim() || 'Custom AI';
-  if (!_customAssistantTitleExists(base)) return base;
-  const personal = `${base} 专属版`;
-  if (!_customAssistantTitleExists(personal)) return personal;
-  for (let index = 2; index < 100; index += 1) {
-    const candidate = `${personal} ${index}`;
-    if (!_customAssistantTitleExists(candidate)) return candidate;
-  }
-  return `${personal} ${Date.now().toString(36)}`;
 }
 
 function _assistantNeedsInitialProductUi(assistant) {
@@ -317,18 +243,22 @@ function _deleteCustomAssistantKind(kind) {
 }
 
 function _assistantShortMeta(object) {
-  const title = object && object.title ? object.title : '';
-  if (/图片|图像|生图|绘图|海报|插画|头像|视觉|image/i.test(title)) return '图片';
-  if (/PPT|演示|路演|幻灯/.test(title)) return 'PPT';
-  if (/研究|调研|资料|报告/.test(title)) return '研究';
-  if (/数据|运营|指标|表格/.test(title)) return '数据';
-  return '自定义';
+  const type = String(object && (object.productType || object.product_type) || '').trim();
+  const label = String(object && (object.canvasLabel || object.canvas_label) || '').trim();
+  if (type === 'general') return 'Chat';
+  if (type === 'ppt') return 'Slides';
+  if (type === 'image') return 'Images';
+  if (type === 'research') return 'Research';
+  if (type === 'data') return 'Data';
+  if (type === 'interactive') return 'Interactive';
+  if (label) return label;
+  return 'Custom';
 }
 
 function _assistantBaseMeta(kind, object) {
-  if (kind === 'general') return '聊天';
+  if (kind === 'general') return 'Chat';
   if (object && object.custom) return _assistantShortMeta(object);
-  if (kind === 'ppt') return '演示文稿';
+  if (kind === 'ppt') return 'Slides';
   return _assistantShortMeta(object);
 }
 
@@ -348,10 +278,10 @@ function _assistantListMeta(kind, object) {
       : !_assistantIsChatOnlyProduct(object);
     if (!usesProductCanvas) return _assistantBaseMeta(kind, object);
     const status = String(object.uiStatus || object.ui_status || '').toLowerCase();
-    if (status === 'generating') return '生成中';
-    if (status === 'failed') return '可重试';
-    if (status === 'ready') return '界面';
-    return '待生成';
+    if (status === 'generating') return 'Creating';
+    if (status === 'failed') return 'Retry';
+    if (status === 'ready') return usesProductCanvas ? 'Workspace' : 'Chat';
+    return 'Draft';
   }
   return _assistantBaseMeta(kind, object);
 }
@@ -406,100 +336,7 @@ function renderAssistantList() {
   syncAssistantListMeta();
 }
 
-function _assistantTitleFromPrompt(prompt) {
-  const text = String(prompt || '').replace(/\s+/g, ' ').trim();
-  if (/头像|个人形象/.test(text) && /图片|图像|生图|画|生成|设计/.test(text)) return '头像图片生成器';
-  if (/海报|封面|主视觉|KV|banner/i.test(text)) return '海报图片生成器';
-  if (/插画|绘本|漫画|角色|人物设定/.test(text)) return '插画图片生成器';
-  if (/图片|图像|生图|绘图|文生图|画图|生成图|视觉设计|image/i.test(text)) return '图片生成器';
-  if (/融资|路演|BP|投资人|fundrais|investor|pitch/i.test(text)) return 'Fundraising Deck AI';
-  if (/(销售|提案|客户|方案|sales|proposal|client)/i.test(text) && /PPT|幻灯|演示|汇报|deck|slides|presentation/i.test(text)) return 'Sales Deck AI';
-  if (/行业.*研究|研究.*报告|行业.*报告/.test(text)) return '行业研究产品';
-  if (/竞品/.test(text)) return '竞品研究产品';
-  if (/运营.*数据|数据.*运营/.test(text)) return '运营数据分析师';
-  if (/PPT|幻灯|演示|汇报|deck|slides|presentation/i.test(text)) return 'PPT Designer';
-  if (/行业|竞品|研究|调研|报告/.test(text)) return '研究分析师';
-  if (/数据|运营|指标|表格|看板/.test(text)) return '数据分析师';
-  const roleTitle = _assistantNaturalTitleFromRolePhrase(_assistantRolePhraseFromPrompt(text), text);
-  if (roleTitle) return roleTitle;
-  const cleaned = text
-    .replace(/[。.!！?？]+$/g, '')
-    .replace(/^(我想要?|我希望|我需要|请|麻烦)?\s*(可以)?\s*(帮我|帮忙|帮)?\s*(创建一个|创建|新建一个|新建|做一个|做个|一个)?\s*(帮我|帮忙|帮)?\s*/g, '')
-    .replace(/[，,；;:：].*$/g, '')
-    .replace(/(右侧|左侧|页面|界面|工作台|预览区|任务区).*/g, '')
-    .replace(/\s*(的)?\s*(AI\s*产品|产品|助手)\s*$/i, '')
-    .trim();
-  return (cleaned ? `${cleaned.slice(0, 18)} AI` : 'Custom AI');
-}
-
 function _assistantStarterKit(title, text = '') {
-  const seed = `${title || ''} ${text || ''}`;
-  const isPpt = /PPT|幻灯|演示|路演|BP|汇报/.test(seed);
-  const isPitch = /融资|路演|BP|投资人/.test(seed);
-  const isSales = /销售|提案|客户|方案/.test(seed);
-  const isResearch = /研究|调研|资料|报告|竞品|行业/.test(seed);
-  const isData = /数据|运营|指标|表格|看板/.test(seed);
-  const isImage = /图片|图像|生图|绘图|文生图|画图|生成图|海报|封面|插画|头像|视觉|image/i.test(seed);
-  if (isImage) {
-    return {
-      placeholder: 'Describe the image content, style, size, or upload a reference...',
-      suggestions: [
-        ['Create a product launch poster. First confirm the theme, style, and size.', 'Create a poster'],
-        ['Create an AI avatar image for me.', 'Create an avatar'],
-        ['Turn this text into an illustration prompt and generate the image.', 'Text to illustration']
-      ]
-    };
-  }
-  if (isPpt && isSales) {
-    return {
-      placeholder: 'Describe this sales proposal deck, client, goal, or upload material...',
-      suggestions: [
-        ['Create a sales proposal deck. First confirm the client, pain points, and solution highlights.', 'Create sales proposal'],
-        ['Turn client material into a proposal outline.', 'Material to outline'],
-        ['Improve the story and slide structure of this proposal.', 'Improve structure']
-      ]
-    };
-  }
-  if (isPpt && isPitch) {
-    return {
-      placeholder: 'Describe this pitch deck, goal, audience, or upload material...',
-      suggestions: [
-        ['Create a fundraising deck. First confirm investors, round, and core story.', 'Create pitch deck'],
-        ['Turn fundraising material into a pitch outline.', 'Material to pitch outline'],
-        ['Improve the deck structure and speaker notes.', 'Improve structure and notes']
-      ]
-    };
-  }
-  if (isPpt) {
-    return {
-      placeholder: 'Describe this deck, or upload material...',
-      suggestions: [
-        ['Create a deck. First confirm topic, audience, slide count, and core story.', 'Create a deck'],
-        ['Turn existing material into a presentation outline.', 'Material to outline'],
-        ['Improve this deck structure and speaker notes.', 'Improve structure and notes']
-      ]
-    };
-  }
-  if (isResearch) {
-    return {
-      placeholder: 'Enter the question you want to research...',
-      suggestions: [
-        ['Research this direction. First list the question frame and sources.', 'Research a direction'],
-        ['Organize competitor differences and positioning.', 'Compare competitors'],
-        ['Draft research conclusions.', 'Draft conclusions']
-      ]
-    };
-  }
-  if (isData) {
-    return {
-      placeholder: 'Describe the data to analyze, or upload a spreadsheet...',
-      suggestions: [
-        ['Analyze this data. First tell me which metrics matter.', 'Analyze metrics'],
-        ['Organize these metrics into a dashboard structure.', 'Create dashboard structure'],
-        ['Explain recent data changes.', 'Explain changes']
-      ]
-    };
-  }
   return {
     placeholder: title ? `Tell "${title}" what you want to finish...` : 'Describe what you want to finish...',
     suggestions: [
@@ -508,159 +345,6 @@ function _assistantStarterKit(title, text = '') {
       ['Draft the first version.', 'Draft first version']
     ]
   };
-}
-
-function _assistantDraftFromPrompt(prompt) {
-  const sourcePrompt = String(prompt || '').trim();
-  const title = _assistantTitleFromPrompt(sourcePrompt);
-  const isPpt = /PPT|幻灯|演示|路演|BP|汇报/.test(title + sourcePrompt);
-  const isImage = /图片|图像|生图|绘图|文生图|画图|生成图|海报|封面|插画|头像|视觉|image/i.test(title + sourcePrompt);
-  const isResearch = /研究|调研|资料|报告|竞品|行业/.test(title + sourcePrompt);
-  const isData = /数据|运营|指标|表格|看板/.test(title + sourcePrompt);
-  const isInteractive = /c\.?ai|character|角色|人物|游戏|剧情|npc|rpg|虚拟人|陪伴|互动/.test(title + sourcePrompt);
-  const kind = `custom-${_assistantSlug(title)}-${Date.now().toString(36)}`;
-  const starterKit = _assistantStarterKit(title, sourcePrompt);
-  const desc = isPpt
-    ? 'Turns material, ideas, and audience goals into a clear presentation. Opens a workspace when structure helps.'
-    : isImage
-      ? '把一句话、参考图和风格要求转成可执行的图片生成任务，并优先调用可用的图片生成能力产出结果。'
-      : isResearch
-        ? 'Breaks down questions, gathers sources, organizes evidence, and drafts research conclusions.'
-        : isData
-          ? 'Helps you understand metrics, organize sheets, spot trends, and turn data into conclusions.'
-          : isInteractive
-            ? 'Uses its own workspace for interactive experiences, so characters, story, and play can be selected and shaped directly.'
-            : 'Owns the kind of work you describe. A workspace appears when the task needs structure.';
-  const placeholder = starterKit.placeholder;
-  const suggestions = starterKit.suggestions;
-  const productType = isImage ? 'image' : isPpt ? 'ppt' : isResearch ? 'research' : isData ? 'data' : isInteractive ? 'interactive' : 'general';
-  const productLayout = isInteractive ? 'canvas_full' : (isImage || isPpt || isResearch || isData) ? 'chat_left_canvas_right' : 'chat_center';
-  const canvasLabel = isPpt ? 'PPT workspace' : isImage ? 'Image workspace' : isResearch ? 'Research workspace' : isData ? 'Data workspace' : isInteractive ? 'Interactive workspace' : 'Workspace';
-  const capabilities = _assistantDefaultCapabilities(productType, title + sourcePrompt);
-  const draft = {
-    kind,
-    title,
-    desc,
-    placeholder,
-    suggestions,
-    sourcePrompt,
-    titleSource: 'generated',
-    createdAt: Date.now(),
-    productType,
-    productLayout,
-    canvasLabel,
-    skills: capabilities.skills,
-    tools: capabilities.tools,
-    toolHints: capabilities.tools.length ? capabilities.tools : (isImage ? ['image generation', 'image editing', 'visual prompt writing'] : [])
-  };
-  return draft;
-}
-
-async function confirmAssistantCreatePreview(draft) {
-  const overlay = $('assistantCreateOverlay');
-  const applyBtn = $('assistantCreateApply');
-  const cancelBtn = $('assistantCreateCancel');
-  const closeBtn = $('assistantCreateClose');
-  const taskLabels = Array.isArray(draft && draft.suggestions)
-    ? draft.suggestions.map(item => item && item[1]).filter(Boolean)
-    : [];
-  const interfaceName = '自动生成';
-  if (overlay && applyBtn && cancelBtn && draft) {
-    const setText = (id, value) => {
-      const el = $(id);
-      if (el) el.textContent = value || '';
-    };
-    const isPersonalVersion = !!draft.baseAssistantTitle;
-    setText('assistantCreateTitle', isPersonalVersion ? 'Create a personal version?' : 'Create this AI?');
-    setText(
-      'assistantCreateDesc',
-      isPersonalVersion
-        ? `Create a personal version based on "${draft.baseAssistantTitle}". Open it, keep chatting, and a workspace will appear when structure helps.`
-        : 'It will appear in the AI shelf. Open it, keep chatting, and a workspace will appear when structure helps.'
-    );
-    setText('assistantCreateName', draft.title);
-    setText('assistantCreateSource', draft.sourcePrompt || 'I want to create a new AI.');
-    setText('assistantCreatePreviewAvatar', _assistantAvatarLabel(draft.kind, draft));
-    setText('assistantCreateDuty', draft.desc);
-    const tasks = $('assistantCreateTasks');
-    if (tasks) {
-      tasks.innerHTML = '';
-      const labels = taskLabels.length ? taskLabels : ['Keep going'];
-      labels.forEach(label => {
-        const chip = document.createElement('span');
-        chip.textContent = label;
-        tasks.appendChild(chip);
-      });
-    }
-    overlay.hidden = false;
-    overlay.setAttribute('aria-hidden', 'false');
-    return new Promise(resolve => {
-      let settled = false;
-      const settle = value => {
-        if (settled) return;
-        settled = true;
-        overlay.hidden = true;
-        overlay.setAttribute('aria-hidden', 'true');
-        applyBtn.removeEventListener('click', onApply);
-        cancelBtn.removeEventListener('click', onCancel);
-        if (closeBtn) closeBtn.removeEventListener('click', onCancel);
-        overlay.removeEventListener('click', onBackdrop);
-        document.removeEventListener('keydown', onKeyDown);
-        if (!value) {
-          const input = $('msg');
-          if (input) setTimeout(() => input.focus(), 0);
-        }
-        resolve(value);
-      };
-      const onApply = () => settle(true);
-      const onCancel = () => settle(false);
-      const onBackdrop = event => {
-        if (event.target === overlay) settle(false);
-      };
-      const onKeyDown = event => {
-        if (event.key === 'Escape') settle(false);
-      };
-      applyBtn.addEventListener('click', onApply);
-      cancelBtn.addEventListener('click', onCancel);
-      if (closeBtn) closeBtn.addEventListener('click', onCancel);
-      overlay.addEventListener('click', onBackdrop);
-      document.addEventListener('keydown', onKeyDown);
-      const dialog = overlay.querySelector('.product-dialog-panel');
-      if (dialog) {
-        dialog.scrollTop = 0;
-        dialog.setAttribute('tabindex', '-1');
-      }
-      const initialFocus = dialog || applyBtn;
-      if (initialFocus) {
-        try {
-          initialFocus.focus({ preventScroll: true });
-        } catch (_err) {
-          initialFocus.focus();
-        }
-      }
-      requestAnimationFrame(() => {
-        if (dialog) dialog.scrollTop = 0;
-      });
-    });
-  }
-  const message = [
-    `Name: ${draft.title}`,
-    `Role: ${draft.desc}`,
-    `Starting prompt: ${draft.placeholder}`,
-    `Suggested tasks: ${taskLabels.join(' / ') || 'Keep going'}`,
-    `Workspace: ${interfaceName}`,
-    '',
-    'It will appear in the AI shelf. Open it, keep chatting, and a workspace will appear when structure helps.'
-  ].join('\n');
-  if (typeof showConfirmDialog === 'function') {
-    return showConfirmDialog({
-      title: 'Knead one',
-      message,
-      confirmLabel: 'Create and open',
-      focusCancel: true
-    });
-  }
-  return window.confirm(message);
 }
 
 function _assistantProductPayloadFromDraft(draft) {
@@ -682,20 +366,6 @@ function _assistantProductPayloadFromDraft(draft) {
     skills: Array.isArray(draft && draft.skills) ? draft.skills : [],
     tools
   };
-}
-
-async function _createProductFromAssistantDraft(draft) {
-  if (!draft || !draft.title) throw new Error('缺少产品信息');
-  const created = await api('/api/products/create', {
-    method: 'POST',
-    body: JSON.stringify(_assistantProductPayloadFromDraft(draft))
-  });
-  const product = created && created.product ? created.product : null;
-  const saved = typeof _productToCustomAssistant === 'function' ? _productToCustomAssistant(product) : null;
-  if (!saved || !saved.productId) throw new Error('No productId was returned after creating this AI.');
-  _customAssistantsWrite(_mergeCustomAssistants(_customAssistantsRead(), [saved]));
-  _registerCustomAssistant(saved);
-  return saved;
 }
 
 async function _saveProductBackedAssistant(nextAssistant) {
@@ -720,39 +390,337 @@ async function _saveProductBackedAssistant(nextAssistant) {
   return saved;
 }
 
-async function createProductFromPrompt(prompt) {
+function _scheduleInitialProductShape(assistant, sourcePrompt = '') {
+  if (!assistant || !assistant.productId || !assistant.workspacePath) return false;
+  const object = assistant.kind && AI_OBJECTS[assistant.kind] ? AI_OBJECTS[assistant.kind] : assistant;
+  const prompt = String(sourcePrompt || object.sourcePrompt || object.desc || object.title || '').trim();
+  setTimeout(() => {
+    const startShape = typeof startProductShapeTask === 'function'
+      ? startProductShapeTask
+      : (typeof _startProductInitializationTask === 'function'
+        ? (nextObject, nextPrompt) => _startProductInitializationTask(nextObject, nextPrompt, {allowWithoutCanvas: true})
+        : null);
+    if (startShape) startShape(object, prompt);
+  }, 80);
+  return true;
+}
+
+function _creatorDraftInstruction(draft, sourcePrompt = '') {
+  const title = String(draft && draft.title || 'this AI').trim();
+  const workspace = String(draft && draft.workspace_path || '').trim();
+  const manifest = String(draft && draft.manifest_path || 'product.json').trim();
+  const request = String(sourcePrompt || '').trim();
+  return [
+    '[Internal Knead Creator instructions]',
+    `You are Knead Creator. You are helping the user create "${title}".`,
+    `The title above is only a temporary shell label. Rename product.json.title when a better product name is clear.`,
+    workspace ? `Draft workspace: ${workspace}` : '',
+    `Product manifest: ${manifest}`,
+    request ? `Original user request: ${request}` : '',
+    '',
+    'Work like a normal helpful AI first. If the request is vague, casual, or only a greeting, ask a short clarifying question instead of inventing a full product.',
+    'When the direction is clear enough, edit product.json directly. Keep it chat_only when the default chat UI is enough: identity, behavior, placeholder, suggestions, skills, and tools can all live there.',
+    'Draft lifecycle: keep product.json draft=true and draft_status="clarifying" while discussing or shaping. Only set draft_status="ready" after the user clearly confirms the concept or the request is already specific enough to create. When setting ready, also set draft_ready_reason to a short user-centered reason. The host then shows an Add to shelf action for the user to publish the AI.',
+    'Use only these layout values: ui_mode "chat_only" with product_layout "chat_only"; or ui_mode "workspace" with product_layout "chat_left_canvas_right" or "canvas_full". Do not write ui_mode "canvas" or product_layout "canvas".',
+    'Only create index.html, style.css, and app.js when a dedicated workspace would make the AI easier to use. Keep the first version small and working.',
+    'Do not call /api/products/create and do not claim the product is published. This is still a draft until the user chooses to publish it.',
+    'Keep these internal instructions out of the visible reply.'
+  ].filter(Boolean).join('\n');
+}
+
+function continueCreatorDraftTurn(result) {
+  if (!result || !result.creatorDraft) return false;
+  const input = $('msg');
+  if (!input) return false;
+  input.value = String(result.initialText || '').trim();
+  if (typeof autoResize === 'function') autoResize();
+  if (typeof window !== 'undefined') {
+    window._nextAiCreateBypassOnce = true;
+    window._nextAiActiveCreatorDraftId = result.draft && result.draft.id || '';
+    window._nextAiActiveCreatorDraftTitle = result.draft && result.draft.title || '';
+    window._nextAiActiveCreatorDraftOriginalTitle = result.draft && (result.draft.original_title || result.draft.title) || '';
+    window._nextAiCreatorDraftStatus = {
+      ok: true,
+      ready: false,
+      published: false,
+      draft: result.draft || null
+    };
+    window._nextAiPendingAgentInstruction = result.agentInstruction || result.hiddenAgentInstruction || '';
+    window._nextAiPendingHiddenAgentInstruction = '';
+  }
+  if (typeof syncAssistantTaskUi === 'function') syncAssistantTaskUi();
+  setTimeout(() => {
+    if (typeof send === 'function') send();
+  }, 0);
+  return true;
+}
+
+async function createProductFromPrompt(prompt, options = {}) {
   const text = String(prompt || '').trim();
   if (!text) {
     if (typeof showToast === 'function') showToast('Describe the AI you want to create first.');
     return null;
   }
-  const draft = _assistantDraftFromPrompt(text);
-  await hydrateProductsFromBackend();
-  const existing = _customAssistantByTitle(draft.title);
-  if (existing) {
-    if (!AI_OBJECTS[existing.kind]) _registerCustomAssistant(existing);
-    renderAssistantList();
-    openAssistantHome(existing.kind);
-    const started = _maybeStartInitialProductUiForExistingAssistant(existing, text);
-    if (typeof showToast === 'function') {
-      showToast(started ? `Opened existing AI and started its workspace: ${existing.title}` : `Opened existing AI: ${existing.title}`);
-    }
-    return existing;
-  }
-  const ok = await confirmAssistantCreatePreview(draft);
-  if (!ok) return null;
-  let savedDraft = null;
+  let creatorDraft = null;
   try {
-    savedDraft = await _createProductFromAssistantDraft(draft);
+    const data = await api('/api/product-drafts/create', {
+      method: 'POST',
+      body: JSON.stringify({
+        title: 'New AI',
+        prompt: text,
+        source_prompt: text
+      })
+    });
+    creatorDraft = data && data.draft;
   } catch (err) {
-    if (typeof showToast === 'function') showToast(`Create failed: ${err && err.message || err}`, 3200, 'error');
+    if (typeof showToast === 'function') showToast(`Could not open Creator: ${err && err.message || err}`, 3200, 'error');
     return null;
   }
-  renderAssistantList();
-  openAssistantHome(savedDraft.kind);
-  if (typeof showToast === 'function') showToast(`Created AI: ${savedDraft.title}`);
-  _maybeStartInitialProductUiForExistingAssistant(savedDraft, text);
-  return savedDraft;
+  if (!creatorDraft || !creatorDraft.workspace_path) {
+    if (typeof showToast === 'function') showToast('Creator did not return a draft workspace.', 3200, 'error');
+    return null;
+  }
+  if (typeof newSession !== 'function') {
+    if (typeof showToast === 'function') showToast('Creator cannot start because sessions are unavailable.', 3200, 'error');
+    return null;
+  }
+  await newSession(false, {
+    workspace: creatorDraft.workspace_path,
+    enabledToolsets: ['skills', 'file', 'terminal', 'code_execution'],
+    creatorDraft: {
+      id: creatorDraft.id || '',
+      title: creatorDraft.title || '',
+      original_title: creatorDraft.original_title || creatorDraft.title || '',
+      workspace_path: creatorDraft.workspace_path || ''
+    }
+  });
+  if (typeof renderSessionList === 'function') await renderSessionList();
+  if (typeof showToast === 'function') showToast(`Creator opened: ${creatorDraft.title}`);
+  const result = {
+    creatorDraft: true,
+    draft: creatorDraft,
+    initialText: text,
+    agentInstruction: _creatorDraftInstruction(creatorDraft, text)
+  };
+  if (!options || !options.deferInitialSend) continueCreatorDraftTurn(result);
+  return result;
+}
+
+function _isCreatorDraftWorkspace(workspace) {
+  return /(^|[\\/])product_drafts[\\/]/.test(String(workspace || '').trim());
+}
+
+function _isCreatorDraftSession(session = (typeof S !== 'undefined' ? S.session : null)) {
+  if (session && session.creator_draft) return true;
+  return _isCreatorDraftWorkspace(session && session.workspace);
+}
+
+function _isCreatorMode() {
+  return _assistantKey() === 'create' || _isCreatorDraftSession();
+}
+
+function _currentCreatorDraftPayload(extra = {}) {
+  const sessionDraft = (typeof S !== 'undefined' && S.session && S.session.creator_draft)
+    ? S.session.creator_draft
+    : {};
+  const workspace = String(
+    (sessionDraft && sessionDraft.workspace_path) ||
+    (typeof S !== 'undefined' && S.session && S.session.workspace) ||
+    ''
+  ).trim();
+  if (!_isCreatorDraftWorkspace(workspace)) return null;
+  return {
+    workspace_path: workspace,
+    draft_id: String(
+      (sessionDraft && sessionDraft.id) ||
+      (typeof window !== 'undefined' ? window._nextAiActiveCreatorDraftId : '') ||
+      ''
+    ),
+    original_title: String(
+      (sessionDraft && (sessionDraft.original_title || sessionDraft.originalTitle)) ||
+      (typeof window !== 'undefined' ? window._nextAiActiveCreatorDraftOriginalTitle : '') ||
+      (sessionDraft && sessionDraft.title) ||
+      (typeof window !== 'undefined' ? window._nextAiActiveCreatorDraftTitle : '') ||
+      ''
+    ),
+    ...extra
+  };
+}
+
+function _syncCurrentCreatorDraftFromStatus(status) {
+  const draft = status && status.draft && typeof status.draft === 'object' ? status.draft : null;
+  if (!draft) return false;
+  const previousDraft = (typeof S !== 'undefined' && S.session && S.session.creator_draft)
+    ? S.session.creator_draft
+    : {};
+  const previousOriginalTitle = String(
+    (previousDraft && (previousDraft.original_title || previousDraft.originalTitle || previousDraft.title)) ||
+    (typeof window !== 'undefined' ? window._nextAiActiveCreatorDraftOriginalTitle : '') ||
+    ''
+  ).trim();
+  const next = {
+    id: String(draft.id || '').trim(),
+    title: String(draft.title || '').trim(),
+    original_title: previousOriginalTitle,
+    workspace_path: String(draft.workspace_path || '').trim()
+  };
+  if (!next.workspace_path) return false;
+  if (typeof window !== 'undefined') {
+    if (next.id) window._nextAiActiveCreatorDraftId = next.id;
+    if (next.title) window._nextAiActiveCreatorDraftTitle = next.title;
+    if (next.original_title) window._nextAiActiveCreatorDraftOriginalTitle = next.original_title;
+  }
+  if (typeof S !== 'undefined' && S.session && _isCreatorDraftSession(S.session)) {
+    S.session.creator_draft = {
+      ...(S.session.creator_draft || {}),
+      ...Object.fromEntries(Object.entries(next).filter(([, value]) => value))
+    };
+  }
+  return true;
+}
+
+function _currentCreatorDraftStatus() {
+  if (typeof window === 'undefined') return null;
+  const status = window._nextAiCreatorDraftStatus || null;
+  const payload = _currentCreatorDraftPayload();
+  const statusWorkspace = String(status && status.draft && status.draft.workspace_path || '').trim();
+  if (payload && statusWorkspace && statusWorkspace !== payload.workspace_path) return null;
+  return status;
+}
+
+function _creatorDraftPhase(status = _currentCreatorDraftStatus()) {
+  const draft = status && status.draft && typeof status.draft === 'object' ? status.draft : {};
+  const title = String(draft.title || window._nextAiActiveCreatorDraftTitle || 'this AI').trim() || 'this AI';
+  if (status && status.published) {
+    return {
+      title,
+      state: 'published',
+      chatLabel: 'Created',
+      shelfLabel: 'Added',
+      composer: `"${title}" is on the shelf. Open it there to start using it.`
+    };
+  }
+  if (status && status.ready) {
+    return {
+      title,
+      state: 'ready',
+      chatLabel: 'Ready',
+      shelfLabel: 'Add to shelf',
+      composer: `Add "${title}" to the shelf, or keep shaping it...`
+    };
+  }
+  return {
+    title,
+    state: 'drafting',
+    chatLabel: 'Creating',
+    shelfLabel: 'Draft in progress',
+    composer: `Tell Creator what "${title}" should become...`
+  };
+}
+
+const _creatorDraftStatusRefreshInFlight = new Set();
+
+function _maybeRefreshCreatorDraftStatus(options = {}) {
+  const payload = _currentCreatorDraftPayload();
+  const workspace = payload && payload.workspace_path;
+  if (!workspace || typeof refreshCreatorDraftStatus !== 'function') return;
+  const status = _currentCreatorDraftStatus();
+  const statusWorkspace = String(status && status.draft && status.draft.workspace_path || '').trim();
+  if (status && (!statusWorkspace || statusWorkspace === workspace)) return;
+  if (_creatorDraftStatusRefreshInFlight.has(workspace)) return;
+  _creatorDraftStatusRefreshInFlight.add(workspace);
+  refreshCreatorDraftStatus({silent:true, skipReadyToast:true, ...options})
+    .catch(() => {})
+    .finally(() => _creatorDraftStatusRefreshInFlight.delete(workspace));
+}
+
+async function refreshCreatorDraftStatus(options = {}) {
+  const payload = _currentCreatorDraftPayload();
+  if (!payload) {
+    if (typeof window !== 'undefined') window._nextAiCreatorDraftStatus = null;
+    if (typeof syncAssistantTaskUi === 'function') syncAssistantTaskUi();
+    return null;
+  }
+  let data = null;
+  try {
+    data = await api('/api/product-drafts/status', {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    });
+  } catch (err) {
+    if (!options.silent && typeof showToast === 'function') {
+      showToast(`Could not read draft: ${err && err.message || err}`, 3200, 'error');
+    }
+    return null;
+  }
+  if (typeof window !== 'undefined') window._nextAiCreatorDraftStatus = data;
+  _syncCurrentCreatorDraftFromStatus(data);
+  if (data && data.ready && !data.published && !options.silent && !options.skipReadyToast && typeof showToast === 'function') {
+    showToast('Draft is ready. Add it to the shelf when you are happy with it.');
+  }
+  if (data && data.ready && !data.published && !options.silent && typeof appendCreatorDraftReadyCard === 'function') {
+    appendCreatorDraftReadyCard(data);
+  }
+  if (data && data.published && typeof removeCreatorDraftStatusCards === 'function') {
+    const draftId = String(data && data.draft && data.draft.id || '').trim();
+    removeCreatorDraftStatusCards(draftId);
+  }
+  if (typeof syncAssistantTaskUi === 'function') syncAssistantTaskUi();
+  return data;
+}
+
+async function publishCreatorDraft(options = {}) {
+  const payload = _currentCreatorDraftPayload({
+    if_ready: options.force !== true,
+    force: !!options.force
+  });
+  if (!payload) return null;
+  let data = null;
+  try {
+    data = await api('/api/product-drafts/publish', {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    });
+  } catch (err) {
+    if (options.force && typeof showToast === 'function') {
+      showToast(`Could not publish draft: ${err && err.message || err}`, 3600, 'error');
+    }
+    return null;
+  }
+  if (!data || !data.published || !data.product) {
+    if (data && data.not_ready && typeof showToast === 'function' && !options.silent) {
+      showToast(data.not_ready_reason || 'The draft is not ready yet. Keep chatting with Creator first.');
+    }
+    if (typeof refreshCreatorDraftStatus === 'function') refreshCreatorDraftStatus({silent:true});
+    return data || null;
+  }
+  const saved = typeof _productToCustomAssistant === 'function' ? _productToCustomAssistant(data.product) : null;
+  if (!saved || !saved.productId) return data;
+  if (typeof window !== 'undefined') {
+    window._nextAiCreatorDraftStatus = {
+      ok: true,
+      ready: true,
+      published: true,
+      draft: data.draft || null,
+      product: data.product
+    };
+  }
+  _syncCurrentCreatorDraftFromStatus({draft: data.draft || null});
+  if (typeof removeCreatorDraftStatusCards === 'function') {
+    const draftId = String(data && data.draft && data.draft.id || '').trim();
+    removeCreatorDraftStatusCards(draftId);
+  }
+  _customAssistantsWrite(_mergeCustomAssistants(_customAssistantsRead(), [saved]));
+  _registerCustomAssistant(saved);
+  if (typeof hydrateProductsFromBackend === 'function') await hydrateProductsFromBackend();
+  if (typeof renderAssistantList === 'function') renderAssistantList();
+  if (typeof showToast === 'function' && !options.silent) {
+    showToast(data.already_published ? `Opened AI: ${saved.title}` : `Created AI: ${saved.title}`);
+  }
+  if (options.open !== false && typeof openAssistantHome === 'function') {
+    setTimeout(() => openAssistantHome(saved.kind), 80);
+  }
+  return data;
 }
 
 async function createAssistantFromPrompt(prompt) {
@@ -835,7 +803,36 @@ function _assistantKey() {
 }
 
 function _assistantObject(kind = _assistantKey()) {
-  return AI_OBJECTS[kind] || AI_OBJECTS.ppt;
+  const sessionObject = kind === _assistantKey()
+    ? _assistantObjectForCurrentSessionProduct()
+    : null;
+  return sessionObject || AI_OBJECTS[kind] || AI_OBJECTS.ppt;
+}
+
+function _currentSessionProductId() {
+  if (typeof S === 'undefined' || !S.session) return '';
+  return String(S.session.product_id || S.session.productId || '').trim();
+}
+
+function _assistantKindForCurrentSessionProduct() {
+  const productId = _currentSessionProductId();
+  if (!productId || typeof _assistantKindForProductId !== 'function') return '';
+  const kind = _assistantKindForProductId(productId);
+  return kind && AI_OBJECTS[kind] ? kind : '';
+}
+
+function _assistantObjectForCurrentSessionProduct() {
+  const kind = _assistantKindForCurrentSessionProduct();
+  return kind ? AI_OBJECTS[kind] || null : null;
+}
+
+function syncAssistantSelectionToSessionProduct() {
+  const kind = _assistantKindForCurrentSessionProduct();
+  if (!kind) return '';
+  if (_assistantKey() !== kind && typeof selectAiObject === 'function') {
+    selectAiObject(kind);
+  }
+  return kind;
 }
 
 function _assistantDirectoryMode(hasTask = _assistantTaskHasActiveTask()) {
@@ -908,6 +905,7 @@ function _clearAssistantAssignment(sessionId) {
 
 function assistantKindForLoadedSession(session) {
   if (!session || !session.session_id) return 'general';
+  if (_isCreatorDraftSession(session)) return 'create';
   const productId = String(session.product_id || session.productId || '').trim();
   if (productId) {
     const productKind = _assistantKindForProductId(productId);
@@ -983,6 +981,13 @@ function markSessionForCurrentAssistant(sessionId, taskTitle = '') {
 
 function assistantTaskBelongsToCurrentAssistant(session) {
   if (!session || !session.session_id) return false;
+  if (_isCreatorDraftSession(session)) return _assistantKey() === 'create';
+  const productId = String(session.product_id || session.productId || '').trim();
+  if (productId) {
+    const productKind = _assistantKindForProductId(productId);
+    if (productKind && _assistantKindExists(productKind)) return productKind === _assistantKey();
+    return false;
+  }
   const assignedKind = session.next_ai_assistant_kind || assistantKindForSession(session.session_id);
   if (!assignedKind) {
     const inferredKind = _assistantKindFromLegacySession(session);
@@ -1083,7 +1088,7 @@ window.focusAssistantComposerForFirstTask = focusAssistantComposerForFirstTask;
 
 function _syncAssistantHome(object = AI_OBJECTS[_assistantKey()] || AI_OBJECTS.ppt) {
   const kind = _assistantKey();
-  const isCreate = kind === 'create';
+  const isCreate = kind === 'create' || object === AI_OBJECTS.create || _isCreatorDraftSession();
   const assistantTitle = object.title || 'AI product';
   const home = $('assistantHome');
   const title = $('assistantHomeTitle');
@@ -1120,7 +1125,7 @@ function _syncAssistantHome(object = AI_OBJECTS[_assistantKey()] || AI_OBJECTS.p
   if (origin) {
     if (isCreate) {
       origin.hidden = false;
-      origin.textContent = 'After creation, it appears in the AI shelf and keeps its own skills, tasks, and workspace.';
+      origin.textContent = 'Creator drafts first. It appears in the AI shelf only after you choose Add to shelf.';
       origin.removeAttribute('title');
     } else {
       origin.hidden = true;
@@ -1130,7 +1135,7 @@ function _syncAssistantHome(object = AI_OBJECTS[_assistantKey()] || AI_OBJECTS.p
   }
   if (nextStep) {
     if (isCreate) {
-      _renderAssistantHomeActionBar(nextStep, 'Confirm to open this AI. If structure helps, it will create the first workspace.');
+      _renderAssistantHomeActionBar(nextStep, 'Describe the reusable AI you want. Creator will ask only what it needs, then prepare a draft.');
     } else if (!usesProductCanvas) {
       nextStep.hidden = true;
       nextStep.innerHTML = '';
@@ -1220,12 +1225,12 @@ function selectAiObject(kind = 'ppt') {
 }
 
 function startAssistantNewTask() {
-  const kind = _assistantKey() === 'create' ? (_lastTaskAssistantKind || 'general') : _assistantKey();
+  const kind = _isCreatorMode() ? (_lastTaskAssistantKind || 'general') : _assistantKey();
   openAssistantHome(kind);
 }
 
 function openAssistantLanding(options = {}) {
-  const kind = _assistantKey() === 'create' ? (_lastTaskAssistantKind || 'general') : _assistantKey();
+  const kind = _isCreatorMode() ? (_lastTaskAssistantKind || 'general') : _assistantKey();
   openAssistantHome(kind, { ...options, directory: 'library' });
 }
 
@@ -1686,8 +1691,79 @@ function _isCanvasFullProductUseMode(object = _assistantObject()) {
   return _assistantTaskHasActiveTask() && _currentProductLayoutForTaskHeader(object) === 'canvas_full' && !!_activeProductPreview;
 }
 
-function setCurrentProductAdjustMode(open, options = {}) {
+function _currentSessionIsProductBuilderLine(object = _assistantObject()) {
+  if (!object || !object.productId || typeof S === 'undefined' || !S.session || !S.session.session_id) return false;
+  const matchesProduct = typeof _currentSessionMatchesProduct === 'function'
+    ? _currentSessionMatchesProduct(object)
+    : String(S.session.product_id || S.session.productId || '') === String(object.productId || object.product_id || '');
+  if (!matchesProduct) return false;
+  const scope = String(S.session.product_scope || S.session.productScope || '').trim();
+  return scope === 'product_builder' || scope === 'product_init';
+}
+
+async function ensureCurrentProductBuilderSession(object = _assistantObject(), options = {}) {
+  if (!object || !object.productId) return false;
+  if (_currentSessionIsProductBuilderLine(object)) {
+    if (typeof S !== 'undefined' && S.session) {
+      S.session.product_scope = 'product_builder';
+      S.session.product_line = 'build';
+    }
+    return true;
+  }
+  if (typeof newSession !== 'function') return false;
+  const assistantTitle = object.title || 'this AI';
+  const taskTitle = options && options.taskTitle ? String(options.taskTitle) : `Shape ${assistantTitle}`;
+  const productIntent = options && options.intent ? String(options.intent) : '';
+  await newSession(false, {
+    workspace: object.workspacePath || '',
+    productId: object.productId,
+    productScope: 'product_builder',
+    productIntent,
+    productTaskTitle: taskTitle
+  });
+  if (typeof S !== 'undefined' && S.session && S.session.session_id) {
+    S.session.title = taskTitle;
+    S.session.product_scope = 'product_builder';
+    S.session.product_line = 'build';
+    S.session.product_intent = productIntent;
+    rememberAssistantTaskTitle(S.session.session_id, taskTitle);
+    if (typeof applySessionTitleUpdate === 'function') {
+      applySessionTitleUpdate(S.session.session_id, taskTitle, {force:true, rememberProvisional:true});
+    }
+    if (typeof upsertActiveSessionForLocalTurn === 'function') {
+      upsertActiveSessionForLocalTurn({title:taskTitle, messageCount:S.messages && S.messages.length || 0, timestampMs:Date.now()});
+    }
+  }
+  if (typeof renderSessionList === 'function') await renderSessionList();
+  return true;
+}
+
+async function setCurrentProductAdjustMode(open, options = {}) {
   const next = !!open;
+  if (next && typeof syncAssistantSelectionToSessionProduct === 'function') {
+    syncAssistantSelectionToSessionProduct();
+  }
+  const object = _assistantObject();
+  if (next && (_isCreatorMode() || !object || !object.productId)) {
+    if (typeof showToast === 'function') showToast('Open a created AI before shaping it.');
+    return;
+  }
+  if (next && typeof S !== 'undefined' && (S.busy || S.activeStreamId)) {
+    if (typeof showToast === 'function') showToast('This task is still running. Shape it when it finishes.');
+    return;
+  }
+  if (next) {
+    try {
+      const ready = await ensureCurrentProductBuilderSession(object, options);
+      if (!ready) {
+        if (typeof showToast === 'function') showToast('Could not open the shaping workspace for this AI.');
+        return;
+      }
+    } catch (err) {
+      if (typeof showToast === 'function') showToast(`Could not open Shape it: ${err && err.message || err}`, 3600, 'error');
+      return;
+    }
+  }
   document.body.dataset.nextAiProductAdjust = next ? 'open' : 'closed';
   if (next) document.body.dataset.nextAiChatPanel = 'closed';
   const adjustHeader = $('productAdjustPanelHeader');
@@ -1706,7 +1782,7 @@ function setCurrentProductAdjustMode(open, options = {}) {
 }
 
 function toggleCurrentProductAdjustMode() {
-  setCurrentProductAdjustMode(document.body.dataset.nextAiProductAdjust !== 'open');
+  void setCurrentProductAdjustMode(document.body.dataset.nextAiProductAdjust !== 'open');
 }
 
 function setCurrentProductChatPanelMode(open, options = {}) {
@@ -1741,20 +1817,37 @@ window.toggleCurrentProductAdjustMode = toggleCurrentProductAdjustMode;
 window.setCurrentProductChatPanelMode = setCurrentProductChatPanelMode;
 window.toggleCurrentProductChatPanelMode = toggleCurrentProductChatPanelMode;
 
-function _syncTaskHeaderProductPreviewChipAction({ isCreate, hasTask, canOpenProductPreview, label }) {
+function _syncTaskHeaderProductPreviewChipAction({ isCreate, canOpenProductPreview, canCreateWorkspace, label, createDraftReady, createDraftPublished }) {
   const productPreviewStatus = $('taskHeaderProductStatus');
   if (!productPreviewStatus) return;
-  const actionable = !isCreate && hasTask && canOpenProductPreview;
+  const actionable = isCreate
+    ? !!(createDraftReady && !createDraftPublished)
+    : (canOpenProductPreview || canCreateWorkspace);
   productPreviewStatus.classList.toggle('is-actionable', actionable);
   if (actionable) {
     productPreviewStatus.setAttribute('role', 'button');
     productPreviewStatus.setAttribute('tabindex', '0');
-    productPreviewStatus.setAttribute('aria-label', _activeProductPreview ? `Close workspace: ${label}` : `Open workspace: ${label}`);
-    productPreviewStatus.onclick = () => toggleTaskProductPreviewFromHeader();
+    productPreviewStatus.setAttribute(
+      'aria-label',
+      isCreate
+        ? 'Add this AI to the shelf'
+        : canOpenProductPreview
+        ? (_activeProductPreview ? `Close workspace: ${label}` : `Open workspace: ${label}`)
+        : `Create workspace: ${label}`
+    );
+    productPreviewStatus.onclick = () => {
+      if (isCreate && createDraftReady && !createDraftPublished && typeof publishCreatorDraft === 'function') {
+        publishCreatorDraft({silent:false});
+      } else if (canOpenProductPreview) {
+        toggleTaskProductPreviewFromHeader();
+      } else if (canCreateWorkspace && typeof requestCurrentProductUiGeneration === 'function') {
+        requestCurrentProductUiGeneration();
+      }
+    };
     productPreviewStatus.onkeydown = event => {
       if (event.key !== 'Enter' && event.key !== ' ') return;
       event.preventDefault();
-      toggleTaskProductPreviewFromHeader();
+      productPreviewStatus.click();
     };
   } else {
     productPreviewStatus.removeAttribute('role');
@@ -1770,9 +1863,13 @@ function _syncTaskHeaderStatus(hasTask = _assistantTaskHasActiveTask()) {
   const productPreviewStatus = $('taskHeaderProductStatus');
   const chatText = chatStatus ? chatStatus.querySelector('span:last-child') : null;
   const productPreviewText = productPreviewStatus ? productPreviewStatus.querySelector('span:last-child') : null;
-  const assistantTitle = window._currentAiAssistantTitle || window._currentAiProductTitle || 'Current AI';
-  const isCreate = _assistantKey() === 'create';
-  const object = _assistantObject();
+  const isCreate = _isCreatorMode();
+  const creatorDraftStatus = isCreate ? _currentCreatorDraftStatus() : null;
+  const creatorDraftPhase = isCreate ? _creatorDraftPhase(creatorDraftStatus) : null;
+  const creatorDraftReady = !!(creatorDraftStatus && creatorDraftStatus.ready);
+  const creatorDraftPublished = !!(creatorDraftStatus && creatorDraftStatus.published);
+  const object = isCreate ? AI_OBJECTS.create : _assistantObject();
+  const assistantTitle = (object && object.title) || window._currentAiAssistantTitle || window._currentAiProductTitle || 'Current AI';
   const canAdjustProduct = !isCreate && !!(object && object.productId);
   const usesProductCanvas = isCreate || (
     typeof _assistantCanShowProductCanvas === 'function'
@@ -1792,10 +1889,15 @@ function _syncTaskHeaderStatus(hasTask = _assistantTaskHasActiveTask()) {
     _activeProductPreview ||
     typeof _assistantHasGeneratedProductCanvas === 'function' && _assistantHasGeneratedProductCanvas(object)
   );
+  const workspaceStatus = String(object && (object.uiStatus || object.ui_status) || '').toLowerCase();
+  const canCreateWorkspace = !isCreate && !!(object && object.productId) && usesProductCanvas && !canOpenProductPreview && (
+    !workspaceStatus || workspaceStatus === 'empty' || workspaceStatus === 'failed'
+  );
   // 用/调是产品级入口:不依赖是否已经长出画布。
   const adjustToggle = $('taskHeaderAdjustToggle');
   if (adjustToggle) {
     adjustToggle.hidden = !canAdjustProduct;
+    adjustToggle.disabled = !canAdjustProduct;
     if (canAdjustProduct) {
       adjustToggle.classList.toggle('is-adjust-product', adjustOpen);
       adjustToggle.classList.toggle('is-actionable', true);
@@ -1804,13 +1906,18 @@ function _syncTaskHeaderStatus(hasTask = _assistantTaskHasActiveTask()) {
       const adjustLabel = adjustToggle.querySelector('span:last-child');
       if (adjustLabel) adjustLabel.textContent = adjustOpen ? 'Done shaping' : 'Shape it';
       adjustToggle.title = adjustOpen ? 'Go back to using this AI' : 'Tell the AI how this product should work better';
+    } else {
+      adjustToggle.classList.remove('is-adjust-product', 'is-actionable');
+      adjustToggle.setAttribute('aria-pressed', 'false');
+      adjustToggle.removeAttribute('aria-label');
+      adjustToggle.title = '';
     }
   }
   if (productPreviewStatus) productPreviewStatus.classList.remove('is-adjust-product');
   if (chatStatus) chatStatus.hidden = false;
   if (chatText) {
     chatText.textContent = isCreate
-      ? 'Kneading'
+      ? creatorDraftPhase.chatLabel
       : adjustOpen
         ? 'Shaping'
         : chatPanelOpen
@@ -1818,39 +1925,56 @@ function _syncTaskHeaderStatus(hasTask = _assistantTaskHasActiveTask()) {
         : 'Using';
   }
   if (productPreviewStatus) {
-    productPreviewStatus.hidden = !usesProductCanvas;
+    productPreviewStatus.hidden = !isCreate && !canAdjustProduct && !usesProductCanvas;
   }
-  if (!usesProductCanvas) {
-    _syncTaskHeaderProductPreviewChipAction({ isCreate, hasTask, canOpenProductPreview: false, label: '' });
-  } else if (productPreviewText) {
+  if (productPreviewText) {
     if (isCreate) {
-      productPreviewText.textContent = 'Make workspace';
+      productPreviewText.textContent = creatorDraftPhase.shelfLabel;
     } else if (_activeProductPreview) {
       productPreviewText.textContent = 'Close workspace';
+    } else if (canOpenProductPreview) {
+      productPreviewText.textContent = 'Open workspace';
+    } else if (workspaceStatus === 'generating') {
+      productPreviewText.textContent = 'Workspace building';
+    } else if (canCreateWorkspace) {
+      productPreviewText.textContent = workspaceStatus === 'failed' ? 'Rebuild workspace' : 'Create workspace';
+    } else if (canAdjustProduct) {
+      productPreviewText.textContent = 'Chat only';
     } else {
-      productPreviewText.textContent = canOpenProductPreview ? 'Open workspace' : 'Workspace off';
+      productPreviewText.textContent = 'Workspace off';
     }
   }
   if (productPreviewStatus) {
     productPreviewStatus.classList.toggle('is-active-product', !isCreate && !!_activeProductPreview);
     const label = productPreviewText ? productPreviewText.textContent : '';
     const workspaceName = activeProductPreviewName || (typeof _assistantCanvasLabel === 'function' ? _assistantCanvasLabel(object) : '') || 'workspace';
-    productPreviewStatus.title = usesProductCanvas && !isCreate && hasTask && canOpenProductPreview
+    productPreviewStatus.title = usesProductCanvas && !isCreate && canOpenProductPreview
       ? (_activeProductPreview ? `Close ${workspaceName}` : `Open ${workspaceName}`)
-      : label;
-    _syncTaskHeaderProductPreviewChipAction({ isCreate, hasTask, canOpenProductPreview, label: workspaceName });
+      : canCreateWorkspace
+        ? `Create ${workspaceName}`
+        : canAdjustProduct && !usesProductCanvas
+          ? 'This AI currently uses the default chat page. Use Shape it if it needs its own workspace.'
+          : label;
+    _syncTaskHeaderProductPreviewChipAction({
+      isCreate,
+      canOpenProductPreview,
+      canCreateWorkspace,
+      label: workspaceName,
+      createDraftReady: creatorDraftReady,
+      createDraftPublished: creatorDraftPublished
+    });
   }
   if (chatStatus) {
     chatStatus.classList.toggle('is-actionable', canToggleChatPanel);
     chatStatus.title = isCreate
-      ? 'Describe the AI you want to knead'
+      ? creatorDraftPhase.composer
       : canToggleChatPanel
         ? (chatPanelOpen ? 'Collapse chat' : 'Open chat')
         : adjustOpen
           ? `Shaping ${assistantTitle}`
-          : hasTask
+        : hasTask
           ? `Current task handled by "${assistantTitle}"`
-          : `从这里开始使用「${assistantTitle}」`;
+          : `Start using "${assistantTitle}" here`;
     if (canToggleChatPanel) {
       chatStatus.setAttribute('role', 'button');
       chatStatus.setAttribute('tabindex', '0');
@@ -1875,12 +1999,12 @@ function _syncAssistantSidebarIntro(hasTask = _assistantTaskHasActiveTask()) {
   const sub = $('assistantPanelSub');
   if (!sub) return;
   const assistantTitle = window._currentAiAssistantTitle || window._currentAiProductTitle || 'Current AI';
-  const isCreate = _assistantKey() === 'create';
+  const isCreate = _isCreatorMode();
   const directoryMode = _assistantDirectoryMode(hasTask);
   if (directoryMode === 'library' && !hasTask) {
-    sub.textContent = '选择产品，进入它的任务目录。';
+    sub.textContent = 'Choose an AI, then open its tasks.';
   } else if (isCreate) {
-    sub.textContent = '描述新产品。';
+    sub.textContent = 'Describe the AI you want to create.';
   } else if (hasTask) {
     sub.textContent = `${assistantTitle} 的任务`;
   } else {
@@ -1892,8 +2016,8 @@ function _syncAssistantSidebarDirectory(hasTask = _assistantTaskHasActiveTask())
   const mode = hasTask ? 'product' : _assistantDirectoryMode(hasTask);
   _setAssistantDirectoryMode(mode);
   const isLibrary = mode === 'library';
-  const isCreate = _assistantKey() === 'create';
-  const object = _assistantObject();
+  const isCreate = _isCreatorMode();
+  const object = isCreate ? AI_OBJECTS.create : _assistantObject();
   const assistantTitle = (object && object.title) || window._currentAiAssistantTitle || 'Current AI';
   const panelTitle = $('assistantPanelTitle');
   const back = $('assistantProductBackBtn');
@@ -1922,10 +2046,16 @@ function _syncAssistantSidebarDirectory(hasTask = _assistantTaskHasActiveTask())
 }
 
 function syncAssistantTaskUi() {
-  const assistantTitle = window._currentAiAssistantTitle || window._currentAiProductTitle || 'PPT Designer';
-  const currentObject = _assistantObject();
+  const creatorMode = _isCreatorMode();
+  if (creatorMode) _maybeRefreshCreatorDraftStatus();
+  const creatorDraftStatus = creatorMode ? _currentCreatorDraftStatus() : null;
+  const creatorDraftPhase = creatorMode ? _creatorDraftPhase(creatorDraftStatus) : null;
+  const currentObject = creatorMode ? AI_OBJECTS.create : _assistantObject();
+  const assistantTitle = creatorMode
+    ? 'Knead Creator'
+    : ((currentObject && currentObject.title) || window._currentAiAssistantTitle || window._currentAiProductTitle || 'PPT Designer');
   const productLayout = _currentProductLayoutForTaskHeader(currentObject);
-  const canAdjustProduct = _assistantKey() !== 'create' && !!(currentObject && currentObject.productId);
+  const canAdjustProduct = !creatorMode && !!(currentObject && currentObject.productId);
   const usesProductCanvas = typeof _assistantCanShowProductCanvas === 'function'
     ? _assistantCanShowProductCanvas(currentObject)
     : typeof _assistantUsesProductCanvas === 'function'
@@ -1986,14 +2116,16 @@ function syncAssistantTaskUi() {
     root.textContent = hasTask ? taskTitle : '';
     root.title = hasTask ? taskTitle : '';
   }
-  if (listTitle) listTitle.textContent = _assistantKey() === 'create' ? '新产品' : '最近任务';
-  if (search) search.placeholder = _assistantKey() === 'create'
+  if (listTitle) listTitle.textContent = creatorMode ? 'Create' : 'Tasks';
+  if (search) search.placeholder = creatorMode
     ? 'Search tasks after creating it...'
-    : '搜索任务';
+    : 'Search tasks';
   if (input) {
-    const object = AI_OBJECTS[_assistantKey()] || AI_OBJECTS.ppt;
+    const object = creatorMode ? AI_OBJECTS.create : (AI_OBJECTS[_assistantKey()] || AI_OBJECTS.ppt);
     input.placeholder = adjustOpen
-      ? `告诉「${assistantTitle}」你想怎么调整这个产品...`
+      ? `Tell "${assistantTitle}" how this AI should work better...`
+      : creatorMode
+        ? creatorDraftPhase.composer
       : hasTask
         ? `Continue "${taskTitle}"...`
         : (object.placeholder || input.placeholder);
@@ -2007,7 +2139,7 @@ function syncAssistantTaskUi() {
   if (!hasTask) {
     const empty = $('emptyState');
     if (empty) empty.style.display = 'none';
-    _syncAssistantHome(AI_OBJECTS[_assistantKey()] || AI_OBJECTS.ppt);
+    _syncAssistantHome(creatorMode ? AI_OBJECTS.create : (AI_OBJECTS[_assistantKey()] || AI_OBJECTS.ppt));
   }
   _syncAssistantTaskContextStrip(hasTask);
   _syncAssistantTaskProgress(hasTask);
