@@ -89,6 +89,7 @@ class Session:
                 product_scope=None,
                 product_intent=None,
                 product_line=None,
+                creator_draft=None,
                 composer_draft=None,
                 **kwargs):
         self.session_id = session_id or uuid.uuid4().hex[:12]
@@ -137,6 +138,7 @@ class Session:
         # None 视为 use(向后兼容旧会话)。
         _product_line = str(product_line).strip() if product_line else ''
         self.product_line = _product_line if _product_line in ('use', 'build') else None
+        self.creator_draft = creator_draft if isinstance(creator_draft, dict) else {}
         self.is_cli_session = bool(kwargs.get('is_cli_session', False))
         self.source_tag = kwargs.get('source_tag')
         self.raw_source = kwargs.get('raw_source')
@@ -188,6 +190,7 @@ class Session:
             'parent_session_id',
             'worktree_path', 'worktree_branch', 'worktree_repo_root', 'worktree_created_at',
             'product_id', 'product_scope', 'product_intent', 'product_line',
+            'creator_draft',
             'is_cli_session', 'source_tag', 'raw_source', 'session_source', 'source_label', 'read_only',
             'enabled_toolsets', 'composer_draft',
         ]
@@ -287,6 +290,7 @@ class Session:
                 'product_intent': self.product_intent or '',
                 'product_line': self.product_line or 'use',
             } if self.product_id else {}),
+            **({'creator_draft': self.creator_draft} if self.creator_draft else {}),
             'user_message_count': sum(
                 1 for message in self.messages if message_role(message) == 'user'
             ) if isinstance(self.messages, list) else 0,

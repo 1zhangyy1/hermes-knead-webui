@@ -218,6 +218,15 @@ def handle_session_new(
     )
 
     session_needs_save = False
+    creator_draft = body.get("creator_draft") or body.get("creatorDraft")
+    if isinstance(creator_draft, dict):
+        session.creator_draft = {
+            key: str(value).strip()
+            for key, value in creator_draft.items()
+            if key in {"id", "title", "original_title", "workspace_path"} and str(value or "").strip()
+        }
+        if session.creator_draft:
+            session_needs_save = True
     enabled_toolsets = session_toolsets_from_request_fn(body)
     if enabled_toolsets:
         session.enabled_toolsets = enabled_toolsets

@@ -237,6 +237,8 @@ def product_ephemeral_prompt(context: dict[str, Any] | None) -> str:
     avatar = context.get("avatar") or ""
     desc = context.get("desc") or ""
     source_prompt = context.get("source_prompt") or ""
+    system_prompt = context.get("system_prompt") or ""
+    instructions = context.get("instructions") or ""
     workspace_path = context.get("workspace_path") or ""
     preview_entry = context.get("preview_entry") or "index.html"
     preview_url = context.get("preview_url") or ""
@@ -261,11 +263,13 @@ def product_ephemeral_prompt(context: dict[str, Any] | None) -> str:
     scope_guidance = {
         "product_init": (
             "This turn initializes the selected AI product. Do not stop at naming or planning. "
-            "Create or replace a first usable product interface in the product workspace. "
-            "Prioritize speed: after any truly required skill loading, immediately write index.html, style.css, and app.js. "
-            "Do not wait to ask clarifying questions when the creation request already gives a product direction; choose reasonable defaults and make them editable in the UI. "
-            "Do not broadly inspect the repository, search unrelated files, generate images, run build tools, or polish visual details before the first UI files exist unless the user explicitly asked for those outputs. "
-            "The UI should match the user's product idea, stay simple, and make the first task easy to start."
+            "Shape the first usable version of this AI product, not necessarily a UI. "
+            "Choose the smallest useful form from the user's request: (1) chat-only/config-only, by updating product.json identity, intended behavior, placeholder, suggestions, skills/tools, ui_mode=chat_only, and product_layout=chat_only; "
+            "or (2) workspace UI, by writing minimal working index.html/style.css/app.js and updating product.json to the right workspace layout. "
+            "If the request is mainly about persona, default behavior, prompts, skills, tools, or a normal chat assistant, prefer chat-only/config-only. "
+            "If repeated work would be easier with visible controls, state, files, previews, or interactive affordances, create the smallest useful workspace UI. "
+            "Do not wait to ask clarifying questions when the creation request gives a direction; choose reasonable defaults and make them easy to revise later. "
+            "The visible user message is the user's original request, not an internal build command. After shaping the product, reply naturally as this AI would; do not quote or explain internal product.json/workspace instructions unless the user asks."
         ),
         "product_builder": (
             "This turn is about changing the selected AI product itself. If the user asks for UI, "
@@ -288,7 +292,7 @@ def product_ephemeral_prompt(context: dict[str, Any] | None) -> str:
 
     # ── Shared identity header: both agents need to know which product this is. ──
     lines = [
-        "Next AI product runtime:",
+        "Knead product runtime:",
         "- The user has selected one AI product. This is not an external app-builder task and not a generic assistant chat.",
         f"- Product title: {title}",
         avatar and f"- Product avatar: {avatar}",
@@ -300,6 +304,8 @@ def product_ephemeral_prompt(context: dict[str, Any] | None) -> str:
         f"- Product preview entry: {preview_entry}",
         preview_url and f"- Product preview URL: {preview_url}",
         desc and f"- Product responsibility: {desc}",
+        system_prompt and f"- Product behavior prompt: {system_prompt}",
+        instructions and f"- Product instructions: {instructions}",
         intent and f"- Current user intent: {intent}",
         f"- Runtime scope: {scope}",
         f"- Scope guidance: {scope_guidance}",
@@ -339,10 +345,11 @@ def product_ephemeral_prompt(context: dict[str, Any] | None) -> str:
                 "",
                 "Core build contract (details live in the knead-product skill):",
                 "- Edit files in the product workspace directly instead of only describing a design.",
-                "- Product identity/config lives in product.json; the canvas is browser-native static files "
-                "(index.html/style.css/app.js), no build steps.",
-                "- For product_init, write minimal-but-real UI files the user can immediately use; editable "
-                "defaults over clarifying questions. No marketing landing pages.",
+                "- Product identity/config lives in product.json: title, avatar, desc, source_prompt/intended behavior, "
+                "placeholder, suggestions, skills, tools, ui_mode, product_layout, and canvas_label.",
+                "- For product_init, decide whether the first useful product is chat-only/config-only or needs a workspace UI. "
+                "Chat-only means update product.json and do NOT generate index.html/style.css/app.js. Workspace UI means write "
+                "browser-native static files (index.html/style.css/app.js), no build steps. No marketing landing pages.",
                 "- AI inside the canvas goes through /static/product-bridge-sdk.js (window.NextAI), never direct "
                 "model/API calls from canvas code.",
                 "- After file changes, briefly tell the user what changed and what they can do next, in user "
@@ -357,7 +364,7 @@ def product_ephemeral_prompt(context: dict[str, Any] | None) -> str:
                     "Useful regions: topic, audience, page count, style, outline, slide thumbnails, speaker notes, next-step controls.",
                 ]
             )
-        if ui_mode == "chat_only" or product_layout == "chat_only":
+        if scope == "product_builder" and (ui_mode == "chat_only" or product_layout == "chat_only"):
             lines.extend(
                 [
                     "",
@@ -420,7 +427,7 @@ def product_ephemeral_prompt(context: dict[str, Any] | None) -> str:
                     "- If the request is a REUSABLE tool, app, generator, tracker, or repeatable workflow (e.g. a timer, "
                     "calculator, habit tracker, flashcards, an image/PPT generator, a role-play chat) that the user would "
                     "likely come back to, then AFTER your normal answer, append exactly ONE suggestion marker on its own line:",
-                    '  [[NEXT_AI_SUGGEST_PRODUCT]]{"title":"<short product name>","prompt":"<one-sentence creation request>","type":"interactive|ppt|image|research|data"}[[/NEXT_AI_SUGGEST_PRODUCT]]',
+                    '  [[KNEAD_SUGGEST_PRODUCT]]{"title":"<short product name>","prompt":"<one-sentence creation request>","type":"interactive|ppt|image|research|data"}[[/KNEAD_SUGGEST_PRODUCT]]',
                     "- The marker is machine-read by the host to offer a one-click 'make it a dedicated product' button; do not describe the marker in prose.",
                     "- Only emit it when the thing is genuinely reusable. For one-off questions, writing, analysis, or chitchat, do NOT emit it.",
                     "- Emit at most one marker per reply.",

@@ -460,6 +460,7 @@ async function newSession(flash, options={}){
   if(productScope) reqBody.product_scope=productScope;
   if(options&&options.productIntent) reqBody.product_intent=options.productIntent;
   if(options&&options.productTaskTitle) reqBody.product_task_title=options.productTaskTitle;
+  if(options&&options.creatorDraft) reqBody.creator_draft=options.creatorDraft;
   const productToolsets = Array.isArray(options&&options.enabledToolsets)
     ? options.enabledToolsets
     : (Array.isArray(productDefaults.enabledToolsets)
@@ -477,6 +478,9 @@ async function newSession(flash, options={}){
     S.session.product_scope=productScope||S.session.product_scope||'product_usage';
     S.session.product_intent=options.productIntent||S.session.product_intent||'';
     if(data.session.enabled_toolsets) S.session.enabled_toolsets=data.session.enabled_toolsets;
+  }
+  if(options&&options.creatorDraft&&S.session){
+    S.session.creator_draft=data.session.creator_draft||options.creatorDraft;
   }
   S.lastUsage={...(data.session.last_usage||{})};
   if(flash)S.session._flash=true;
@@ -3588,7 +3592,7 @@ async function deleteSession(sid){
     if(remaining.sessions&&remaining.sessions.length){
       await loadSession(remaining.sessions[0].session_id);
     }else{
-      const _tt=$('topbarTitle');if(_tt)_tt.textContent=window._botName||'Next AI';
+      const _tt=$('topbarTitle');if(_tt)_tt.textContent=window._botName||'Knead';
       const _tm=$('topbarMeta');if(_tm)_tm.textContent='开始一个新任务';
       $('msgInner').innerHTML='';
       $('emptyState').style.display='';

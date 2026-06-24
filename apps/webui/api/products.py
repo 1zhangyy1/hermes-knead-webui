@@ -1,4 +1,4 @@
-"""Persistent AI product registry for the Next AI layer.
+"""Persistent AI product registry for the Knead layer.
 
 An AI product owns a product page. Chat is the stable core block in that page;
 some products also open a product canvas from files in their directory.
@@ -11,6 +11,7 @@ import os
 import shutil
 import threading
 import time
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -19,10 +20,19 @@ from api.config import REPO_ROOT, STATE_DIR
 from api.workspace import load_workspaces, save_workspaces
 
 PRODUCTS_FILE = STATE_DIR / "ai_products.json"
+PRODUCT_DRAFTS_DIR = STATE_DIR / "product_drafts"
+
+
+def _env_value(*names: str, default: str = "") -> str:
+    for name in names:
+        raw = os.getenv(name, "").strip()
+        if raw:
+            return raw
+    return default
 
 
 def _discover_project_root() -> Path:
-    raw = os.getenv("NEXT_AI_PROJECT_ROOT", "").strip()
+    raw = _env_value("KNEAD_PROJECT_ROOT", "NEXT_AI_PROJECT_ROOT")
     if raw:
         return Path(raw).expanduser().resolve()
     for candidate in (REPO_ROOT, *REPO_ROOT.parents):
@@ -32,81 +42,19 @@ def _discover_project_root() -> Path:
 
 
 PROJECT_ROOT = _discover_project_root()
+BUILTIN_PRODUCTS_DIR = Path(
+    _env_value("KNEAD_BUILTIN_PRODUCTS_DIR", "NEXT_AI_BUILTIN_PRODUCTS_DIR", default=str(PROJECT_ROOT / "products"))
+).expanduser().resolve()
 PRODUCTS_DIR = Path(
-    os.getenv("NEXT_AI_PRODUCTS_DIR", str(PROJECT_ROOT / "products"))
+    _env_value("KNEAD_PRODUCTS_DIR", "NEXT_AI_PRODUCTS_DIR", default=str(STATE_DIR / "products"))
 ).expanduser().resolve()
 PRODUCT_UI_SNAPSHOT_FILES = ("index.html", "style.css", "app.js", "product.json")
 PRODUCT_UI_SNAPSHOT_EXCLUDED_DIRS = {"versions", "__pycache__", "node_modules", ".git"}
 PRODUCT_UI_SNAPSHOT_EXCLUDED_FILES = {"README.md", ".DS_Store"}
 PRODUCT_UI_SNAPSHOT_MAX_FILES = 200
 PRODUCT_UI_SNAPSHOT_MAX_FILE_BYTES = 10 * 1024 * 1024
-BUILTIN_PRODUCTS: tuple[dict[str, Any], ...] = (
-    {
-        "id": "general",
-        "kind": "general",
-        "title": "General AI",
-        "avatar": "G",
-        "desc": "Open-ended chat for quick questions, writing, analysis, and files.",
-        "placeholder": "Say what you want to do...",
-        "suggestions": [
-            ["Help me organize today’s work into clear next steps.", "Plan my day"],
-            ["Rewrite this copy so it is clearer and more professional.", "Polish copy"],
-            ["Analyze this problem and give me a few possible paths.", "Analyze a problem"],
-        ],
-        "source_prompt": "Built-in AI product: General AI. It stays as normal chat by default. Its identity, flow, skills, and tools belong to itself.",
-        "product_type": "general",
-        "ui_mode": "chat_only",
-        "product_layout": "chat_only",
-        "canvas_label": "",
-        "ui_status": "ready",
-        "tools": ["skills", "file", "terminal", "code_execution"],
-        "builtin": True,
-    },
-    {
-        "id": "ppt-designer",
-        "kind": "ppt",
-        "title": "PPT Designer",
-        "avatar": "P",
-        "desc": "Tell me the topic, audience, and goal. I will shape the outline, slides, and speaker notes.",
-        "placeholder": "Describe this deck, or upload material...",
-        "suggestions": [
-            ["Help me create a product intro deck. First confirm the topic, audience, and outline.", "Start from topic"],
-            ["I have source material. Turn it into a presentation structure.", "Use source material"],
-            ["Help me improve an existing deck structure. First tell me what should change.", "Improve structure"],
-        ],
-        "source_prompt": "Built-in AI product: PPT Designer. It helps users create and refine presentations through chat, then opens a PPT workspace when structure is useful.",
-        "product_type": "ppt",
-        "ui_mode": "workspace",
-        "product_layout": "chat_left_canvas_right",
-        "canvas_label": "PPT workspace",
-        "ui_status": "empty",
-        "skills": ["presentations", "office"],
-        "tools": ["skills", "file", "terminal", "code_execution"],
-        "builtin": True,
-    },
-    {
-        "id": "ai-otome",
-        "kind": "ai-otome",
-        "title": "AI Otome",
-        "avatar": "♡",
-        "desc": "A single-character AI romance game. Chat with Mira, grow the bond, unlock story beats, and let AI move the scene forward.",
-        "placeholder": "Say something to Mira...",
-        "suggestions": [
-            ["Tell Mira you came to see her and let her choose the next scene.", "Start with Mira"],
-            ["Ask Mira what she remembers about you.", "Check memory"],
-            ["Make the mood warmer and more romantic.", "Shape the mood"],
-        ],
-        "source_prompt": "Built-in AI product: AI Otome. It is a single-character AI romance game, not a static visual novel. The product UI owns the use flow. AI drives dialogue, mood, affection, memories, story beats, choices, and scene changes.",
-        "product_type": "interactive",
-        "ui_mode": "workspace",
-        "product_layout": "canvas_full",
-        "canvas_label": "Otome companion",
-        "ui_status": "ready",
-        "skills": ["imagegen"],
-        "tools": ["skills", "image_gen"],
-        "builtin": True,
-    },
-)
+PRODUCT_SCHEMA_ID = "https://knead.dev/schemas/product.schema.json"
+PRODUCT_CATALOG_SCHEMA_ID = "https://knead.dev/schemas/product-catalog.schema.json"
 PRODUCT_TOOLSET_ALIASES = {
     "officecli": ("skills", "file", "terminal", "code_execution"),
     "office-cli": ("skills", "file", "terminal", "code_execution"),
@@ -118,17 +66,84 @@ PRODUCT_TOOLSET_ALIASES = {
 _LOCK = threading.RLock()
 
 
-def _now() -> str:
-    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
-
-
 def _safe_id(raw: str) -> str:
     cleaned = "".join(ch if ch.isalnum() or ch in "-_" else "-" for ch in str(raw).lower()).strip("-")
     return cleaned[:64] or "product"
 
 
+def _read_json_file(path: Path) -> dict[str, Any]:
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _catalog_builtin_ids() -> list[str]:
+    catalog = _read_json_file(BUILTIN_PRODUCTS_DIR / "catalog.json")
+    if catalog.get("$schema") != PRODUCT_CATALOG_SCHEMA_ID:
+        return []
+    builtins = catalog.get("builtins")
+    if not isinstance(builtins, list):
+        return []
+    result: list[str] = []
+    seen: set[str] = set()
+    for item in builtins:
+        if not isinstance(item, dict):
+            continue
+        product_id = _safe_id(str(item.get("id") or ""))
+        if not product_id or product_id in seen:
+            continue
+        seen.add(product_id)
+        result.append(product_id)
+    return result
+
+
+def _discover_builtin_ids() -> list[str]:
+    catalog_ids = _catalog_builtin_ids()
+    if catalog_ids:
+        return catalog_ids
+    if not BUILTIN_PRODUCTS_DIR.exists():
+        return []
+    result: list[str] = []
+    for path in sorted(BUILTIN_PRODUCTS_DIR.iterdir()):
+        if path.is_dir() and (path / "product.json").exists():
+            result.append(_safe_id(path.name))
+    return result
+
+
+def _load_builtin_products() -> tuple[dict[str, Any], ...]:
+    products: list[dict[str, Any]] = []
+    for product_id in _discover_builtin_ids():
+        manifest = _read_json_file(BUILTIN_PRODUCTS_DIR / product_id / "product.json")
+        if not manifest:
+            continue
+        manifest = {**manifest, "id": product_id, "builtin": True}
+        products.append(manifest)
+    return tuple(products)
+
+
+BUILTIN_PRODUCTS: tuple[dict[str, Any], ...] = _load_builtin_products()
+
+
+def _now() -> str:
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
 def _product_dir(product_id: str) -> Path:
     return PRODUCTS_DIR / _safe_id(product_id)
+
+
+def _builtin_product_dir(product_id: str) -> Path:
+    return BUILTIN_PRODUCTS_DIR / _safe_id(product_id)
+
+
+def _default_product_dir(product_id: str, *, builtin: bool = False) -> Path:
+    return _builtin_product_dir(product_id) if builtin else _product_dir(product_id)
+
+
+def _product_draft_dir(draft_id: str) -> Path:
+    return PRODUCT_DRAFTS_DIR / _safe_id(draft_id)
 
 
 def _unique_strings(items: Any) -> list[str]:
@@ -262,7 +277,8 @@ def _write_state(state: dict[str, Any]) -> None:
 def _normalize_product(item: dict[str, Any]) -> dict[str, Any]:
     title = str(item.get("title") or item.get("name") or "AI product").strip() or "AI product"
     product_id = _safe_id(str(item.get("id") or item.get("kind") or title))
-    workspace_path = str(item.get("workspace_path") or _product_dir(product_id))
+    builtin = bool(item.get("builtin"))
+    workspace_path = str(item.get("workspace_path") or _default_product_dir(product_id, builtin=builtin))
     created_at = str(item.get("created_at") or _now())
     updated_at = str(item.get("updated_at") or created_at)
     preview_url = f"/api/products/{product_id}/preview"
@@ -305,6 +321,8 @@ def _normalize_product(item: dict[str, Any]) -> dict[str, Any]:
         "placeholder": str(item.get("placeholder") or f'Tell "{title}" what you want to finish...').strip(),
         "suggestions": item.get("suggestions") if isinstance(item.get("suggestions"), list) else [],
         "source_prompt": str(item.get("source_prompt") or item.get("sourcePrompt") or "").strip(),
+        "system_prompt": str(item.get("system_prompt") or item.get("systemPrompt") or "").strip(),
+        "instructions": str(item.get("instructions") or "").strip(),
         "product_type": product_type,
         "ui_mode": ui_mode,
         "product_layout": product_layout,
@@ -321,7 +339,7 @@ def _normalize_product(item: dict[str, Any]) -> dict[str, Any]:
         "skills": [str(skill) for skill in skills if skill],
         "tools": normalize_product_toolsets(tools),
         "versions": versions,
-        "builtin": bool(item.get("builtin")),
+        "builtin": builtin,
         "created_at": created_at,
         "updated_at": updated_at,
     }
@@ -361,7 +379,7 @@ def _ensure_builtin_products_locked() -> dict[str, Any]:
                 "ui_mode": definition.get("ui_mode") or existing.get("ui_mode") or "workspace",
                 "product_layout": definition.get("product_layout") or existing.get("product_layout") or "",
                 "canvas_label": definition.get("canvas_label") or existing.get("canvas_label") or "",
-                "workspace_path": str(_product_dir(product_id).resolve()),
+                "workspace_path": str(_builtin_product_dir(product_id).resolve()),
                 "preview_url": f"/api/products/{product_id}/preview",
                 "ui_status": existing.get("ui_status") or definition.get("ui_status") or "empty",
                 "sessions": existing.get("sessions") if isinstance(existing.get("sessions"), list) else [],
@@ -374,7 +392,6 @@ def _ensure_builtin_products_locked() -> dict[str, Any]:
             if normalized != existing:
                 products[existing_index] = normalized
                 changed = True
-            _write_seed_files(normalized)
             _register_workspace(normalized)
             continue
 
@@ -383,14 +400,13 @@ def _ensure_builtin_products_locked() -> dict[str, Any]:
                 **definition,
                 "id": product_id,
                 "kind": definition.get("kind") or product_id,
-                "workspace_path": str(_product_dir(product_id).resolve()),
+                "workspace_path": str(_builtin_product_dir(product_id).resolve()),
                 "preview_url": f"/api/products/{product_id}/preview",
                 "created_at": now,
                 "updated_at": now,
                 "builtin": True,
             }
         )
-        _write_seed_files(product)
         _register_workspace(product)
         products.append(product)
         changed = True
@@ -444,12 +460,17 @@ def _write_manifest(product: dict[str, Any]) -> None:
     workspace = Path(product["workspace_path"])
     workspace.mkdir(parents=True, exist_ok=True)
     manifest = {
+        "$schema": PRODUCT_SCHEMA_ID,
         "id": product["id"],
         "kind": product.get("kind"),
         "title": product.get("title"),
         "avatar": product.get("avatar") or "",
         "desc": product.get("desc"),
+        "placeholder": product.get("placeholder") or "",
+        "suggestions": product.get("suggestions") if isinstance(product.get("suggestions"), list) else [],
         "source_prompt": product.get("source_prompt"),
+        "system_prompt": product.get("system_prompt") or "",
+        "instructions": product.get("instructions") or "",
         "product_type": product.get("product_type"),
         "ui_mode": product.get("ui_mode") or "workspace",
         "product_layout": product.get("product_layout") or "chat_center",
@@ -642,6 +663,340 @@ def create_product(body: dict[str, Any]) -> dict[str, Any]:
         return {"ok": True, "product": product}
 
 
+def create_product_draft(body: dict[str, Any]) -> dict[str, Any]:
+    """Create an unregistered workspace where the Creator agent can shape a product.
+
+    A draft is deliberately *not* an AI product yet: it does not enter
+    ai_products.json, does not appear on the shelf, and does not auto-open a
+    product canvas. The Creator agent owns the next step by editing files in the
+    returned workspace.
+    """
+
+    if not isinstance(body, dict):
+        body = {}
+    title = str(body.get("title") or body.get("name") or "New AI").strip() or "New AI"
+    source_prompt = str(body.get("source_prompt") or body.get("sourcePrompt") or body.get("prompt") or "").strip()
+    base = _safe_id(str(body.get("id") or title or "draft"))
+    with _LOCK:
+        draft_id = base
+        for _index in range(1000):
+            candidate = draft_id if _index == 0 else _safe_id(f"{base}-{_index + 1}")
+            if not _product_draft_dir(candidate).exists():
+                draft_id = candidate
+                break
+        else:
+            draft_id = _safe_id(f"{base}-{uuid.uuid4().hex[:8]}")
+        workspace = _product_draft_dir(draft_id).resolve()
+        workspace.mkdir(parents=True, exist_ok=True)
+        now = _now()
+        manifest = {
+            "id": draft_id,
+            "draft": True,
+            "draft_status": "clarifying",
+            "title": title,
+            "avatar": str(body.get("avatar") or "").strip(),
+            "desc": str(body.get("desc") or body.get("description") or "").strip(),
+            "source_prompt": source_prompt,
+            "product_type": "custom",
+            "ui_mode": "chat_only",
+            "product_layout": "chat_only",
+            "canvas_label": "",
+            "preview_entry": "index.html",
+            "skills": [],
+            "tools": [],
+            "created_at": now,
+            "updated_at": now,
+        }
+        (workspace / "product.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+        readme = workspace / "README.md"
+        if not readme.exists():
+            readme.write_text(
+                "\n".join(
+                    [
+                        f"# {title}",
+                        "",
+                        "This is a Knead draft workspace. It is not on the AI shelf yet.",
+                        "",
+                        "Creator should shape product.json first. Create index.html, style.css,",
+                        "and app.js only when a dedicated workspace would make this AI easier to use.",
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+        return {
+            "ok": True,
+            "draft": {
+                "id": draft_id,
+                "title": title,
+                "original_title": title,
+                "source_prompt": source_prompt,
+                "workspace_path": str(workspace),
+                "manifest_path": str(workspace / "product.json"),
+                "created_at": now,
+            },
+        }
+
+
+def _product_draft_workspace_from_body(body: dict[str, Any]) -> Path:
+    draft_id = str(body.get("draft_id") or body.get("draftId") or body.get("id") or "").strip()
+    if draft_id:
+        workspace = _product_draft_dir(draft_id).resolve()
+    else:
+        raw_workspace = str(body.get("workspace_path") or body.get("workspacePath") or "").strip()
+        if not raw_workspace:
+            raise ValueError("draft_id or workspace_path is required")
+        workspace = Path(raw_workspace).expanduser().resolve()
+    try:
+        workspace.relative_to(PRODUCT_DRAFTS_DIR.resolve())
+    except ValueError as exc:
+        raise ValueError("draft workspace is outside product_drafts") from exc
+    if not workspace.is_dir():
+        raise FileNotFoundError(str(workspace))
+    return workspace
+
+
+def _normalize_draft_suggestions(value: Any) -> list[Any]:
+    if not isinstance(value, list):
+        return []
+    normalized: list[Any] = []
+    for item in value:
+        if isinstance(item, list) and item:
+            prompt = str(item[0] or "").strip()
+            label = str(item[1] if len(item) > 1 else item[0] or "").strip()
+            if prompt:
+                normalized.append([prompt, label or prompt[:24]])
+        else:
+            prompt = str(item or "").strip()
+            if prompt:
+                normalized.append([prompt, prompt[:24]])
+    return normalized
+
+
+def _product_payload_from_draft_manifest(manifest: dict[str, Any], *, product_id: str, workspace_path: Path) -> dict[str, Any]:
+    item = dict(manifest)
+    item.pop("draft", None)
+    item["id"] = product_id
+    item["kind"] = str(item.get("kind") or f"custom-{product_id}")
+    item["workspace_path"] = str(workspace_path.resolve())
+    item["preview_url"] = f"/api/products/{product_id}/preview"
+    item["suggestions"] = _normalize_draft_suggestions(item.get("suggestions"))
+    ui_mode = str(item.get("ui_mode") or item.get("uiMode") or "chat_only").strip()
+    product_layout = str(item.get("product_layout") or item.get("productLayout") or item.get("layout") or "").strip()
+    if ui_mode == "canvas":
+        item["ui_mode"] = "workspace"
+    if product_layout == "canvas":
+        item["product_layout"] = "canvas_full"
+    if item.get("ui_mode") != "chat_only" and not item.get("product_layout"):
+        item["product_layout"] = "chat_left_canvas_right"
+    return item
+
+
+def _generic_draft_titles() -> set[str]:
+    return {
+        "",
+        "ai",
+        "ai product",
+        "custom ai",
+        "new ai",
+        "new product",
+        "placeholder ai",
+        "untitled",
+        "untitled ai",
+    }
+
+
+def _draft_publish_readiness(
+    manifest: dict[str, Any],
+    *,
+    original_title: str = "",
+) -> tuple[bool, str]:
+    status = str(manifest.get("draft_status") or manifest.get("draftStatus") or "").strip().lower()
+    title = str(manifest.get("title") or "").strip()
+    original = str(original_title or manifest.get("source_prompt") or manifest.get("sourcePrompt") or "").strip()
+    if status in {"ready", "publish", "published", "final"}:
+        if title.lower() in _generic_draft_titles():
+            return False, "Creator still needs to name this AI before it can be added to the shelf."
+        if original and title.strip().lower() == original.strip().lower():
+            return False, "Creator still needs to turn the original request into a product name."
+        return True, ""
+    if status in {"clarifying", "draft", "working", "needs_input", "not_ready"}:
+        return False, "Creator is still shaping this AI. Keep chatting until it marks the draft ready."
+    if not title:
+        return False, "Creator still needs to name this AI before it can be added to the shelf."
+    return False, "Creator has not marked this draft ready yet."
+
+
+def _draft_changed_enough_for_publish(
+    manifest: dict[str, Any],
+    *,
+    original_title: str = "",
+) -> bool:
+    return _draft_publish_readiness(manifest, original_title=original_title)[0]
+
+
+def _draft_ready_reason(manifest: dict[str, Any]) -> str:
+    status = str(manifest.get("draft_status") or manifest.get("draftStatus") or "").strip().lower()
+    if status not in {"ready", "publish", "published", "final"}:
+        return ""
+    explicit_reason = str(
+        manifest.get("draft_ready_reason")
+        or manifest.get("draftReadyReason")
+        or manifest.get("ready_reason")
+        or manifest.get("readyReason")
+        or ""
+    ).strip()
+    return explicit_reason[:240] or f"draft_status={status}"
+
+
+def _draft_payload_from_manifest(manifest: dict[str, Any], *, workspace: Path, manifest_path: Path) -> dict[str, Any]:
+    status = str(manifest.get("draft_status") or manifest.get("draftStatus") or "").strip().lower()
+    return {
+        "id": str(manifest.get("id") or workspace.name).strip() or workspace.name,
+        "title": str(manifest.get("title") or "New AI").strip() or "New AI",
+        "desc": str(manifest.get("desc") or manifest.get("description") or "").strip(),
+        "draft_status": status or "clarifying",
+        "ready_reason": _draft_ready_reason(manifest),
+        "ui_mode": str(manifest.get("ui_mode") or manifest.get("uiMode") or "chat_only").strip() or "chat_only",
+        "product_layout": str(manifest.get("product_layout") or manifest.get("productLayout") or "chat_only").strip() or "chat_only",
+        "workspace_path": str(workspace),
+        "manifest_path": str(manifest_path),
+    }
+
+
+def product_draft_status(body: dict[str, Any]) -> dict[str, Any]:
+    """Read a Creator draft without publishing it."""
+
+    if not isinstance(body, dict):
+        body = {}
+    workspace = _product_draft_workspace_from_body(body)
+    manifest_path = workspace / "product.json"
+    if not manifest_path.is_file():
+        raise FileNotFoundError(str(manifest_path))
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    if not isinstance(manifest, dict):
+        raise ValueError("product.json must be an object")
+
+    published_file = workspace / ".knead-published.json"
+    published_product = None
+    if published_file.is_file():
+        try:
+            published = json.loads(published_file.read_text(encoding="utf-8"))
+            published_product = get_product(str(published.get("product_id") or ""))
+        except Exception:
+            published_product = None
+
+    original_title = str(body.get("original_title") or body.get("originalTitle") or "").strip()
+    ready, not_ready_reason = _draft_publish_readiness(manifest, original_title=original_title)
+    draft = _draft_payload_from_manifest(manifest, workspace=workspace, manifest_path=manifest_path)
+    return {
+        "ok": True,
+        "draft": draft,
+        "ready": ready,
+        "ready_reason": draft.get("ready_reason") if ready else "",
+        "not_ready_reason": "" if ready else not_ready_reason,
+        "published": bool(published_product),
+        "product": published_product,
+    }
+
+
+def publish_product_draft(body: dict[str, Any]) -> dict[str, Any]:
+    """Promote a Creator draft workspace into a real AI product."""
+
+    if not isinstance(body, dict):
+        body = {}
+    workspace = _product_draft_workspace_from_body(body)
+    manifest_path = workspace / "product.json"
+    if not manifest_path.is_file():
+        raise FileNotFoundError(str(manifest_path))
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    if not isinstance(manifest, dict):
+        raise ValueError("product.json must be an object")
+    published_file = workspace / ".knead-published.json"
+    if published_file.is_file():
+        try:
+            published = json.loads(published_file.read_text(encoding="utf-8"))
+            product = get_product(str(published.get("product_id") or ""))
+            if product:
+                draft = _draft_payload_from_manifest(manifest, workspace=workspace, manifest_path=manifest_path)
+                return {
+                    "ok": True,
+                    "published": True,
+                    "already_published": True,
+                    "draft": draft,
+                    "product": product,
+                    "ready_reason": draft.get("ready_reason") or "",
+                }
+        except Exception:
+            pass
+
+    force = bool(body.get("force"))
+    if_ready = bool(body.get("if_ready") or body.get("ifReady"))
+    original_title = str(body.get("original_title") or body.get("originalTitle") or "").strip()
+    ready, not_ready_reason = _draft_publish_readiness(manifest, original_title=original_title)
+    if if_ready and not force and not ready:
+        return {
+            "ok": True,
+            "published": False,
+            "not_ready": True,
+            "ready_reason": "",
+            "not_ready_reason": not_ready_reason,
+        }
+
+    with _LOCK:
+        state = _ensure_builtin_products_locked()
+        products = state["products"]
+        existing_ids = {item["id"] for item in products}
+        title = str(manifest.get("title") or "AI product").strip() or "AI product"
+        base_id = _safe_id(title)
+        product_id = _ensure_unique_product_id(base_id, existing_ids)
+        while _product_dir(product_id).exists():
+            existing_ids.add(product_id)
+            product_id = _ensure_unique_product_id(base_id, existing_ids)
+        product_dir = _product_dir(product_id).resolve()
+        shutil.copytree(
+            workspace,
+            product_dir,
+            ignore=shutil.ignore_patterns(".knead-published.json"),
+        )
+        product = _normalize_product(
+            _product_payload_from_draft_manifest(
+                manifest,
+                product_id=product_id,
+                workspace_path=product_dir,
+            )
+        )
+        product["sessions"] = []
+        product["versions"] = []
+        product["created_at"] = _now()
+        product["updated_at"] = product["created_at"]
+        entry = product_dir / str(product.get("preview_entry") or "index.html").strip("/")
+        if str(product.get("ui_mode") or "") == "chat_only":
+            product["ui_status"] = "ready"
+        else:
+            product["ui_status"] = "ready" if entry.is_file() else "empty"
+        _write_manifest(product)
+        _register_workspace(product)
+        products.append(product)
+        _write_state({"products": products})
+        published_file.write_text(
+            json.dumps(
+                {"product_id": product_id, "published_at": product["created_at"]},
+                ensure_ascii=False,
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+        draft = _draft_payload_from_manifest(manifest, workspace=workspace, manifest_path=manifest_path)
+        return {
+            "ok": True,
+            "published": True,
+            "draft": draft,
+            "product": product,
+            "ready_reason": draft.get("ready_reason") or "",
+        }
+
+
 def update_product(product_id_or_kind: str, patch: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(patch, dict):
         patch = {}
@@ -666,6 +1021,8 @@ def update_product(product_id_or_kind: str, patch: dict[str, Any]) -> dict[str, 
             "desc",
             "placeholder",
             "source_prompt",
+            "system_prompt",
+            "instructions",
             "product_type",
             "ui_mode",
             "product_layout",
@@ -835,6 +1192,8 @@ def _product_manifest_patch_from_workspace(product: dict[str, Any]) -> dict[str,
         "desc",
         "placeholder",
         "source_prompt",
+        "system_prompt",
+        "instructions",
         "product_type",
         "ui_mode",
         "product_layout",
@@ -843,6 +1202,7 @@ def _product_manifest_patch_from_workspace(product: dict[str, Any]) -> dict[str,
     }
     aliases = {
         "sourcePrompt": "source_prompt",
+        "systemPrompt": "system_prompt",
         "productType": "product_type",
         "uiMode": "ui_mode",
         "productLayout": "product_layout",
@@ -1015,11 +1375,25 @@ def _layout_promotion_patch(
     current_canvas_label: str,
 ) -> dict[str, Any]:
     """The ONE place that decides 'a real UI now exists on a chat_center product, so
-    promote it to chat_left_canvas_right'. Never overrides an explicit layout choice
-    (anything other than the chat_center default) or an explicit canvas_label."""
-    if not entry_generated or ui_mode == "chat_only" or product_layout != "chat_center":
+    promote it to chat_left_canvas_right'. Never overrides an explicit workspace
+    layout choice (anything other than the chat_center default) or an explicit
+    canvas_label.
+
+    ``chat_only`` is not a valid final state once a real entry file exists: it
+    means the agent wrote a page but did not update product.json. In that case,
+    heal the drift and make the page openable.
+    """
+    if not entry_generated:
         return {}
-    patch: dict[str, Any] = {"product_layout": "chat_left_canvas_right"}
+    if ui_mode == "chat_only" or product_layout == "chat_only":
+        patch: dict[str, Any] = {
+            "ui_mode": "workspace",
+            "product_layout": "chat_left_canvas_right",
+        }
+    elif product_layout == "chat_center":
+        patch = {"product_layout": "chat_left_canvas_right"}
+    else:
+        return {}
     if not current_canvas_label:
         patch["canvas_label"] = "Workspace"
     return patch
@@ -1167,7 +1541,8 @@ def product_file_status(product_id_or_kind: str) -> dict[str, Any]:
 
 def preview_product_file(product_id: str, asset: str = "index.html") -> Path:
     product_id = _safe_id(product_id)
-    products = {item["id"]: item for item in _read_state()["products"]}
+    with _LOCK:
+        products = {item["id"]: item for item in _ensure_builtin_products_locked()["products"]}
     if product_id not in products:
         raise FileNotFoundError(product_id)
     root = Path(products[product_id]["workspace_path"]).resolve()

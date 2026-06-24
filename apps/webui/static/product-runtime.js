@@ -43,14 +43,18 @@ function _shouldInitializeProductUiForMessage(object) {
   return !!(object && object.productId && _productUiNeedsInitialGeneration(object));
 }
 
-function _assistantProductInitTaskTitle(object = _assistantObject()) {
-  const title = object && object.title ? String(object.title).trim() : '这个 AI 产品';
-  return `生成${title}产品界面`.slice(0, 64);
+function _assistantProductInitTaskTitle(object = _assistantObject(), sourcePrompt = '') {
+  const request = String(sourcePrompt || '').replace(/\s+/g, ' ').trim();
+  if (request) return request.slice(0, 64);
+  const title = object && object.title ? String(object.title).trim() : 'this AI';
+  return title.slice(0, 64);
 }
 
-function _assistantProductInitUserMessage(object = _assistantObject()) {
-  const title = object && object.title ? String(object.title).trim() : '这个 AI 产品';
-  return `开始生成「${title}」的第一版产品界面，先做一个简单可用的版本。`;
+function _assistantProductInitUserMessage(object = _assistantObject(), sourcePrompt = '') {
+  const request = String(sourcePrompt || (object && object.sourcePrompt) || '').trim();
+  if (request) return request;
+  const title = object && object.title ? String(object.title).trim() : 'this AI';
+  return `Help me start using ${title}.`;
 }
 
 function _currentSessionMatchesProduct(object) {
@@ -64,6 +68,9 @@ function _currentSessionMatchesProduct(object) {
 }
 
 function currentAssistantProductContextForMessage(text = '', options = {}) {
+  if (typeof syncAssistantSelectionToSessionProduct === 'function') {
+    syncAssistantSelectionToSessionProduct();
+  }
   const kind = _assistantKey();
   const object = _assistantObject(kind);
   if (!object || !object.productId || kind === 'create') return null;
@@ -93,7 +100,7 @@ function currentAssistantProductContextForMessage(text = '', options = {}) {
     product_scope_explicit: true,
     product_intent: pendingIntent || String(text || '').trim()
   };
-  if (scope === 'product_init') context.product_task_title = _assistantProductInitTaskTitle(object);
+  if (scope === 'product_init') context.product_task_title = _assistantProductInitTaskTitle(object, context.product_intent);
   return context;
 }
 
@@ -247,8 +254,8 @@ function _productCanvasBridgeInstruction(payload = {}, object = _assistantObject
   const character = context && typeof context.character === 'object' ? context.character : {};
   const history = Array.isArray(context.history) ? context.history.slice(-12) : [];
   const lines = [
-    '[[NEXT_AI_HIDDEN_CONTEXT]]',
-    'This user message came from an AI product canvas embedded in Next AI.',
+    '[[KNEAD_HIDDEN_CONTEXT]]',
+    'This user message came from an AI product canvas embedded in Knead.',
     `AI product: ${object && object.title || 'current product'}`,
     `Product layout: ${object && (object.productLayout || object.product_layout) || 'unknown'}`,
     payload.action && `Product action: ${payload.action}`,
@@ -263,7 +270,7 @@ function _productCanvasBridgeInstruction(payload = {}, object = _assistantObject
       return content ? `- ${role}: ${content.slice(0, 500)}` : '';
     }).filter(Boolean),
     'If this is character chat, reply as the active character. Return only the character-facing message unless the user clearly asks to change the product interface or workflow.',
-    '[[/NEXT_AI_HIDDEN_CONTEXT]]'
+    '[[/KNEAD_HIDDEN_CONTEXT]]'
   ].filter(Boolean);
   return lines.join('\n');
 }
@@ -307,7 +314,8 @@ async function _sendProductCanvasAgentMessage(payload = {}, event = null) {
       ? requestedScope
       : 'product_usage';
     window._nextAiPendingProductIntent = text;
-    window._nextAiPendingHiddenAgentInstruction = _productCanvasBridgeInstruction(payload);
+    window._nextAiPendingAgentInstruction = _productCanvasBridgeInstruction(payload);
+    window._nextAiPendingHiddenAgentInstruction = '';
     input.value = text;
     if (typeof autoResize === 'function') autoResize();
     _postProductCanvasBridgeMessage({type:'nextai:host:ack', requestId, sessionId:sid});
@@ -406,9 +414,10 @@ window.notifyProductCanvasAgentReply = notifyProductCanvasAgentReply;
 window.broadcastAgentMessageToCanvas = broadcastAgentMessageToCanvas;
 window.notifyProductCanvasAgentError = notifyProductCanvasAgentError;
 
-async function _startProductInitializationTask(assistant, sourcePrompt) {
+async function _startProductInitializationTask(assistant, sourcePrompt, options = {}) {
   if (!assistant || !assistant.productId || !assistant.workspacePath) return false;
-  if (typeof _assistantUsesProductCanvas === 'function' && !_assistantUsesProductCanvas(assistant)) return false;
+  const allowWithoutCanvas = !!(options && options.allowWithoutCanvas);
+  if (!allowWithoutCanvas && typeof _assistantUsesProductCanvas === 'function' && !_assistantUsesProductCanvas(assistant)) return false;
   if (typeof newSession !== 'function' || typeof send !== 'function') {
     await _setProductUiStatus(assistant, 'failed', {persist: true});
     openAssistantHome(assistant.kind);
@@ -419,7 +428,7 @@ async function _startProductInitializationTask(assistant, sourcePrompt) {
     await _setProductUiStatus(assistant, 'generating', {persist: true});
     openAssistantHome(assistant.kind);
     await refreshCurrentProductPreview({silent:true, reason:'product-init-start'});
-    const initTaskTitle = _assistantProductInitTaskTitle(assistant);
+    const initTaskTitle = options && options.taskTitle ? String(options.taskTitle) : _assistantProductInitTaskTitle(assistant, sourcePrompt);
     await newSession(false, {
       workspace: assistant.workspacePath,
       productId: assistant.productId,
@@ -447,7 +456,9 @@ async function _startProductInitializationTask(assistant, sourcePrompt) {
       await refreshCurrentProductPreview({silent:true, reason:'product-init-input-missing'});
       return false;
     }
-    input.value = _assistantProductInitUserMessage(assistant);
+    input.value = options && options.userMessage
+      ? String(options.userMessage)
+      : _assistantProductInitUserMessage(assistant, sourcePrompt);
     if (typeof autoResize === 'function') autoResize();
     await send();
     return true;
@@ -455,10 +466,16 @@ async function _startProductInitializationTask(assistant, sourcePrompt) {
     await _setProductUiStatus(assistant, 'failed', {persist: true});
     openAssistantHome(assistant.kind);
     await refreshCurrentProductPreview({silent:true, reason:'product-init-error'});
-    if (typeof showToast === 'function') showToast(`首次生成产品界面失败：${err && err.message || err}`, 3600, 'error');
+    if (typeof showToast === 'function') showToast(`Shape failed: ${err && err.message || err}`, 3600, 'error');
     return false;
   }
 }
+
+async function startProductShapeTask(assistant, sourcePrompt) {
+  return _startProductInitializationTask(assistant, sourcePrompt, {allowWithoutCanvas: true});
+}
+
+window.startProductShapeTask = startProductShapeTask;
 
 function _withPreviewTimestamp(url) {
   if (!url) return '';

@@ -42,6 +42,7 @@ def prepare_streaming_turn_input(
     personality_name,
     webui_ephemeral_system_prompt: Callable,
     logger,
+    agent_instruction: str | None = None,
     workspace_context_prefix_fn=workspace_context_prefix,
     build_workspace_system_message_fn=build_workspace_system_message,
     configure_agent_runtime_prompt_fn=configure_agent_runtime_prompt,
@@ -59,6 +60,7 @@ def prepare_streaming_turn_input(
         config=config,
         personality_name=personality_name,
         product_context=product_context,
+        agent_instruction=agent_instruction,
         webui_ephemeral_system_prompt=webui_ephemeral_system_prompt,
         logger=logger,
     )

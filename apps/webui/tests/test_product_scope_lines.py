@@ -1,4 +1,4 @@
-"""Unit tests for Next AI product scope/line resolution (no live server needed).
+"""Unit tests for Knead product scope/line resolution (no live server needed).
 
 Covers the 用/调 (use/build) model wired in across:
 - api.models.Session.product_line          (use/build line tag, back-compat)
@@ -61,6 +61,17 @@ def test_session_product_line_rejects_garbage(tmp_path):
 def test_session_without_product_omits_line(tmp_path):
     # Non-product sessions must not gain product fields (back-compat).
     assert "product_line" not in Session(workspace=str(tmp_path)).compact()
+
+
+def test_creator_draft_session_has_explicit_metadata_without_product_id(tmp_path):
+    s = Session(
+        workspace=str(tmp_path / "product_drafts" / "tiny"),
+        creator_draft={"id": "tiny", "title": "Tiny AI", "workspace_path": str(tmp_path)},
+    )
+    compact = s.compact()
+    assert compact["creator_draft"]["id"] == "tiny"
+    assert "product_id" not in compact
+    assert "product_line" not in compact
 
 
 # --- infer_product_scope ------------------------------------------------------
@@ -191,6 +202,20 @@ def test_chat_only_usage_has_no_builder_guard():
     assert "Chat-only product adjustment" not in prompt
 
 
+def test_product_init_can_choose_chat_only_or_workspace():
+    prompt = product_ephemeral_prompt(
+        {"title": "New AI", "scope": "product_init", "ui_mode": "chat_only",
+         "product_layout": "chat_only", "intent": "Make me a writing coach"}
+    )
+    assert "not necessarily a UI" in prompt
+    assert "chat-only/config-only" in prompt
+    assert "ui_mode=chat_only" in prompt
+    assert "skills/tools" in prompt
+    assert "index.html/style.css/app.js" in prompt
+    assert "Chat-only product adjustment" not in prompt
+    assert "visible user message is the user's original request" in prompt
+
+
 # --- productize suggestion (chat_only usage) ----------------------------------
 
 def test_chat_only_usage_gets_productize_suggestion_protocol():
@@ -198,7 +223,8 @@ def test_chat_only_usage_gets_productize_suggestion_protocol():
         {"title": "通用 AI", "scope": "product_usage", "ui_mode": "chat_only",
          "product_layout": "chat_only"}
     )
-    assert "NEXT_AI_SUGGEST_PRODUCT" in prompt
+    assert "KNEAD_SUGGEST_PRODUCT" in prompt
+    assert "NEXT_AI_SUGGEST_PRODUCT" not in prompt
     assert "Only emit it when the thing is genuinely reusable" in prompt
 
 
@@ -208,7 +234,7 @@ def test_canvas_usage_has_no_productize_suggestion():
         {"title": "PPT 设计师", "scope": "product_usage", "ui_mode": "workspace",
          "product_layout": "chat_left_canvas_right"}
     )
-    assert "NEXT_AI_SUGGEST_PRODUCT" not in prompt
+    assert "KNEAD_SUGGEST_PRODUCT" not in prompt
 
 
 def test_chat_only_builder_has_no_productize_suggestion():
@@ -217,7 +243,7 @@ def test_chat_only_builder_has_no_productize_suggestion():
         {"title": "通用 AI", "scope": "product_builder", "ui_mode": "chat_only",
          "product_layout": "chat_only"}
     )
-    assert "NEXT_AI_SUGGEST_PRODUCT" not in prompt
+    assert "KNEAD_SUGGEST_PRODUCT" not in prompt
 
 
 # --- Builder Agent: strong toolset + file manifest + distinct prompt -----------

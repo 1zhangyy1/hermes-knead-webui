@@ -1417,12 +1417,15 @@ from api.workspace import (
 )
 from api.products import (
     create_product,
+    create_product_draft,
     delete_product,
     finalize_product_generation,
     list_product_versions,
+    product_draft_status,
     product_file_status,
     record_product_session,
     list_products,
+    publish_product_draft,
     preview_product_file,
     rollback_product,
     normalize_product_toolsets,
@@ -3030,6 +3033,25 @@ def handle_post(handler, parsed) -> bool:
         return _handle_workspace_reorder(handler, body)
 
     # ── AI product management (POST) ──
+    if parsed.path in {"/api/product-drafts/create", "/api/products/draft/create"}:
+        return j(handler, create_product_draft(body))
+
+    if parsed.path in {"/api/product-drafts/status", "/api/products/draft/status"}:
+        try:
+            return j(handler, product_draft_status(body))
+        except FileNotFoundError:
+            return bad(handler, "Product draft not found", status=404)
+        except ValueError as e:
+            return bad(handler, str(e), status=400)
+
+    if parsed.path in {"/api/product-drafts/publish", "/api/products/draft/publish"}:
+        try:
+            return j(handler, publish_product_draft(body))
+        except FileNotFoundError:
+            return bad(handler, "Product draft not found", status=404)
+        except ValueError as e:
+            return bad(handler, str(e), status=400)
+
     if parsed.path == "/api/products/create":
         return j(handler, create_product(body))
 
@@ -4614,6 +4636,7 @@ def _start_chat_stream_for_session(
     diag=None,
     goal_related: bool = False,
     product_context=None,
+    agent_instruction: str | None = None,
 ):
     """Persist pending state, register an SSE channel, and start an agent turn.
 
@@ -4650,6 +4673,7 @@ def _start_chat_stream_for_session(
         diag=diag,
         goal_related=goal_related,
         product_context=product_context,
+        agent_instruction=agent_instruction,
         streams=STREAMS,
         streams_lock=STREAMS_LOCK,
         stream_goal_related=STREAM_GOAL_RELATED,

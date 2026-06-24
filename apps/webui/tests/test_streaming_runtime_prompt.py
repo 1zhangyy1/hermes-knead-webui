@@ -95,3 +95,21 @@ def test_configure_agent_runtime_prompt_assigns_combined_prompt():
 
     assert prompt == 'Be direct.|Product: demo'
     assert agent.ephemeral_system_prompt == prompt
+
+
+def test_configure_agent_runtime_prompt_appends_structured_agent_instruction():
+    agent = Agent()
+
+    prompt = configure_agent_runtime_prompt(
+        agent,
+        config={},
+        personality_name=None,
+        product_context={'product': 'demo'},
+        agent_instruction='Creator draft rules',
+        product_ephemeral_prompt_fn=lambda ctx: f"Product: {ctx['product']}",
+        webui_ephemeral_system_prompt=lambda personality, product: product,
+        logger=Logger(),
+    )
+
+    assert prompt == 'Product: demo\n\nCreator draft rules'
+    assert agent.ephemeral_system_prompt == prompt

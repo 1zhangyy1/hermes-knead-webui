@@ -73,38 +73,51 @@ function _applyProductContextToCurrentSession(productContext = {}) {
   return true;
 }
 
+function _isKneadCreatorDraftSession() {
+  if (typeof S !== 'undefined' && S.session && S.session.creator_draft) return true;
+  const workspace = String((typeof S !== 'undefined' && S.session && S.session.workspace) || '');
+  return /(^|[\\/])product_drafts[\\/]/.test(workspace);
+}
+
 function _productUiStatusCard(phase, context = {}, options = {}) {
   const productTitle = context.productTitle || '这个 AI 产品';
   const isInit = String(context.productScope || '') === 'product_init';
+  const hasWorkspace = !!(options.hasWorkspace || context.hasWorkspace);
   const failureReason = String(options.failureReason || context.failureReason || '').trim();
   const rows = [
-    {label:'AI 产品', value:productTitle},
+    {label:'AI', value:productTitle},
     {
       label:'状态',
       value:phase === 'running'
-        ? (isInit ? '正在生成第一版产品界面' : '正在改产品界面')
+        ? (isInit ? '正在准备这个 AI' : '正在调整这个 AI')
         : phase === 'failed'
-          ? '生成失败'
-          : (isInit ? '第一版产品界面已生成' : '新版产品界面已生成')
+          ? '更新失败'
+          : (isInit
+            ? (hasWorkspace ? 'AI 和工作区已准备好' : 'AI 已准备好')
+            : (hasWorkspace ? 'AI 已更新，工作区已刷新' : 'AI 设置已更新'))
     }
   ];
   if (phase === 'failed' && failureReason) rows.push({label:'原因', value:failureReason});
   const actions = [];
-  if (phase === 'failed') actions.push({id:'product-regenerate', label:'重新生成产品界面'});
+  if (phase === 'failed') actions.push({id:'product-regenerate', label:'重新尝试'});
   if (!isInit && phase === 'done' && options.canRollback) actions.push({id:'product-rollback', label:'恢复上一版'});
   return {
     title: phase === 'running'
-      ? (isInit ? '正在生成这个 AI 产品的第一版产品界面' : '正在改这个 AI 产品的产品界面')
+      ? (isInit ? '正在准备这个 AI' : '正在调整这个 AI')
       : phase === 'failed'
-        ? (isInit ? '第一版产品界面生成失败' : '产品界面改造失败')
-        : (isInit ? '第一版产品界面已生成' : '已生成新版产品界面'),
+        ? (isInit ? 'AI 准备失败' : 'AI 调整失败')
+        : (isInit
+          ? (hasWorkspace ? 'AI 和工作区已准备好' : 'AI 已准备好')
+          : (hasWorkspace ? 'AI 已更新，工作区已刷新' : 'AI 设置已更新')),
     subtitle: phase === 'running'
-      ? (isInit ? '继续在这里聊天，右侧会自动出现这个产品的产品界面。' : '继续在这里聊天，右侧产品界面会更新。')
+      ? (isInit ? '继续正常聊天；需要时它会自己准备更合适的形态。' : '继续正常聊天；这个 AI 会按你的要求调整。')
       : phase === 'failed'
         ? (failureReason
-          ? `${failureReason} 可以重新生成产品界面，或继续说明你想让这个产品怎么工作。`
-          : (isInit ? '可以重新生成产品界面，或继续说明你想让这个产品怎么工作。' : '可以重新生成产品界面，或直接说想让它怎么改。'))
-        : (isInit ? '右侧已刷新，可以继续用普通聊天让它完成任务或调整产品界面。' : (options.canRollback ? '右侧已刷新，可恢复上一版。' : '右侧已刷新，可以继续聊天调整。')),
+          ? `${failureReason} 可以继续说明你想让这个 AI 怎么工作。`
+          : (isInit ? '可以继续说明你想让这个 AI 怎么工作。' : '可以直接说想让它怎么改。'))
+        : (hasWorkspace
+          ? (isInit ? '工作区已经准备好，也可以继续用聊天驱动它。' : (options.canRollback ? '工作区已刷新，可恢复上一版。' : '工作区已刷新，可以继续聊天调整。'))
+          : '可以直接继续聊天；如果之后需要工作区，它会再长出来。'),
     rows,
     actions
   };
@@ -134,6 +147,62 @@ function _appendProductUiStatusCard(phase, context = {}, options = {}) {
   });
   if (options.render !== false && typeof renderMessages === 'function') renderMessages({preserveScroll:true});
   return true;
+}
+
+function _removeCreatorDraftStatusCards(draftId = '') {
+  if (!Array.isArray(S.messages)) return;
+  const id = String(draftId || '').trim();
+  S.messages = S.messages.filter(message => {
+    if (!message || !message._creatorDraftStatus) return true;
+    if (!id) return false;
+    return String(message._creatorDraftStatus.draftId || '') !== id;
+  });
+}
+
+function _creatorDraftReadyStatusCard(status = {}) {
+  const draft = status && status.draft && typeof status.draft === 'object' ? status.draft : {};
+  const title = String(draft.title || 'this AI').trim() || 'this AI';
+  const layout = String(draft.product_layout || draft.productLayout || draft.ui_mode || 'chat_only').trim();
+  const form = layout === 'chat_only'
+    ? 'Chat'
+    : layout === 'canvas_full'
+      ? 'Workspace'
+      : 'Chat + workspace';
+  return {
+    title: `${title} is ready`,
+    subtitle: 'Add it to the shelf when it feels useful, or keep chatting to shape it further.',
+    rows: [
+      {label:'AI', value:title},
+      {label:'Form', value:form}
+    ],
+    actions: [{id:'creator-publish-draft', label:'Add to shelf'}]
+  };
+}
+
+function appendCreatorDraftReadyCard(status = {}, options = {}) {
+  if (!Array.isArray(S.messages)) return false;
+  if (!status || !status.ready || status.published) return false;
+  const draft = status.draft || {};
+  const draftId = String(draft.id || '').trim();
+  _removeCreatorDraftStatusCards(draftId);
+  S.messages.push({
+    role:'assistant',
+    content:'',
+    _ts:Date.now()/1000,
+    _transient:true,
+    _creatorDraftStatus:{
+      draftId,
+      workspacePath:String(draft.workspace_path || '').trim()
+    },
+    _statusCard:_creatorDraftReadyStatusCard(status)
+  });
+  if (options.render !== false && typeof renderMessages === 'function') renderMessages({preserveScroll:true});
+  return true;
+}
+
+if (typeof window !== 'undefined') {
+  window.appendCreatorDraftReadyCard = appendCreatorDraftReadyCard;
+  window.removeCreatorDraftStatusCards = _removeCreatorDraftStatusCards;
 }
 
 function _productFailureInfoFromAppError(payload = {}, label = '') {
@@ -395,20 +464,30 @@ async function send(){
   _sendInProgress = true;
   try{
   const text=$('msg').value.trim();
-  const hiddenAgentInstruction = typeof window !== 'undefined'
-    ? String(window._nextAiPendingHiddenAgentInstruction || '').trim()
+  const pendingAgentInstruction = typeof window !== 'undefined'
+    ? String(window._nextAiPendingAgentInstruction || window._nextAiPendingHiddenAgentInstruction || '').trim()
     : '';
-  if(hiddenAgentInstruction&&typeof window!=='undefined')window._nextAiPendingHiddenAgentInstruction='';
   if(!text&&!S.pendingFiles.length)return;
   // Don't send while an inline message edit is active
   if(document.querySelector('.msg-edit-area'))return;
-  if (typeof _assistantKey === 'function' && _assistantKey() === 'create' && text && !S.pendingFiles.length) {
+  const bypassCreateIntercept = !!(typeof window !== 'undefined' && window._nextAiCreateBypassOnce);
+  if (bypassCreateIntercept && typeof window !== 'undefined') window._nextAiCreateBypassOnce = false;
+  if (
+    typeof _assistantKey === 'function' &&
+    _assistantKey() === 'create' &&
+    text &&
+    !S.pendingFiles.length &&
+    !bypassCreateIntercept &&
+    !_isKneadCreatorDraftSession()
+  ) {
     const createProduct = typeof createProductFromPrompt === 'function'
       ? createProductFromPrompt
       : (typeof createAssistantFromPrompt === 'function' ? createAssistantFromPrompt : null);
     if (createProduct) {
-      const created = await createProduct(text);
-      if (created) {
+      const created = await createProduct(text, {deferInitialSend: true});
+      if (created && created.creatorDraft && typeof continueCreatorDraftTurn === 'function') {
+        continueCreatorDraftTurn(created);
+      } else if (created) {
         $('msg').value = '';
         autoResize();
       }
@@ -580,7 +659,6 @@ async function send(){
   let msgText=text;
   if(uploaded.length&&!msgText)msgText=`I've uploaded ${uploaded.length} file(s): ${uploadedPaths.join(', ')}`;
   else if(uploaded.length)msgText=`${text}\n\n[Attached files: ${uploadedPaths.join(', ')}]`;
-  if(hiddenAgentInstruction&&msgText)msgText=`${msgText}\n\n${hiddenAgentInstruction}`;
   if(!msgText){setComposerStatus('Nothing to send');return;}
   const productContext = typeof currentAssistantProductContextForMessage === 'function'
     ? currentAssistantProductContextForMessage(text || msgText)
@@ -640,14 +718,20 @@ async function send(){
   // Start the agent via POST, get a stream_id back
   let streamId;
   try{
+      const agentInstruction = pendingAgentInstruction;
 	    const startData=await api('/api/chat/start',{method:'POST',body:JSON.stringify({
 	      session_id:activeSid,message:msgText,
 	      model:S.session.model||$('modelSelect').value,workspace:S.session.workspace,
 	      model_provider:S.session.model_provider||null,
 	      profile:S.activeProfile||S.session.profile||'default',
 	      attachments:uploaded.length?uploaded:undefined,
+	      agent_instruction:agentInstruction||undefined,
 	      ...(productContext&&productContext.product_id?productContext:{})
 	    })});
+      if(agentInstruction&&typeof window!=='undefined'){
+        window._nextAiPendingAgentInstruction='';
+        window._nextAiPendingHiddenAgentInstruction='';
+      }
 
     if(startData.title) applySessionTitleUpdate(activeSid, startData.title, {provisionalText:titleCandidate.slice(0,64), rememberProvisional:true});
 
@@ -699,7 +783,7 @@ async function send(){
       stopApprovalPolling();
       stopClarifyPolling();
       // Keep the user's attempted turn by queueing it for after the current run.
-      queueSessionMessage(activeSid,{text:msgText,files:[],model:S.session&&S.session.model||($('modelSelect')&&$('modelSelect').value)||'',model_provider:S.session&&S.session.model_provider||null,profile:S.activeProfile||'default',...(productContext&&productContext.product_id?productContext:{})});
+      queueSessionMessage(activeSid,{text:msgText,files:[],model:S.session&&S.session.model||($('modelSelect')&&$('modelSelect').value)||'',model_provider:S.session&&S.session.model_provider||null,profile:S.activeProfile||'default',agent_instruction:pendingAgentInstruction||undefined,...(productContext&&productContext.product_id?productContext:{})});
       updateQueueBadge(activeSid);
       showToast('Current session is still running. Reconnected and queued your message.',2600);
       try{
@@ -1051,8 +1135,9 @@ function attachLiveStream(activeSid, streamId, uploaded=[], options={}){
     // Also handles DSML-prefixed variants from DeepSeek/Bedrock, including
     // spacing variants like "<｜DSML |function_calls" and truncated prefixes.
     if(!s) return s;
-    // 升格 marker 不能在流式中闪现(完整或未闭合的尾巴都抹掉)。
-    if(typeof window!=='undefined'&&typeof window._stripProductSuggestMarker==='function'&&String(s).indexOf('NEXT_AI_SUGGEST_PRODUCT')!==-1)s=window._stripProductSuggestMarker(s);
+    // Hide product upgrade markers during streaming, including incomplete tails.
+    const textForMarkers=String(s);
+    if(typeof window!=='undefined'&&typeof window._stripProductSuggestMarker==='function'&&(textForMarkers.indexOf('KNEAD_SUGGEST_PRODUCT')!==-1||textForMarkers.indexOf('NEXT_AI_SUGGEST_PRODUCT')!==-1))s=window._stripProductSuggestMarker(s);
     const lo=String(s).toLowerCase();
     if(lo.indexOf('function_calls')===-1 && lo.indexOf('dsml')===-1) return s;
     // Support both plain <function_calls> and DSML-prefixed variants.
@@ -1946,6 +2031,9 @@ function attachLiveStream(activeSid, streamId, uploaded=[], options={}){
           syncTopbar();renderMessages({preserveScroll:true});
           if((shouldFollowOnDone||bridgeReplySent)&&typeof scrollToBottom==='function') scrollToBottom();
           loadDir('.');
+          if (typeof refreshCreatorDraftStatus === 'function') {
+            setTimeout(() => refreshCreatorDraftStatus({silent:false}), 120);
+          }
           if(typeof refreshCurrentProductPreview==='function'){
             const _productScopeOnDone=String((productUiStatusContext&&productUiStatusContext.productScope)||(S.session&&S.session.product_scope)||'');
             const _productRefreshPromise=refreshCurrentProductPreview({reason:'stream-done'});
@@ -1957,6 +2045,7 @@ function attachLiveStream(activeSid, streamId, uploaded=[], options={}){
                 const failed=String(runtime&&runtime.uiStatus||'')==='failed';
                 _appendProductUiStatusCard(failed?'failed':'done', productUiStatusContext, {
                   failureReason:runtime&&runtime.failureReason||'',
+                  hasWorkspace:!!(runtime&&runtime.entryGenerated),
                   canRollback:_productScopeOnDone!=='product_init'&&!!(runtime&&runtime.canRollback)
                 });
                 if(shouldFollowOnDone&&typeof scrollToBottom==='function') scrollToBottom();
