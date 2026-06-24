@@ -1,103 +1,119 @@
 <!doctype html>
-<html lang="en">
+<html lang="zh">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>AI Otome</title>
+  <title>AI Otome · Mira</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <main class="otome-app" data-mood="curious" data-scene="rain">
-    <section class="stage" aria-label="Mira">
-      <div class="scene-glow" aria-hidden="true"></div>
-      <div class="rain-lines" aria-hidden="true"></div>
-      <header class="topbar">
-        <div class="identity">
-          <img class="portrait-small" src="assets/mira-happy.png" alt="Mira">
+  <div class="app" id="app" data-scene="rain" data-mood="curious">
+
+    <!-- ── LEFT: Character Stage ── -->
+    <aside class="stage" id="stage">
+      <div class="stage-bg" id="stageBg" aria-hidden="true"></div>
+
+      <header class="stage-header">
+        <div class="char-identity">
+          <div class="char-avatar" id="charAvatar">♡</div>
           <div>
-            <h1>Mira</h1>
-            <p>AI otome companion</p>
+            <div class="char-name">Mira</div>
+            <div class="char-sub" id="sceneLabel">Rainy Station</div>
           </div>
         </div>
-        <div class="scene-chip" id="sceneChip">Rainy station</div>
+        <button class="icon-btn" id="memoryToggle" title="Story journal" aria-label="Toggle journal">☰</button>
       </header>
 
-      <section class="story-card" aria-label="Current chapter">
-        <span id="chapterLabel">Chapter 1</span>
-        <h2 id="chapterTitle">A rain-soaked promise</h2>
-        <p id="objectiveText">Make Mira feel that this meeting was not an accident.</p>
-      </section>
-
-      <div class="character-wrap">
-        <img class="portrait" id="portrait" src="assets/mira-happy.png" alt="Mira character art">
-        <div class="mood-card">
-          <span>Mood</span>
-          <strong id="moodLabel">Curious</strong>
-        </div>
-        <div class="bond-burst" id="bondBurst" aria-live="polite"></div>
+      <div class="portrait-wrap">
+        <img class="portrait" id="portrait" src="assets/mira-happy.png" alt="Mira" onerror="this.style.display='none'; document.getElementById('portraitFallback').style.display='flex'">
+        <div class="portrait-fallback" id="portraitFallback">♡</div>
       </div>
 
-      <section class="relationship" aria-label="Relationship">
-        <div>
-          <span>Bond</span>
-          <strong id="bondValue">18%</strong>
-        </div>
-        <div class="bond-track"><i id="bondBar"></i></div>
-        <button id="resetBtn" type="button">Reset story</button>
-      </section>
-    </section>
+      <div class="mood-strip">
+        <div class="mood-pill" id="moodPill">🍃 好奇</div>
+        <div class="scene-dot-wrap" id="sceneDots"></div>
+      </div>
 
-    <section class="conversation" aria-label="Conversation">
-      <div class="conversation-head">
-        <div>
-          <h2>Tonight with Mira</h2>
-          <p id="sceneLine">Rain taps the glass roof. She notices you before you speak.</p>
-        </div>
-        <button id="imageBtn" type="button" title="Prepare a GPT Image 2 character prompt">Image prompt</button>
+      <div class="bond-row">
+        <span class="bond-label">Bond</span>
+        <div class="bond-track"><div class="bond-fill" id="bondFill"></div></div>
+        <span class="bond-pct" id="bondPct">18%</span>
+      </div>
+
+      <div class="bond-burst" id="bondBurst" aria-live="polite"></div>
+    </aside>
+
+    <!-- ── CENTER: Dialogue ── -->
+    <main class="dialogue" id="dialogue">
+      <div class="chapter-bar">
+        <span class="chapter-tag" id="chapterTag">Chapter 1</span>
+        <span class="chapter-title" id="chapterTitle">A rain-soaked promise</span>
+      </div>
+
+      <div class="objective-bar" id="objectiveBar">
+        <span class="obj-icon">◎</span>
+        <span id="objectiveText">Make Mira feel that this meeting was not an accident.</span>
       </div>
 
       <div class="messages" id="messages" aria-live="polite"></div>
-      <div class="choices" id="choices"></div>
+
+      <div class="choices-row" id="choices"></div>
 
       <form class="composer" id="composer">
-        <textarea id="input" rows="1" placeholder="Talk to Mira..." autocomplete="off"></textarea>
-        <button id="sendBtn" type="submit" aria-label="Send">↑</button>
+        <textarea id="input" rows="1" placeholder="对 Mira 说…" autocomplete="off"></textarea>
+        <button class="send-btn" id="sendBtn" type="submit" aria-label="Send">↑</button>
       </form>
-    </section>
+    </main>
 
-    <aside class="memory-panel" aria-label="Memory and state">
-      <section>
-        <h2>Story beats</h2>
+    <!-- ── RIGHT: Memory Panel (slide-in) ── -->
+    <aside class="memory-panel" id="memoryPanel" aria-label="Story journal">
+      <div class="panel-head">
+        <span>故事日志</span>
+        <button class="icon-btn" id="panelClose">✕</button>
+      </div>
+
+      <section class="panel-section">
+        <h3 class="panel-label">Story Beats</h3>
         <ol class="beat-list" id="beatList"></ol>
       </section>
-      <section>
-        <h2>Memory</h2>
-        <ul id="memoryList"></ul>
-      </section>
-      <section>
-        <h2>Scenes</h2>
-        <div class="scene-list" id="sceneList"></div>
-      </section>
-      <section class="director-note">
-        <h2>AI loop</h2>
-        <p>Mira replies, updates mood, saves one memory when it matters, and offers the next gentle move.</p>
-      </section>
-    </aside>
-  </main>
 
-  <dialog id="imageDialog">
-    <form method="dialog" class="image-dialog">
-      <header>
-        <h2>GPT Image 2 prompt</h2>
-        <button type="submit" aria-label="Close">×</button>
-      </header>
-      <p>Use this to generate Mira’s polished character image. Until then, the product uses CC0 expression sprites.</p>
-      <textarea id="imagePrompt" rows="8" readonly></textarea>
-      <div class="image-actions">
-        <button id="generatePortraitBtn" type="button">Generate portrait</button>
-        <button id="copyPromptBtn" type="button">Copy prompt</button>
+      <section class="panel-section">
+        <h3 class="panel-label">Memory</h3>
+        <ul class="memory-list" id="memoryList"></ul>
+      </section>
+
+      <section class="panel-section">
+        <h3 class="panel-label">场景切换</h3>
+        <div class="scene-btns" id="sceneList"></div>
+      </section>
+
+      <section class="panel-section">
+        <h3 class="panel-label">AI 状态</h3>
+        <p class="panel-note">Mira 每轮更新心情、bond 值、记忆，并决定下一步走向故事的方向。</p>
+      </section>
+
+      <div class="panel-footer">
+        <button class="ghost-btn" id="resetBtn">重置故事</button>
+        <button class="ghost-btn" id="imageBtn">生成立绘</button>
       </div>
-      <div class="image-result" id="imageResult">Uses GPT Image 2 when opened inside Knead.</div>
+    </aside>
+
+  </div>
+
+  <!-- Image dialog -->
+  <dialog id="imageDialog">
+    <form method="dialog" class="img-dialog-body">
+      <header class="img-dialog-head">
+        <span>生成 Mira 立绘</span>
+        <button type="submit" class="icon-btn" aria-label="Close">✕</button>
+      </header>
+      <p class="panel-note">将以下提示词发送给 GPT Image 2 或 fal.ai，生成 Mira 高清立绘。</p>
+      <textarea id="imagePrompt" rows="9" readonly></textarea>
+      <div class="img-dialog-actions">
+        <button id="generatePortraitBtn" type="button">生成立绘</button>
+        <button id="copyPromptBtn" type="button">复制提示词</button>
+      </div>
+      <div class="img-dialog-result" id="imageResult">在 Knead 中运行时可直接生成。</div>
     </form>
   </dialog>
 

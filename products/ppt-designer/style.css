@@ -102,7 +102,7 @@ body[data-stage="slides"] .stage-slides{display:flex;flex-direction:column}
   display:flex;flex-direction:column;
   align-items:center;justify-content:center;
   gap:12px;
-  padding:16px 14px;   /* 收紧边距，给幻灯片更多空间 */
+  padding:16px 14px;   /* Tight padding leaves more room for the slide. */
   background:var(--bg);
   overflow:hidden;
 }
@@ -110,9 +110,9 @@ body[data-stage="slides"] .stage-slides{display:flex;flex-direction:column}
 .viewer-empty-icon{font-size:40px;margin-bottom:10px}
 .viewer-empty .dim{color:var(--faint);font-size:13px;margin-top:4px}
 
-/* 幻灯片主体：由 JS 动态写入精确 width/height，确保不溢出 */
+/* Slide body: JS writes exact width/height so it cannot overflow. */
 .viewer-stage{
-  flex:0 0 auto;           /* 不参与 flex 伸缩，尺寸由 JS 控制 */
+  flex:0 0 auto;           /* Size is controlled by JS, not flex growth. */
   background:var(--surface);
   border:1px solid var(--border);
   border-radius:var(--radius);
@@ -133,7 +133,7 @@ body[data-stage="slides"] .stage-slides{display:flex;flex-direction:column}
 .nav-btn:hover{border-color:#D9D3C9;color:var(--ink)}
 .nav-label{font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums;min-width:54px;text-align:center}
 
-/* 缩略图条：固定高度，横向滚动 */
+/* Thumbnail strip: fixed height with horizontal scrolling. */
 .thumb-strip{
   flex:0 0 auto;
   display:flex;gap:6px;

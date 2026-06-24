@@ -1,9 +1,10 @@
-## Character sprite placeholders
+## Character Sprite Credits
 
 - Source: OpenGameArt, "Visual Novel Character Sprite"
 - URL: https://opengameart.org/content/visual-novel-character-sprite
 - License: CC0
 
-These images are temporary open-license sprite placeholders for the AI Otome MVP.
-The product can replace them with generated GPT Image 2 portraits through the
-in-app Image prompt flow.
+These images are open-license example sprites for the AI Otome built-in product.
+They are committed only to make the example product usable out of the box.
+Product-specific generated portraits, alternate sprites, and save-state images
+belong in runtime state unless they are deliberately curated and credited here.
