@@ -1,15 +1,48 @@
 {
-  "name": "nextaichat",
+  "name": "knead",
   "version": "0.1.0",
+  "description": "An AI product shelf where users can create, use, and shape small AI products from chat.",
   "private": true,
+  "license": "MIT",
   "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/1zhangyy1/knead.git"
+  },
+  "bugs": {
+    "url": "https://github.com/1zhangyy1/knead/issues"
+  },
+  "homepage": "https://github.com/1zhangyy1/knead#readme",
+  "keywords": [
+    "ai",
+    "agent",
+    "workspace",
+    "productivity",
+    "hermes"
+  ],
+  "engines": {
+    "node": ">=22",
+    "pnpm": ">=10.33",
+    "python": ">=3.11"
+  },
   "scripts": {
     "dev": "scripts/dev-webui.sh",
     "webui:dev": "scripts/dev-webui.sh",
+    "setup:local": "scripts/setup-local.sh",
+    "hermes": "scripts/hermes-local.sh",
+    "hermes:model": "scripts/hermes-local.sh setup model",
     "audit:repo": "node scripts/audit-repo.mjs",
+    "docs:check": "node scripts/check-markdown-links.mjs",
+    "security:scan": "node scripts/scan-secrets.mjs",
+    "product:check": "node scripts/verify-products.mjs --candidate",
+    "product:promote": "node scripts/promote-product.mjs",
     "verify": "node scripts/verify.mjs",
     "build": "pnpm -r build",
     "check": "pnpm -r check && pnpm verify",
+    "release:clean:local": "node scripts/clean-local-artifacts.mjs",
+    "release:batches": "node scripts/release-batches.mjs",
+    "release:check": "node scripts/release-check.mjs",
+    "release:check:clean": "node scripts/release-check.mjs --require-clean",
     "hermes:smoke": "node scripts/hermes-smoke.mjs"
   },
   "packageManager": "pnpm@10.33.0"

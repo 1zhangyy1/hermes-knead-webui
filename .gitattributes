@@ -1,7 +1,41 @@
-* text=auto
-*.sh text eol=lf
-*.mjs text eol=lf
+* text=auto eol=lf
+
+# Source files
+*.css text eol=lf
+*.html text eol=lf
 *.js text eol=lf
+*.json text eol=lf
+*.md text eol=lf
+*.mjs text eol=lf
+*.py text eol=lf
+*.sh text eol=lf
 *.ts text eol=lf
 *.tsx text eol=lf
-*.py text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+
+# Binary/user-export formats should not be line-normalized or text-diffed.
+*.gif binary
+*.ico binary
+*.jpeg binary
+*.jpg binary
+*.pdf binary
+*.png binary
+*.ppt binary
+*.pptx binary
+*.webp binary
+*.woff binary
+*.woff2 binary
+*.zip binary
+
+# Knead vendors Hermes Agent as a first-class runtime. Keep it in the repo,
+# but do not let the bundled upstream code dominate GitHub language stats.
+runtimes/hermes-agent/** linguist-vendored=true
+vendor/** linguist-vendored=true
+
+# Generated/local runtime outputs are ignored, but if they appear in a diff,
+# collapse them and exclude them from language stats.
+products/**/outputs/** linguist-generated=true
+products/**/versions/** linguist-generated=true
+*.lock linguist-generated=true
+pnpm-lock.yaml linguist-generated=true

@@ -1,0 +1,67 @@
+name: AI product example
+description: Propose a maintained built-in AI product example for the products/ gallery.
+title: "[Product example]: "
+labels:
+  - enhancement
+body:
+  - type: textarea
+    id: product-need
+    attributes:
+      label: Product need
+      description: What real user job would this AI product make easier?
+      placeholder: "As a user, I want an AI that..."
+    validations:
+      required: true
+  - type: dropdown
+    id: product-shape
+    attributes:
+      label: Product shape
+      description: Which maintained example shape would this product demonstrate?
+      options:
+        - chat_only
+        - chat_left_canvas_right
+        - canvas_full
+        - chat_center
+        - Not sure yet
+    validations:
+      required: true
+  - type: textarea
+    id: user-flow
+    attributes:
+      label: Expected user flow
+      description: Describe how a user creates, uses, and shapes this product.
+      placeholder: |
+        1. Select or create the product.
+        2. Chat with it about ...
+        3. The workspace appears when ...
+        4. The product can be shaped by ...
+    validations:
+      required: true
+  - type: textarea
+    id: product-boundary
+    attributes:
+      label: Product boundary
+      description: What belongs to this product's identity, prompt, skills, tools, files, or workspace?
+    validations:
+      required: true
+  - type: textarea
+    id: promotion-plan
+    attributes:
+      label: Promotion plan
+      description: If this starts from a runtime product, include the candidate path and checks you plan to run.
+      placeholder: |
+        Candidate path: .hermes-home/webui/products/<product-id>
+        Checks: pnpm product:check -- .hermes-home/webui/products/<product-id>
+  - type: checkboxes
+    id: source-boundary
+    attributes:
+      label: Source boundary
+      options:
+        - label: This should become a maintained example, not just a local generated product.
+          required: true
+        - label: I understand product outputs, save files, provider keys, and runtime state must stay out of Git.
+          required: true
+        - label: If promoted, the product README will include a Product Shape section.
+          required: true
+        - label: If promoted with media assets, the product will include assets/CREDITS.md with source and license details.
+          required: true

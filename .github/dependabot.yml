@@ -1,0 +1,27 @@
+version: 2
+
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      workspace-tooling:
+        patterns:
+          - "*"
+
+  - package-ecosystem: pip
+    directory: /apps/webui
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+
+# The bundled Hermes runtime is updated intentionally via the subtree process in
+# docs/architecture/HERMES_VENDORING.md, not by Dependabot against nested files.

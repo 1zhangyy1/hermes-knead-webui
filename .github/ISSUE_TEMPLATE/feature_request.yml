@@ -1,0 +1,47 @@
+name: Feature request
+description: Suggest a product, workflow, or infrastructure improvement.
+title: "[Feature]: "
+labels:
+  - enhancement
+body:
+  - type: textarea
+    id: user-need
+    attributes:
+      label: User need
+      description: What should become easier, clearer, or more powerful for the user?
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Product shelf
+        - General AI
+        - PPT Designer
+        - AI Otome
+        - New AI product example
+        - Creator / Shape it
+        - Files / workspace
+        - Hermes runtime
+        - Repository / release
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: proposed-flow
+    attributes:
+      label: Proposed flow
+      description: Describe the ideal user journey, not just the implementation.
+      placeholder: "As a user, I ..."
+    validations:
+      required: true
+  - type: textarea
+    id: product-boundary
+    attributes:
+      label: Product boundary
+      description: Which product owns the behavior, prompt, skills, tools, workspace, or UI?
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
