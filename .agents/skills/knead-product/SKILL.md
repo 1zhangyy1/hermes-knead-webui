@@ -86,6 +86,7 @@ Worked examples to read before building (real, shipped products):
 
 ## Pitfalls
 
+- **General technical questions**: Users in a Knead Creator session may ask general dev/research questions (e.g., "research doc site generators", "which framework should I use") that have nothing to do with the product being drafted. Handle these as normal AI tasks — answer fully and directly — do not force every query into the product-building frame. A greeting followed by a research question is still a research question.
 - Do not touch the host shell, other products, or repo files outside the
   product workspace unless the user explicitly asks to change Knead itself.
 - Do not build a marketing landing page; build a working task surface.
