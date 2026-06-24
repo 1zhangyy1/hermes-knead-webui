@@ -2,20 +2,21 @@
 
 ## Decision
 
-The local `nextaichat` directory is the source of truth. The private GitHub repository is the remote backup and collaboration repository.
+The local repository directory is the source of truth. The Git remote should mirror this clean source tree for backup, collaboration, and release.
 
 The production repository should be understandable from the root:
 
 - `apps/webui` is the main product application.
-- `products` contains AI-product-owned workspaces.
+- `products` contains built-in example AI products committed with the repository.
 - `packages` contains shared libraries.
 - `runtimes` contains first-class runtime dependencies that the product is built on.
-- `experiments` contains old prototypes and non-production explorations.
+- `experiments` documents the release boundary for old prototypes that should
+  stay outside the public source tree unless rewritten as current examples.
 - `vendor` is local-only reference material and is ignored by Git.
 
 ## Current Product Truth
 
-Next AI is not an assistant list and not a Lovable-style app builder.
+Knead is not an assistant list and not a Lovable-style app builder.
 
 It is an AI product library:
 
@@ -27,8 +28,8 @@ It is an AI product library:
 
 The core MVP boundary is:
 
-- `通用 AI`: product interface is the base chat surface.
-- `PPT 设计师`: product interface can become Chat plus a PPT task surface.
+- `General AI`: product interface is the base chat surface.
+- `PPT Designer`: product interface can become Chat plus a PPT task surface.
 - New products: start with identity and chat, then the agent writes product files when the conversation asks for or implies a product UI.
 
 ## Problems Found
@@ -45,7 +46,7 @@ The original local tree was useful for research but not production-grade:
 ## Target Structure
 
 ```text
-nextaichat/
+knead/
   apps/
     webui/
       api/
@@ -53,10 +54,16 @@ nextaichat/
       server.py
       bootstrap.py
   products/
+    README.md
     general/
       product.json
       index.html
     ppt-designer/
+      product.json
+      index.html
+      style.css
+      app.js
+    ai-otome/
       product.json
       index.html
       style.css
@@ -74,10 +81,9 @@ nextaichat/
     architecture/
     references/
     archive/
+      README.md
   experiments/
-    host-shell/
-    spaces/
-    prototypes/
+    README.md
   vendor/
     ignored local reference checkouts
 ```
@@ -88,9 +94,19 @@ nextaichat/
 
 `apps/webui` is the product application. Any runtime change to the app shell, chat surface, product runtime, or API routes belongs here.
 
-### Product Workspaces
+### Built-in Product Workspaces
 
-`products/<product-id>` is the file boundary for an AI product. This is where the agent should write or update:
+`products/<product-id>` is the source boundary for curated built-in example AI products that ship with the repository. These products prove the product model and can be edited by maintainers as source code. The official built-in set is listed in `products/catalog.json` and source-allow-listed in `.gitignore`; adding a new built-in product should be an intentional source change.
+
+Runtime user-created products are not source code. By default they live under:
+
+```text
+<webui-state-dir>/products/<product-id>/
+```
+
+When launched through the root `pnpm dev` script, `<webui-state-dir>` is `.hermes-home/webui`. It can also be overridden explicitly through `KNEAD_PRODUCTS_DIR`.
+
+This is where the agent should write or update for user-created products:
 
 - `product.json`
 - `index.html`
@@ -110,6 +126,18 @@ Runtime state stays outside Git:
 - `node_modules`
 - generated product versions
 
+### First-run Configuration
+
+The root `.env.example` is the public local-development template. It is safe to commit and should contain only placeholders. Developers run `pnpm setup:local`, add provider keys to `.env`, configure the model with `pnpm hermes:model`, then run `pnpm dev`.
+
+The root dev script reads `.env`, resolves project-relative paths against the repository root, and keeps Hermes state in `.hermes-home` by default. The model/provider config still belongs to the project-local Hermes home, so first-time users should run:
+
+```bash
+pnpm hermes:model
+```
+
+Real secrets belong in `.env`, `.hermes-home/.env`, or product-specific ignored env files such as `products/ppt-designer/ppt-skill/.env`; never in tracked source.
+
 ### Hermes Runtime
 
 `runtimes/hermes-agent` is the first-class Hermes Agent runtime baseline. It is vendored from the official `NousResearch/hermes-agent` repository by `git subtree`, not copied by hand.
@@ -124,24 +152,24 @@ The product should depend on Hermes through a narrow runtime boundary where poss
 
 ### Phase 1: Repository Clean Boundary
 
-Status: in progress.
+Status: baseline in place. Keep this phase green by running `pnpm check` before publishing or pushing.
 
-- Move the main app from `vendor/hermes-webui` to `apps/webui`.
-- Move built-in product workspaces from `spaces/products` to `products`.
-- Move old host shell and space prototypes to `experiments`.
-- Ignore `vendor`, runtime state, generated outputs, and local dependencies.
-- Update root scripts so `pnpm dev` starts the actual WebUI.
-- Update product path discovery so products resolve from the project root.
+- The main app lives in `apps/webui`.
+- Built-in example product workspaces live in `products`.
+- Runtime user-created products live under `.hermes-home/webui/products` by default.
+- `vendor`, runtime state, generated outputs, and local dependencies are ignored.
+- Root scripts start the actual WebUI.
+- Product path discovery resolves from the project root and state directory.
 
 ### Phase 2: Product Creation Runtime
 
 Goal: new product creation should match the user's expectation:
 
 1. User describes a product.
-2. System creates a product identity.
-3. User continues normal chat.
-4. The agent writes product files in `products/<id>` when the conversation needs a UI.
-5. The product preview appears without global shell changes.
+2. Creator opens a draft product workspace in runtime state.
+3. Creator chats normally and writes the smallest useful product shape.
+4. Creator explicitly marks the draft ready before the user adds it to the shelf.
+5. Published products appear without global shell changes.
 
 Implementation notes:
 
@@ -149,6 +177,7 @@ Implementation notes:
 - Builder turns can write only inside the selected product workspace by default.
 - Usage turns should remain normal chat unless task structure is useful.
 - Product identity changes update `product.json`, not global UI code.
+- Product categories, layouts, skills, tools, and readiness should come from Creator output, not shell-side keyword classifiers.
 
 ### Phase 3: Product Self-Evolution
 
@@ -174,7 +203,8 @@ Minimum checks:
 - JavaScript syntax checks for product runtime files.
 - TypeScript checks for shared packages.
 - Repository audit for ignored/runtime/reference boundaries.
-- Product API smoke check for `general` and `ppt-designer`.
+- Product API smoke check for `general`, `ppt-designer`, and `ai-otome`.
+- Current documentation entry checks for stale product naming.
 - Browser check for first screen and one product task flow.
 
 Current CI runs `pnpm check` on push and pull requests. The product API and browser checks remain local/manual until the runtime dependencies are made CI-friendly.
@@ -188,6 +218,8 @@ The repository is production-grade when:
 - `pnpm check` passes locally.
 - Reference projects are not committed as production source.
 - Runtime files are ignored.
-- AI product files live under `products`.
+- A new contributor can copy `.env.example`, configure a model, run `pnpm dev`, and see the WebUI.
+- Built-in example AI product files live under `products`.
+- User-created AI product files live under runtime state by default, not in the source tree.
 - Product self-changes are scoped to the selected product workspace.
-- The private GitHub repository points at this clean structure.
+- The Git remote points at this clean structure.

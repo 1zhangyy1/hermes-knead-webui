@@ -2,7 +2,7 @@
 
 日期：2026-05-18
 
-> 2026-05-23 更新：本文对 Hermes WebUI 的技术复用判断仍有参考价值，但其中“左侧导航增加一级工作台 / Workbench 作为显性 feature”的产品结论需要按当前准则收敛。当前以 [当前产品认知：自进化工作台](PRODUCT_DIRECTION_CURRENT.md) 为准：第一版先做极简空工作台 Chat，工作台是从任务中保存出来的沉淀结果。
+> 2026-05-23 更新：本文对 Hermes WebUI 的技术复用判断仍有参考价值，但其中“左侧导航增加一级工作台 / Workbench 作为显性 feature”的产品结论需要按当前准则收敛。当前产品定义以 [PRODUCT.md](../../PRODUCT.md) 和 [PRODUCT_UIUX.md](../../PRODUCT_UIUX.md) 为准：Knead 是 AI product shelf，用户先选择或创建 AI product，再从 Chat 开始，让产品在需要结构时长出自己的 product canvas。
 
 ## 1. 本次验证对象
 
@@ -73,12 +73,12 @@ git clone --depth 1 https://github.com/nesquena/hermes-webui.git vendor/hermes-w
 本地隔离启动命令：
 
 ```sh
-cd /Users/nuomiji/Documents/zyyai/max/nextaichat
+cd $REPO_ROOT
 
 HERMES_HOME=$PWD/.hermes-home \
 HERMES_WEBUI_AGENT_DIR=$PWD/vendor/hermes-agent \
 HERMES_WEBUI_PYTHON=$PWD/vendor/hermes-agent/.venv/bin/python \
-HERMES_WEBUI_STATE_DIR=$PWD/.hermes-home/webui-nesquena \
+HERMES_WEBUI_STATE_DIR=$PWD/.hermes-home/webui-reference \
 HERMES_WEBUI_DEFAULT_WORKSPACE=$PWD \
 HERMES_WEBUI_SKIP_ONBOARDING=1 \
 HERMES_WEBUI_PORT=8788 \
@@ -246,5 +246,5 @@ Task / Chat / Workbench
    - `POST /api/workbenches/apply`
    - `POST /api/workbenches/rollback`
 6. 第一版 workbench 状态存在：
-   - `.hermes-home/webui-nesquena/workbenches.json`
+   - `.hermes-home/webui-reference/workbenches.json`
 7. PPT Workbench 可以先是静态预览页，不急着真的生成代码。

@@ -22,19 +22,19 @@ Phase 0 的目标是验证：
 本次没有改动全局 `~/.hermes` 的配置，而是在项目内使用：
 
 ```text
-HERMES_HOME=/Users/nuomiji/Documents/zyyai/max/nextaichat/.hermes-home
+HERMES_HOME=$REPO_ROOT/.hermes-home
 ```
 
 Hermes Agent 源码和 venv 位于：
 
 ```text
-/Users/nuomiji/Documents/zyyai/max/nextaichat/runtimes/hermes-agent
+$REPO_ROOT/runtimes/hermes-agent
 ```
 
 安装依赖：
 
 ```sh
-cd /Users/nuomiji/Documents/zyyai/max/nextaichat/runtimes/hermes-agent
+cd $REPO_ROOT/runtimes/hermes-agent
 uv venv .venv --python 3.11
 uv pip install -e ".[web,messaging]"
 ```
@@ -42,8 +42,8 @@ uv pip install -e ".[web,messaging]"
 启动 gateway：
 
 ```sh
-cd /Users/nuomiji/Documents/zyyai/max/nextaichat/runtimes/hermes-agent
-HERMES_HOME=/Users/nuomiji/Documents/zyyai/max/nextaichat/.hermes-home \
+cd $REPO_ROOT/runtimes/hermes-agent
+HERMES_HOME=$REPO_ROOT/.hermes-home \
 API_SERVER_ENABLED=true \
 API_SERVER_HOST=127.0.0.1 \
 API_SERVER_PORT=8642 \
@@ -53,8 +53,8 @@ API_SERVER_PORT=8642 \
 启动 dashboard：
 
 ```sh
-cd /Users/nuomiji/Documents/zyyai/max/nextaichat/runtimes/hermes-agent
-HERMES_HOME=/Users/nuomiji/Documents/zyyai/max/nextaichat/.hermes-home \
+cd $REPO_ROOT/runtimes/hermes-agent
+HERMES_HOME=$REPO_ROOT/.hermes-home \
 ./.venv/bin/hermes dashboard --no-open
 ```
 
@@ -63,13 +63,13 @@ HERMES_HOME=/Users/nuomiji/Documents/zyyai/max/nextaichat/.hermes-home \
 新增脚本：
 
 ```text
-/Users/nuomiji/Documents/zyyai/max/nextaichat/scripts/hermes-smoke.mjs
+$REPO_ROOT/scripts/hermes-smoke.mjs
 ```
 
 运行：
 
 ```sh
-cd /Users/nuomiji/Documents/zyyai/max/nextaichat
+cd $REPO_ROOT
 HERMES_API_URL=http://127.0.0.1:8642 \
 HERMES_DASHBOARD_URL=http://127.0.0.1:9119 \
 node scripts/hermes-smoke.mjs
@@ -165,7 +165,7 @@ All 5 checks passed.
 当前 WebUI 运行方式：
 
 ```sh
-cd /Users/nuomiji/Documents/zyyai/max/nextaichat
+cd $REPO_ROOT
 pnpm dev
 ```
 
