@@ -7,7 +7,7 @@ function truthy(value) {
 }
 
 const requireClean = process.argv.includes('--require-clean') || truthy(process.env.KNEAD_RELEASE_REQUIRE_CLEAN)
-const DEFAULT_RELEASE_REPO_BASE = 'https://github.com/1zhangyy1/knead'
+const DEFAULT_RELEASE_REPO_BASE = 'https://github.com/1zhangyy1/hermes-knead-webui'
 
 function run(name, command, args, options = {}) {
   console.log(`\n==> ${name}`)

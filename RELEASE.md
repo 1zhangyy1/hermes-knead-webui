@@ -7,14 +7,14 @@ Use this checklist before tagging or publishing a Knead release.
 Runtime state must stay out of the source tree.
 
 Also confirm the Git remote and public metadata use the release repository name
-(`Knead`) rather than the old local project name:
+(`Hermes Knead WebUI`) rather than the old local project name:
 
 ```bash
 git remote -v
 node -e "const p=require('./package.json'); console.log(p.repository?.url, p.bugs?.url, p.homepage)"
 ```
 
-The repository audit checks metadata against `https://github.com/1zhangyy1/knead`
+The repository audit checks metadata against `https://github.com/1zhangyy1/hermes-knead-webui`
 by default. If the release repository lives elsewhere, set
 `KNEAD_RELEASE_REPO_URL` before running release checks.
 

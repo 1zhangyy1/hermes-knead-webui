@@ -169,7 +169,7 @@ const creatorShellClassifierSnippets = [
   "return 'Sales Deck AI'",
 ]
 
-const DEFAULT_RELEASE_REPO_BASE = 'https://github.com/1zhangyy1/knead'
+const DEFAULT_RELEASE_REPO_BASE = 'https://github.com/1zhangyy1/hermes-knead-webui'
 
 function gitLsFiles() {
   const result = spawnSync('git', ['ls-files'], {

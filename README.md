@@ -2,18 +2,18 @@
   <img src="apps/webui/static/knead-logo.svg" width="76" alt="Knead logo" />
 </p>
 
-<h1 align="center">Knead</h1>
+<h1 align="center">Hermes Knead WebUI</h1>
 
 <p align="center">
   <strong>One sentence. Shape an AI product you can actually use.</strong>
 </p>
 
 <p align="center">
-  A Hermes WebUI-based product shell built on the official Hermes Agent runtime.
+  A Hermes WebUI-based product shell for creating, using, and shaping AI products.
 </p>
 
 <p align="center">
-  <a href="#why-knead">Why Knead</a> ·
+  <a href="#why-hermes-knead-webui">Why</a> ·
   <a href="#how-it-works">How it works</a> ·
   <a href="#screenshots">Screenshots</a> ·
   <a href="#quick-start">Quick start</a> ·
@@ -28,15 +28,15 @@
   <img alt="Runtime: Hermes Agent" src="https://img.shields.io/badge/runtime-Hermes%20Agent-1A1A1A" />
 </p>
 
-## Why Knead
+## Why Hermes Knead WebUI
 
 Most AI tools stop at chat. Most app builders make you leave the work and start building an app.
 
-Knead is the middle path: pick an AI, say what you need, and let that AI become a small product when the task needs more structure.
+Hermes Knead WebUI is the middle path: pick an AI, say what you need, and let that AI become a small product when the task needs more structure.
 
-The product is called **Knead**. The source package is named `hermes-knead-webui` because this repository is specifically the Knead product layer on top of Hermes WebUI and Hermes Agent.
+The public project name is **Hermes Knead WebUI**. The app keeps **Knead** as its short in-product name because it is friendlier in the shelf, title bar, and product UI. The source package is named `hermes-knead-webui` because this repository is specifically the Knead product layer on top of Hermes WebUI and Hermes Agent.
 
-An AI product in Knead owns its role, prompt, avatar, skills, tools, task history, files, and optional workspace. It can stay as a normal chat product, or it can grow a focused surface for work like slides, research, data, writing, games, or repeatable personal workflows.
+An AI product in Hermes Knead WebUI owns its role, prompt, avatar, skills, tools, task history, files, and optional workspace. It can stay as a normal chat product, or it can grow a focused surface for work like slides, research, data, writing, games, or repeatable personal workflows.
 
 The current MVP is intentionally small:
 
@@ -48,7 +48,7 @@ The current MVP is intentionally small:
 
 ## How It Works
 
-Knead has one user model:
+Hermes Knead WebUI has one user model:
 
 1. **Choose or create an AI.** Start from the shelf. Use `General AI`, a built-in product, or knead a new one.
 2. **Use it through chat.** The first interaction is natural language. The AI decides whether the base chat is enough.

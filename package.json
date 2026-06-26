@@ -7,12 +7,12 @@
   "type": "module",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/1zhangyy1/knead.git"
+    "url": "git+https://github.com/1zhangyy1/hermes-knead-webui.git"
   },
   "bugs": {
-    "url": "https://github.com/1zhangyy1/knead/issues"
+    "url": "https://github.com/1zhangyy1/hermes-knead-webui/issues"
   },
-  "homepage": "https://github.com/1zhangyy1/knead#readme",
+  "homepage": "https://github.com/1zhangyy1/hermes-knead-webui#readme",
   "keywords": [
     "ai",
     "agent",

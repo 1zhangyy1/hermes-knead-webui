@@ -1,8 +1,8 @@
 blank_issues_enabled: false
 contact_links:
   - name: Security vulnerability
-    url: https://github.com/1zhangyy1/knead/security/policy
+    url: https://github.com/1zhangyy1/hermes-knead-webui/security/policy
     about: Please report secrets, credential exposure, sandbox escapes, and file access issues privately.
   - name: Local setup help
-    url: https://github.com/1zhangyy1/knead#readme
+    url: https://github.com/1zhangyy1/hermes-knead-webui#readme
     about: Check the setup and verification docs before opening a bug report.
